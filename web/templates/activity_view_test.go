@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -259,5 +260,27 @@ func TestAlertFormValues(t *testing.T) {
 	}
 	if ruleName(AlertRuleRow{Type: "price"}) != "Price" || ruleName(AlertRuleRow{Name: "Mine", Type: "price"}) != "Mine" {
 		t.Error("ruleName")
+	}
+}
+
+func TestPeriodOptionsAndExportURL(t *testing.T) {
+	p := ActivityPage{Years: []int{2026, 2025}, Kind: "send", Period: "y2025"}
+	opts := p.periodOpts()
+	var vals []string
+	for _, o := range opts {
+		vals = append(vals, o.Value)
+	}
+	want := []string{"", "7d", "30d", "90d", "mtd", "ytd", "y2026", "y2025", "custom"}
+	if strings.Join(vals, ",") != strings.Join(want, ",") {
+		t.Fatalf("period options %v", vals)
+	}
+	if got := actExportURL(p); got != "/export/activity.csv?kind=send&range=y2025" {
+		t.Fatalf("export url %q", got)
+	}
+	if got := actExportURL(ActivityPage{}); got != "/export/activity.csv" {
+		t.Fatalf("unfiltered export url %q", got)
+	}
+	if !p.activityFiltered() || (ActivityPage{}).activityFiltered() {
+		t.Fatal("a period counts as a filter")
 	}
 }

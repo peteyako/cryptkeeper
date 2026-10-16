@@ -207,10 +207,14 @@ type ActivityPage struct {
 	SourceID string // current filters ("" = all)
 	AssetKey string
 	Kind     string
-	Sources  []WalletOption // filter options
-	Assets   []AssetOption
-	Sync     []SyncRow
-	Now      time.Time
+	// Period filter: Period is the key ("", 7d, 30d, 90d, mtd, ytd, y2025, custom); From/To
+	// are the custom dates (YYYY-MM-DD); PeriodLabel describes it ("Year to date").
+	Period, From, To, PeriodLabel string
+	Years                         []int          // years that have activity, newest first (period options)
+	Sources                       []WalletOption // filter options
+	Assets                        []AssetOption
+	Sync                          []SyncRow
+	Now                           time.Time
 }
 
 // ---- reports ----------------------------------------------------------------------------

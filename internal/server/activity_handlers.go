@@ -22,10 +22,29 @@ type activityFilter struct {
 	Source string `json:"actSource"`
 	Asset  string `json:"actAsset"`
 	Kind   string `json:"actKind"`
+	Range  string `json:"actRange"` // period key: "", 7d, 30d, 90d, mtd, ytd, y2025, custom
+	From   string `json:"actFrom"`  // custom period, YYYY-MM-DD inclusive
+	To     string `json:"actTo"`
 }
 
-func (f activityFilter) toStore(before time.Time, limit int) activity.Filter {
-	af := activity.Filter{Before: before, Limit: limit}
+func filterFromQuery(r *http.Request) activityFilter {
+	q := r.URL.Query()
+	return activityFilter{Source: q.Get("source"), Asset: q.Get("asset"), Kind: q.Get("kind"),
+		Range: q.Get("range"), From: q.Get("from"), To: q.Get("to")}
+}
+
+func (f activityFilter) period() activity.Period {
+	return activity.Period{Key: f.Range, From: f.From, To: f.To}
+}
+
+// toStore turns the filters into a store query. before is the paging cursor (strictly
+// older than); the period's end applies too, whichever is earlier.
+func (f activityFilter) toStore(before time.Time, limit int, now time.Time) activity.Filter {
+	since, until := f.period().Bounds(now, templates.Location)
+	if !until.IsZero() && (before.IsZero() || until.Before(before)) {
+		before = until
+	}
+	af := activity.Filter{Before: before, Since: since, Limit: limit}
 	if f.Source != "" {
 		af.SourceIDs = []string{f.Source}
 	}
@@ -98,6 +117,7 @@ func (s *Server) activityPage(r *http.Request, f activityFilter, before time.Tim
 	p := templates.ActivityPage{
 		Shell:    s.shell(r, "Activity", "activity", "all", ""),
 		SourceID: f.Source, AssetKey: f.Asset, Kind: f.Kind,
+		Period: f.Range, From: f.From, To: f.To, PeriodLabel: f.period().Label(),
 		Sync: s.syncRows(r.Context()), Now: s.Now(),
 	}
 	p.Sources = s.walletOptions(false) // manual holdings have no activity
@@ -105,7 +125,10 @@ func (s *Server) activityPage(r *http.Request, f activityFilter, before time.Tim
 	if s.Activity == nil {
 		return p
 	}
-	txs, err := s.Activity.List(r.Context(), f.toStore(before, activityPageSize+1))
+	if ys, err := s.Activity.Years(r.Context(), templates.Location); err == nil {
+		p.Years = ys
+	}
+	txs, err := s.Activity.List(r.Context(), f.toStore(before, activityPageSize+1, s.Now()))
 	if err != nil {
 		s.Log.Warn("activity list", "err", err)
 	}
@@ -118,9 +141,7 @@ func (s *Server) activityPage(r *http.Request, f activityFilter, before time.Tim
 }
 
 func (s *Server) activityFull(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := activityFilter{Source: q.Get("source"), Asset: q.Get("asset"), Kind: q.Get("kind")}
-	s.render(w, r, templates.ActivityFull(s.activityPage(r, f, time.Time{})))
+	s.render(w, r, templates.ActivityFull(s.activityPage(r, filterFromQuery(r), time.Time{})))
 }
 
 // activityList patches the list after a filter change, or appends the next page.

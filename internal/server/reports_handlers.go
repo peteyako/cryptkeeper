@@ -328,8 +328,7 @@ func (s *Server) exportActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "activity not available", http.StatusServiceUnavailable)
 		return
 	}
-	q := r.URL.Query()
-	f := activityFilter{Source: q.Get("source"), Asset: q.Get("asset"), Kind: q.Get("kind")}
+	f := filterFromQuery(r)
 	var ids []string
 	if f.Source != "" {
 		ids = []string{f.Source}
@@ -339,9 +338,11 @@ func (s *Server) exportActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	since, until := f.period().Bounds(s.Now(), templates.Location)
 	var keep []core.Tx
 	for _, tx := range txs {
-		if (f.Kind == "" || string(tx.Kind) == f.Kind) && (f.Asset == "" || txHasAsset(tx, f.Asset)) {
+		inPeriod := (since.IsZero() || !tx.Time.Before(since)) && (until.IsZero() || tx.Time.Before(until))
+		if inPeriod && (f.Kind == "" || string(tx.Kind) == f.Kind) && (f.Asset == "" || txHasAsset(tx, f.Asset)) {
 			keep = append(keep, tx)
 		}
 	}

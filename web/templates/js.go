@@ -252,8 +252,13 @@ const actFilterGet = `@get('/activity/list', ` + actFilter + `)`
 // is never patched (only #activity-list is), so the filters survive every patch.
 func actSignals(p ActivityPage) string {
 	return "{actSource: " + JSString(p.SourceID) + ", actAsset: " + JSString(p.AssetKey) +
-		", actKind: " + JSString(p.Kind) + "}"
+		", actKind: " + JSString(p.Kind) + ", actRange: " + JSString(p.Period) +
+		", actFrom: " + JSString(p.From) + ", actTo: " + JSString(p.To) + "}"
 }
+
+// actExportHref keeps the CSV link in step with the filters, so the download is exactly
+// what the feed shows.
+const actExportHref = `'/export/activity.csv?' + new URLSearchParams({source: $actSource, asset: $actAsset, kind: $actKind, range: $actRange, from: $actFrom, to: $actTo})`
 
 // actMoreGet loads the page of older entries that starts at the opaque cursor.
 func actMoreGet(cursor string) string {

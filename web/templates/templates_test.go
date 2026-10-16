@@ -1218,7 +1218,7 @@ func TestActivityPage(t *testing.T) {
 	has(t, p,
 		`<title id="page-title">Activity · Vault</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
 		`aria-label="Hide balances"`, `<a class="nav-item nav-item--on" href="/activity" data-on:click=`,
-		`<div class="activity" data-signals="{actSource: &#39;&#39;, actAsset: &#39;&#39;, actKind: &#39;&#39;}">`,
+		`<div class="activity" data-signals="{actSource: &#39;&#39;, actAsset: &#39;&#39;, actKind: &#39;&#39;, actRange: &#39;&#39;, actFrom: &#39;&#39;, actTo: &#39;&#39;}">`,
 		`role="group" aria-label="Filter activity"`, `data-indicator="filtering"`,
 		`<label class="field__label" for="f-act-source">Source</label>`, `<label class="field__label" for="f-act-asset">Asset</label>`, `<label class="field__label" for="f-act-kind">Kind</label>`,
 		`data-bind="actSource"`, `data-bind="actAsset"`, `data-bind="actKind"`,
@@ -1228,7 +1228,7 @@ func TestActivityPage(t *testing.T) {
 	)
 	has(t, un,
 		`data-on:change="@get('/activity/list', {filterSignals: {include: /^act/}})"`,
-		`data-signals="{actSource: '', actAsset: '', actKind: ''}"`,
+		`data-signals="{actSource: '', actAsset: '', actKind: '', actRange: '', actFrom: '', actTo: ''}"`,
 	)
 	if n := strings.Count(p.html, `class="tx"`) + strings.Count(p.html, `class="tx tx--failed"`); n != demo.ActivityPageSize {
 		t.Errorf("a page holds %d rows, got %d", demo.ActivityPageSize, n)
@@ -1282,7 +1282,7 @@ func TestActivityPage(t *testing.T) {
 	f := byName(t, pages, "activity filtered")
 	fun := unescaped(f)
 	has(t, f, `<option value="coinbase" selected>Coinbase</option>`, `<option value="BTC" selected>BTC · Bitcoin</option>`, `<option value="trade" selected>Trades</option>`)
-	has(t, fun, `data-signals="{actSource: 'coinbase', actAsset: 'BTC', actKind: 'trade'}"`)
+	has(t, fun, `data-signals="{actSource: 'coinbase', actAsset: 'BTC', actKind: 'trade', actRange: '', actFrom: '', actTo: ''}"`)
 	lacks(t, f, "Swapped SOL")
 
 	// Empty states.

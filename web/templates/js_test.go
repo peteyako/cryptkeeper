@@ -346,7 +346,7 @@ func TestExpressionBuilders(t *testing.T) {
 	if got := actFilterGet; got != `@get('/activity/list', {filterSignals: {include: /^act/}})` {
 		t.Errorf("actFilterGet = %s", got)
 	}
-	if got := actSignals(ActivityPage{SourceID: "cold", Kind: "send"}); got != `{actSource: 'cold', actAsset: '', actKind: 'send'}` {
+	if got := actSignals(ActivityPage{SourceID: "cold", Kind: "send", Period: "custom", From: "2026-03-01"}); got != `{actSource: 'cold', actAsset: '', actKind: 'send', actRange: 'custom', actFrom: '2026-03-01', actTo: ''}` {
 		t.Errorf("actSignals = %s", got)
 	}
 	// The cursor is URL-escaped for the query and JS-escaped for the expression.

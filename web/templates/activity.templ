@@ -20,6 +20,10 @@ templ activityBody(p ActivityPage) {
 				<p class="lede">Synced from your wallets and exchanges</p>
 			</div>
 			<div class="page-head__actions">
+				<a class="btn btn--secondary" href={ templ.URL(actExportURL(p)) } data-attr:href={ actExportHref } download>
+					@Icon("download", 16)
+					CSV
+				</a>
 				@HideButton()
 			</div>
 		</header>
@@ -35,6 +39,23 @@ templ activityBody(p ActivityPage) {
 					@actSelect("f-act-source", "Source", "actSource", withCurrent(p.sourceOpts(), p.SourceID), p.SourceID)
 					@actSelect("f-act-asset", "Asset", "actAsset", withCurrent(p.assetOpts(), p.AssetKey), p.AssetKey)
 					@actSelect("f-act-kind", "Kind", "actKind", withCurrent(actKinds, p.Kind), p.Kind)
+					@actSelect("f-act-period", "Period", "actRange", withCurrent(p.periodOpts(), p.Period), p.Period)
+					<div
+						class="act-dates"
+						data-show="$actRange === 'custom'"
+						if p.Period != "custom" {
+							style="display:none"
+						}
+					>
+						<div class="field act-field">
+							<label class="field__label" for="f-act-from">From</label>
+							<input class="input" id="f-act-from" type="date" value={ p.From } data-bind="actFrom"/>
+						</div>
+						<div class="field act-field">
+							<label class="field__label" for="f-act-to">To</label>
+							<input class="input" id="f-act-to" type="date" value={ p.To } data-bind="actTo"/>
+						</div>
+					</div>
 					<span class="act-filters__busy" role="status" data-show="$filtering" style="display:none">Updating…</span>
 				</div>
 				<section class="card act-card" aria-label="Activity feed">

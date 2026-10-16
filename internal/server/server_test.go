@@ -667,3 +667,44 @@ func TestDatastarNavigationPatchesRegionsOnly(t *testing.T) {
 		t.Fatal("add-source flow must reload on navigation")
 	}
 }
+
+func TestActivityPeriodFilter(t *testing.T) {
+	e := newEnv(t, "")
+	now := time.Now()
+	mk := func(id string, at time.Time) core.Tx {
+		return core.Tx{ID: core.TxID("w", id), SourceID: "w", ExternalID: id, Time: at, Kind: core.TxReceive, Status: core.TxConfirmed,
+			Legs: []core.Leg{{AssetKey: "BTC", Symbol: "BTC", Amount: 1}}, TxHash: "hash-" + id}
+	}
+	e.act.Upsert(context.Background(), []core.Tx{
+		mk("old", time.Date(now.Year()-2, 6, 1, 12, 0, 0, 0, time.Local)),
+		mk("lastyear", time.Date(now.Year()-1, 3, 15, 12, 0, 0, 0, time.Local)),
+		mk("thismonth", time.Date(now.Year(), now.Month(), 1, 12, 0, 0, 0, time.Local)),
+	})
+	list := func(sig string) string {
+		_, out := e.do("GET", "/activity/list?datastar="+url.QueryEscape(sig), nil, ds(nil))
+		return out
+	}
+	lastYear := fmt.Sprint(now.Year() - 1)
+	out := list(`{"actRange":"y` + lastYear + `"}`)
+	if !strings.Contains(out, "hash-l") || strings.Contains(out, "hash-o") || strings.Contains(out, "hash-t") {
+		t.Fatalf("year filter: want only last year's entry")
+	}
+	out = list(`{"actRange":"mtd"}`)
+	if !strings.Contains(out, "hash-t") || strings.Contains(out, "hash-l") {
+		t.Fatal("month to date: want only this month's entry")
+	}
+	from := fmt.Sprintf("%d-01-01", now.Year()-2)
+	to := fmt.Sprintf("%d-12-31", now.Year()-1)
+	out = list(`{"actRange":"custom","actFrom":"` + from + `","actTo":"` + to + `"}`)
+	if !strings.Contains(out, "hash-o") || !strings.Contains(out, "hash-l") || strings.Contains(out, "hash-t") {
+		t.Fatal("custom range: want the two older entries")
+	}
+	// The page lists the years with activity, and the CSV export honours the period.
+	if _, page := e.do("GET", "/activity?range=y"+lastYear, nil, nil); !strings.Contains(page, `value="y`+lastYear+`" selected`) {
+		t.Fatal("full load should select the period from the query")
+	}
+	_, csv := e.do("GET", "/export/activity.csv?range=y"+lastYear, nil, nil)
+	if !strings.Contains(csv, "hash-lastyear") || strings.Contains(csv, "hash-old") || strings.Contains(csv, "hash-thismonth") {
+		t.Fatalf("export should honour the period:\n%s", csv)
+	}
+}

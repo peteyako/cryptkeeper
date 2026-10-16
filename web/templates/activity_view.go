@@ -294,7 +294,33 @@ func FeeLeg(t core.Tx) (core.Leg, bool) {
 
 // activityFiltered reports whether any filter is set.
 func (p ActivityPage) activityFiltered() bool {
-	return p.SourceID != "" || p.AssetKey != "" || p.Kind != ""
+	return p.SourceID != "" || p.AssetKey != "" || p.Kind != "" || p.Period != ""
+}
+
+// periodOpts are the Period filter's options: presets, each year with activity, custom.
+func (p ActivityPage) periodOpts() []selectOpt {
+	opts := []selectOpt{
+		{"", "All time"}, {"7d", "Last 7 days"}, {"30d", "Last 30 days"}, {"90d", "Last 90 days"},
+		{"mtd", "Month to date"}, {"ytd", "Year to date"},
+	}
+	for _, y := range p.Years {
+		opts = append(opts, selectOpt{"y" + strconv.Itoa(y), strconv.Itoa(y)})
+	}
+	return append(opts, selectOpt{"custom", "Custom range…"})
+}
+
+// actExportURL is the CSV link for a full page render (before Datastar takes over its href).
+func actExportURL(p ActivityPage) string {
+	q := url.Values{}
+	for k, v := range map[string]string{"source": p.SourceID, "asset": p.AssetKey, "kind": p.Kind, "range": p.Period, "from": p.From, "to": p.To} {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	if len(q) == 0 {
+		return "/export/activity.csv"
+	}
+	return "/export/activity.csv?" + q.Encode()
 }
 
 // actKinds are the options of the Kind filter, in display order. The values are core.TxKind.
