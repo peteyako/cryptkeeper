@@ -1,0 +1,18 @@
+services:
+  vault:
+    build: .
+    image: vault-portfolio
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./.env:/app/.env:ro
+      - ./data:/app/data
+    # Declared here too: Podman's default (OCI) image format ignores Dockerfile HEALTHCHECK.
+    healthcheck:
+      test: ["CMD", "/app/crypto-portfolio", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 60s
+      retries: 3

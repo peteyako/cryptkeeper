@@ -1,0 +1,173 @@
+package templates
+
+type navItem struct{ Key, Label, Href, Icon string }
+
+var sideNav = []navItem{
+	{"overview", "Overview", "/", "home"},
+	{"wallets", "Wallets", "/wallets", "wallet"},
+	{"activity", "Activity", "/activity", "activity"},
+	{"reports", "Reports", "/reports", "reports"},
+	{"alerts", "Alerts", "/alerts", "bell"},
+	{"settings", "Settings", "/settings", "settings"},
+}
+
+var bottomNav = []navItem{
+	{"overview", "Overview", "/", "home"},
+	{"wallets", "Wallets", "/wallets", "wallet"},
+	{"activity", "Activity", "/activity", "activity"},
+	{"settings", "Settings", "/settings", "settings"},
+}
+
+func pageTitle(t string) string {
+	if t == "" || t == "Vault" {
+		return "Vault"
+	}
+	return t + " · Vault"
+}
+
+// Layout wraps a page body in the app shell: sidebar on wide screens, bottom navigation
+// on narrow ones. The <body> carries the page's signals and is never patched.
+templ Layout(s Shell, body templ.Component) {
+	@page(s, false, body)
+}
+
+// layoutFocus is the chrome-free shell used by the add-source flow: a centered sheet on
+// desktop, a full screen on phones, no navigation.
+templ layoutFocus(s Shell, body templ.Component) {
+	@page(s, true, body)
+}
+
+templ page(s Shell, bare bool, body templ.Component) {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+			<title>{ pageTitle(s.Title) }</title>
+			<meta name="color-scheme" content="dark light"/>
+			<meta name="theme-color" content={ ThemeColorDark } media="(prefers-color-scheme: dark)"/>
+			<meta name="theme-color" content={ ThemeColorLight } media="(prefers-color-scheme: light)"/>
+			<link rel="manifest" href="/manifest.webmanifest"/>
+			<link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml"/>
+			<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+			<meta name="mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-title" content="Vault"/>
+			<link rel="preload" href="/static/fonts/ibm-plex-sans-400.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="preload" href="/static/fonts/ibm-plex-mono-500.woff2" as="font" type="font/woff2" crossorigin/>
+			<link rel="stylesheet" href={ asset("tokens.css") }/>
+			<link rel="stylesheet" href={ asset("app.css") }/>
+			<script type="module" src={ asset("datastar.js") }></script>
+		</head>
+		<body
+			data-signals={ bodySignals(s) }
+			data-class="{'amounts-hidden': $hide}"
+			data-init={ bodyInit }
+			data-effect={ bodyEffect }
+		>
+			if bare {
+				<main id="main" class="focus" tabindex="-1">
+					@body
+				</main>
+			} else {
+				<a class="skip-link" href="#main">Skip to content</a>
+				<div class="app">
+					@sidebar(s)
+					<main id="main" class="main" tabindex="-1">
+						@body
+					</main>
+					@bottomBar(s)
+				</div>
+			}
+		</body>
+	</html>
+}
+
+templ sidebar(s Shell) {
+	<nav class="sidebar" aria-label="Main">
+		<a class="brand" href="/" aria-label="Vault, overview">
+			<span class="brand__mark">
+				@Icon("vault", 16)
+			</span>
+			<span class="brand__name">Vault</span>
+		</a>
+		<div class="nav-group">
+			for _, it := range sideNav {
+				<a
+					class={ "nav-item", templ.KV("nav-item--on", s.Active == it.Key) }
+					href={ templ.URL(it.Href) }
+					if s.Active == it.Key {
+						aria-current="page"
+					}
+				>
+					@Icon(it.Icon, 16)
+					{ it.Label }
+				</a>
+			}
+		</div>
+		<div class="nav-group">
+			<span class="nav-label">Portfolios</span>
+			for _, p := range s.Portfolios {
+				@portfolioLink(s, p)
+			}
+			<a class="nav-new" href="/portfolios/new">
+				@Icon("plus", 14)
+				New portfolio
+			</a>
+		</div>
+		if s.AuthUser != "" {
+			<p class="nav-user">Signed in as <strong>{ s.AuthUser }</strong></p>
+		}
+	</nav>
+}
+
+// portfolioLink is one portfolio in the sidebar (and in the phone dropdown). On the
+// overview it switches the portfolio in place over Datastar; elsewhere it is a plain link,
+// since there is no dashboard to patch.
+templ portfolioLink(s Shell, p PortfolioNav) {
+	if s.Active == "overview" {
+		<a
+			class={ "nav-item", templ.KV("nav-item--on", normPF(s.PF) == p.ID) }
+			href={ templ.URL(pfHref(p.ID)) }
+			data-on:click__prevent={ pfClick(p.ID) }
+			data-class={ pfClass(p.ID) }
+			data-attr:aria-current={ pfCurrent(p.ID) }
+			if normPF(s.PF) == p.ID {
+				aria-current="page"
+			}
+		>
+			<span class="nav-item__name">{ p.Name }</span>
+			<span class="nav-item__count">{ p.Count }</span>
+		</a>
+	} else {
+		<a
+			class="nav-item"
+			href={ templ.URL(pfHref(p.ID)) }
+		>
+			<span class="nav-item__name">{ p.Name }</span>
+			<span class="nav-item__count">{ p.Count }</span>
+		</a>
+	}
+}
+
+templ bottomBar(s Shell) {
+	<nav class="bottomnav" aria-label="Main">
+		for _, it := range bottomNav {
+			<a
+				class={ "bn-item", templ.KV("bn-item--on", s.Active == it.Key) }
+				href={ templ.URL(it.Href) }
+				if s.Active == it.Key {
+					aria-current="page"
+				}
+			>
+				@Icon(it.Icon, 20)
+				{ it.Label }
+			</a>
+		}
+	</nav>
+}
+
+// LiveStream is the hidden, never-patched element that opens the persistent SSE stream.
+templ LiveStream() {
+	<div id="live" hidden data-init={ liveInit }></div>
+}

@@ -1,0 +1,287 @@
+package portfolio
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/store"
+)
+
+// PriceReq asks for one asset's price. Mint is set for SPL tokens (mapped or not) so the
+// pricer can fall back to Jupiter.
+type PriceReq struct{ Key, Mint string }
+
+// PriceFunc returns prices keyed by PriceReq.Key; a missing key means no price.
+type PriceFunc func(ctx context.Context, reqs []PriceReq) map[string]core.Price
+
+// Wallet is one source to fetch, with the display facts the snapshot needs.
+type Wallet struct {
+	ID, Label, Type string
+	Kind            core.Kind
+	Source          core.Source // nil when the source failed to build
+	BuildErr        error
+}
+
+// Aggregator fetches every wallet, prices holdings and builds a Snapshot.
+type Aggregator struct {
+	Wallets      func() []Wallet
+	Prices       PriceFunc
+	DB           *store.DB // last-good wallet cache; may be nil in tests
+	StaleMax     time.Duration
+	FetchTimeout time.Duration
+	// HideUnpriced moves Solana tokens without a price, or worth less than MinUSD, into Hidden.
+	HideUnpriced bool
+	MinUSD       float64
+	Now          func() time.Time
+}
+
+func (a *Aggregator) now() time.Time {
+	if a.Now != nil {
+		return a.Now()
+	}
+	return time.Now()
+}
+
+// Build runs one full refresh.
+func (a *Aggregator) Build(ctx context.Context) Snapshot {
+	wallets := a.Wallets()
+	results := make([]core.WalletResult, len(wallets))
+	status := make([]Status, len(wallets))
+	var wg sync.WaitGroup
+	for i, w := range wallets {
+		wg.Go(func() { results[i], status[i] = a.fetchOne(ctx, w) })
+	}
+	wg.Wait()
+
+	reqs := PriceRequests(results)
+	prices := map[string]core.Price{}
+	if len(reqs) > 0 && a.Prices != nil {
+		prices = a.Prices(ctx, reqs)
+	}
+	return assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, a.now())
+}
+
+func (a *Aggregator) fetchOne(ctx context.Context, w Wallet) (core.WalletResult, Status) {
+	if w.Source == nil {
+		msg := "source not configured"
+		if w.BuildErr != nil {
+			msg = w.BuildErr.Error()
+		}
+		return core.WalletResult{WalletID: w.ID, Err: msg, AsOf: a.now()}, StatusError
+	}
+	timeout := a.FetchTimeout
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	fctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	res, err := safeFetch(fctx, w.Source)
+	res.WalletID = w.ID
+	if err == nil {
+		if res.AsOf.IsZero() {
+			res.AsOf = a.now()
+		}
+		a.saveLastGood(ctx, res)
+		return res, StatusSynced
+	}
+	if lg, ok := a.loadLastGood(ctx, w.ID); ok && a.now().Sub(lg.AsOf) <= a.StaleMax {
+		lg.Stale = true
+		lg.Err = err.Error()
+		return lg, StatusStale
+	}
+	return core.WalletResult{WalletID: w.ID, Err: err.Error(), AsOf: a.now()}, StatusError
+}
+
+// safeFetch turns a panicking source into an error so one bad source can't kill refreshes.
+func safeFetch(ctx context.Context, s core.Source) (res core.WalletResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("internal error: %v", r)
+		}
+	}()
+	return s.Fetch(ctx)
+}
+
+func (a *Aggregator) saveLastGood(ctx context.Context, res core.WalletResult) {
+	if a.DB == nil {
+		return
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return
+	}
+	a.DB.ExecContext(ctx, `INSERT INTO lastgood_wallet (wallet_id, json, as_of) VALUES (?, ?, ?)
+		ON CONFLICT(wallet_id) DO UPDATE SET json = excluded.json, as_of = excluded.as_of`, res.WalletID, string(raw), res.AsOf.Unix())
+}
+
+func (a *Aggregator) loadLastGood(ctx context.Context, id string) (core.WalletResult, bool) {
+	if a.DB == nil {
+		return core.WalletResult{}, false
+	}
+	var raw string
+	err := a.DB.QueryRowContext(ctx, `SELECT json FROM lastgood_wallet WHERE wallet_id = ?`, id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) || err != nil {
+		return core.WalletResult{}, false
+	}
+	var res core.WalletResult
+	if json.Unmarshal([]byte(raw), &res) != nil {
+		return core.WalletResult{}, false
+	}
+	return res, true
+}
+
+// PriceRequests lists the distinct assets in results, most important first.
+func PriceRequests(results []core.WalletResult) []PriceReq {
+	idx := map[string]int{}
+	unnamed := map[string]bool{}
+	var out []PriceReq
+	add := func(h core.Holding) {
+		if h.AssetKey == "" {
+			return
+		}
+		if strings.Contains(h.Symbol, "…") {
+			unnamed[h.AssetKey] = true
+		}
+		if i, ok := idx[h.AssetKey]; ok {
+			if out[i].Mint == "" {
+				out[i].Mint = h.Mint // a Solana holding of the same asset supplies the mint
+			}
+			return
+		}
+		idx[h.AssetKey] = len(out)
+		out = append(out, PriceReq{Key: h.AssetKey, Mint: h.Mint})
+	}
+	for _, r := range results {
+		for _, h := range r.Holdings {
+			add(h)
+		}
+		for _, h := range r.Hidden {
+			add(h)
+		}
+	}
+	// Price what matters first: exchange symbols, then named SPL tokens, then unnamed mints
+	// (spam airdrops show a shortened mint "AbCd…wXyZ"). Pricers cap work per call.
+	rank := func(r PriceReq) int {
+		_, spl := core.IsSPLKey(r.Key)
+		switch {
+		case !spl:
+			return 0
+		case !unnamed[r.Key]:
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if ri, rj := rank(out[i]), rank(out[j]); ri != rj {
+			return ri < rj
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
+}
+
+// assemble is pure: wallets + results + prices → Snapshot.
+func assemble(wallets []Wallet, results []core.WalletResult, status []Status, prices map[string]core.Price, hideUnpriced bool, minUSD float64, now time.Time) Snapshot {
+	snap := Snapshot{UpdatedAt: now, Prices: prices}
+	assets := map[string]*AssetRow{}
+	var order []string
+	for i, w := range wallets {
+		res := results[i]
+		wv := WalletView{
+			ID: w.ID, Label: w.Label, Type: w.Type, Kind: w.Kind,
+			NFTCount: res.NFTCount, Warnings: res.Warnings, Meta: res.Meta,
+			Status: status[i], Err: res.Err, AsOf: res.AsOf,
+		}
+		if res.Stale {
+			snap.HasStale = true
+		}
+		for _, h := range res.Hidden {
+			wv.HiddenRows = append(wv.HiddenRows, PriceRow(h, prices))
+		}
+		for _, h := range res.Holdings {
+			row := PriceRow(h, prices)
+			if row.Price != nil && row.Price.Stale {
+				snap.HasStale = true
+			}
+			if hideUnpriced && w.Type == "solana" && isSpamCandidate(row, minUSD) {
+				wv.HiddenRows = append(wv.HiddenRows, row)
+				continue
+			}
+			wv.Rows = append(wv.Rows, row)
+			wv.ValueUSD += row.ValueUSD
+
+			ar, ok := assets[h.AssetKey]
+			if !ok {
+				ar = &AssetRow{AssetKey: h.AssetKey, Symbol: h.Symbol, Name: h.Name, Mint: h.Mint, LogoURL: h.LogoURL}
+				if p, ok := prices[h.AssetKey]; ok {
+					pc := p
+					ar.Price = &pc
+				}
+				assets[h.AssetKey] = ar
+				order = append(order, h.AssetKey)
+			}
+			if ar.Name == "" {
+				ar.Name = h.Name
+			}
+			ar.Amount += h.Amount
+			if h.Staked {
+				ar.StakedAmt += h.Amount
+			}
+			ar.ValueUSD += row.ValueUSD
+			ar.Priced = ar.Priced || row.Priced
+			if !slices.Contains(ar.HeldIn, w.Label) {
+				ar.HeldIn = append(ar.HeldIn, w.Label)
+			}
+		}
+		sort.SliceStable(wv.Rows, func(a, b int) bool { return wv.Rows[a].ValueUSD > wv.Rows[b].ValueUSD })
+		sort.SliceStable(wv.HiddenRows, func(a, b int) bool { return wv.HiddenRows[a].ValueUSD > wv.HiddenRows[b].ValueUSD })
+		snap.TotalUSD += wv.ValueUSD
+		snap.Wallets = append(snap.Wallets, wv)
+	}
+	for _, k := range order {
+		ar := assets[k]
+		if snap.TotalUSD > 0 {
+			ar.Share = ar.ValueUSD / snap.TotalUSD
+		}
+		snap.Assets = append(snap.Assets, *ar)
+	}
+	sort.SliceStable(snap.Assets, func(i, j int) bool {
+		if snap.Assets[i].Priced != snap.Assets[j].Priced {
+			return snap.Assets[i].Priced
+		}
+		return snap.Assets[i].ValueUSD > snap.Assets[j].ValueUSD
+	})
+	sort.SliceStable(snap.Wallets, func(i, j int) bool { return snap.Wallets[i].ValueUSD > snap.Wallets[j].ValueUSD })
+	return snap
+}
+
+// PriceRow applies a price (if any) to a holding.
+func PriceRow(h core.Holding, prices map[string]core.Price) HoldingRow {
+	row := HoldingRow{Holding: h}
+	if p, ok := prices[h.AssetKey]; ok {
+		pc := p
+		row.Price = &pc
+		row.Priced = true
+		row.ValueUSD = h.Amount * p.USD
+	}
+	return row
+}
+
+// isSpamCandidate reports whether a Solana token row belongs in the collapsed "hidden
+// tokens" list: unverified (scam airdrops often carry a fake price), unpriced, or dust.
+// SOL itself and DeFi position legs are never hidden.
+func isSpamCandidate(row HoldingRow, minUSD float64) bool {
+	if row.Mint == "" || row.AssetKey == "SOL" || row.Protocol != "" {
+		return false
+	}
+	return !row.Verified || !row.Priced || row.ValueUSD < minUSD
+}

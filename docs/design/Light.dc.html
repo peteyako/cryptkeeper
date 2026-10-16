@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault — Light mode tokens</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F6F7F9}
+a{color:#2F5FD9}a:hover{color:#1F45A8}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1720px; box-sizing: border-box; padding: 72px 80px; background: #F6F7F9; color: #12151A; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 48px">
+
+  <header style="display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; border-bottom: 1px solid #E1E4E9">
+    <span style="font-size: 12px; color: #69717D; font-family: 'IBM Plex Mono', monospace">Vault · design system · v0.1</span>
+    <h1 style="margin: 0; font-size: 48px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em">Light mode</h1>
+    <p style="margin: 0; max-width: 720px; font-size: 16px; line-height: 1.6; color: #4A525E">Same token names, same roles. Surfaces flip to white cards on a cool grey ground, and the accent and semantic hues get darker so text in them passes 4.5:1 on white. Cards gain a hairline shadow because borders alone read too faint on light grounds.</p>
+  </header>
+
+  <section style="display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; align-items: baseline; gap: 16px">
+      <h2 style="margin: 0; font-size: 22px; font-weight: 600">Token map</h2>
+      <span style="font-size: 13px; color: #69717D">Dark value → light value, per token</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{tokens}}" as="k" hint-placeholder-count="18">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 10px">
+          <div style="display: flex; flex-shrink: 0; border-radius: 8px; overflow: hidden; border: 1px solid #CDD2D9">
+            <span style="width: 32px; height: 40px; background: {{k.dark}}"></span>
+            <span style="width: 32px; height: 40px; background: {{k.light}}"></span>
+          </div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 13px; font-weight: 500">{{k.name}}</span>
+            <span style="font-size: 12px; color: #69717D; font-family: 'IBM Plex Mono', monospace">{{k.dark}} → {{k.light}}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px; box-shadow: 0 1px 2px rgba(18,21,26,0.06)">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #4A525E; text-transform: uppercase; letter-spacing: 0.08em">Buttons</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 10px; background: #2F5FD9; color: #FFFFFF; font-size: 14px; font-weight: 600">Add source</button>
+        <button type="button" style="height: 44px; padding: 0 20px; border: 1px solid #CDD2D9; border-radius: 10px; background: #F0F2F5; color: #12151A; font-size: 14px; font-weight: 500">Receive</button>
+        <button type="button" style="height: 44px; padding: 0 20px; border: 1px solid #F1C4BD; border-radius: 10px; background: #FBE8E5; color: #C23B2B; font-size: 14px; font-weight: 500">Disconnect</button>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px; box-shadow: 0 1px 2px rgba(18,21,26,0.06)">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #4A525E; text-transform: uppercase; letter-spacing: 0.08em">Status</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #E3F4EC; display: inline-flex; align-items: center; font-size: 12px; color: #0E7A4E; font-family: 'IBM Plex Mono', monospace">● Synced</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #FBF0D9; display: inline-flex; align-items: center; font-size: 12px; color: #8A5A00; font-family: 'IBM Plex Mono', monospace">◐ Stale 3h</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #FBE8E5; display: inline-flex; align-items: center; font-size: 12px; color: #C23B2B; font-family: 'IBM Plex Mono', monospace">✕ Key expired</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #E6EDFC; display: inline-flex; align-items: center; font-size: 12px; color: #2F5FD9; font-family: 'IBM Plex Mono', monospace">Read-only</span>
+      </div>
+      <div style="display: flex; gap: 16px; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500">
+        <span style="color: #0E7A4E">▲ +4.21%</span>
+        <span style="color: #C23B2B">▼ −1.08%</span>
+        <span style="color: #9A6400">~$3,912.00</span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px; box-shadow: 0 1px 2px rgba(18,21,26,0.06)">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #4A525E; text-transform: uppercase; letter-spacing: 0.08em">Account card</h2>
+      <div style="display: flex; background: #F6F7F9; border: 1px solid #E1E4E9; border-radius: 14px; overflow: hidden">
+        <div style="width: 3px; background: #C48A12"></div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 16px 18px">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">Cold storage</span><span style="font-size: 12px; color: #69717D">Ledger · Bitcoin</span></div>
+            <span style="height: 22px; padding: 0 7px; border-radius: 6px; background: #F0F2F5; display: inline-flex; align-items: center; font-size: 11px; color: #4A525E; font-family: 'IBM Plex Mono', monospace">Watch-only</span>
+          </div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 500">$19,240.00</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; align-items: baseline; gap: 16px">
+      <h2 style="margin: 0; font-size: 22px; font-weight: 600">Switching themes</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px">
+        <span style="font-size: 14px; font-weight: 600">Follow the system</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #4A525E">Default to the OS setting, with a manual override in Settings: System, Light, Dark.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px">
+        <span style="font-size: 14px; font-weight: 600">Swap tokens, not components</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #4A525E">Components only reference token names. Every example screen here takes a theme switch in its Tweaks panel.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; background: #FFFFFF; border: 1px solid #E1E4E9; border-radius: 14px">
+        <span style="font-size: 14px; font-weight: 600">Charts keep their order</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #4A525E">Allocation colors stay in the same sequence in both modes, so BTC is always the first, warm segment.</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      tokens: [
+        { name: 'bg', dark: '#0D0F12', light: '#F6F7F9' },
+        { name: 'surface-1', dark: '#14171C', light: '#FFFFFF' },
+        { name: 'surface-2', dark: '#1B1F26', light: '#F0F2F5' },
+        { name: 'border', dark: '#262B33', light: '#E1E4E9' },
+        { name: 'border-strong', dark: '#343A44', light: '#CDD2D9' },
+        { name: 'text-1', dark: '#ECEEF1', light: '#12151A' },
+        { name: 'text-2', dark: '#A3AAB5', light: '#4A525E' },
+        { name: 'text-3', dark: '#7C8592', light: '#69717D' },
+        { name: 'accent', dark: '#6E9BFF', light: '#2F5FD9' },
+        { name: 'on-accent', dark: '#0D0F12', light: '#FFFFFF' },
+        { name: 'accent-soft', dark: '#1E2A44', light: '#E6EDFC' },
+        { name: 'gain', dark: '#4FD69C', light: '#0E7A4E' },
+        { name: 'gain-soft', dark: '#12291F', light: '#E3F4EC' },
+        { name: 'loss', dark: '#FF8A7A', light: '#C23B2B' },
+        { name: 'loss-soft', dark: '#2A1717', light: '#FBE8E5' },
+        { name: 'warn', dark: '#F2B84B', light: '#9A6400' },
+        { name: 'hot wallet', dark: '#C08CFF', light: '#7A3FD1' },
+        { name: 'hardware', dark: '#F2B84B', light: '#C48A12' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

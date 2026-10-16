@@ -489,3 +489,13 @@ portfolios:
   - M4: DeFi values within about 1% of the Orca/Raydium/Jupiter UIs.
   - M5: avg cost matches Coinbase for one asset.
   - M6: ntfy test arrives; a deliberately low price rule fires once.
+
+
+## Implementation notes (M1, 2026-10-16)
+Decisions made during M1 that refine or deviate from the plan above:
+- **Live stream URL is fixed** (`@get('/stream', {filterSignals: …})`, portfolio/range sent as signals): the vendored Datastar v1.0.4 only auto-cancels a previous request to the *same URL*. The stream runs on the overview only; wallet pages refresh on navigation.
+- **Pricing is mint-first:** anything with a Solana mint (including exchange holdings of mapped tokens like JUP on Kraken) is priced by mint on Jupiter, then the symbol chain. A Coinbase spot price is ignored when the Coinbase Exchange product isn't `online` (Coinbase still quotes delisted JUP ~1000× low).
+- **Unverified SPL tokens are hidden** (and excluded from totals) unless in `solana.allowMints`; Jupiter's verified list (one request/day) names most tokens locally. Per-fetch caps (search batches, on-chain lookups, a 20 s budget) keep spam-heavy wallets inside the fetch deadline; Jupiter price lookups cap chunks per call and negative-cache unpriced mints for an hour.
+- **Charts start when every current wallet has history,** so adding/removing a source doesn't draw a cliff.
+- **Static assets are content-hash versioned** (`?v=`), cached immutably.
+- **Coinbase:** use an ECDSA CDP key; Ed25519 keys work for Advanced Trade but Coinbase's v2 API (vaults, staking) documents ECDSA only.

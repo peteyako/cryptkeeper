@@ -1,0 +1,543 @@
+package templates
+
+import (
+	"fmt"
+	"strings"
+)
+
+type pickOpt struct{ Type, Name, How, Mono, Tone string }
+
+var exchangeOpts = []pickOpt{
+	{"coinbase", "Coinbase", "Read-only API key", "CB", "exchange"},
+	{"kraken", "Kraken", "Read-only API key", "KR", "exchange"},
+}
+
+var selfCustodyOpts = []pickOpt{
+	{"bitcoin", "Bitcoin wallet", "xpub, descriptor or address", "BTC", "hardware"},
+	{"solana", "Solana wallet", "Public address", "SOL", "hot"},
+	{"manual", "Manual holdings", "Coins held anywhere else", "M", "manual"},
+}
+
+// SourcePickFull is step 1 of 2: pick what to add.
+templ SourcePickFull(p SourcePickPage) {
+	@layoutFocus(p.Shell, sourcePick())
+}
+
+templ sourcePick() {
+	<div class="sheet">
+		@flowBar(1, "/")
+		<div class="sheet__intro">
+			<h1 class="h-flow">Add a source</h1>
+			<p class="lede">Connect an exchange with a read-only key, or track a wallet by its public address.</p>
+		</div>
+		@pickGroup("Exchanges", exchangeOpts)
+		@pickGroup("Self-custody", selfCustodyOpts)
+	</div>
+}
+
+templ pickGroup(title string, opts []pickOpt) {
+	<div class="pick-group">
+		<h2 class="group-label">{ title }</h2>
+		<div class="pick-list">
+			for _, o := range opts {
+				<a class="pick" href={ templ.URL("/sources/new/" + o.Type) }>
+					<span class={ "tile", "tile--sm", "tile--" + o.Tone } aria-hidden="true">{ o.Mono }</span>
+					<span class="pick__text">
+						<span class="pick__name">{ o.Name }</span>
+						<span class="pick__how">{ o.How }</span>
+					</span>
+					@Icon("chevron-right", 16)
+				</a>
+			}
+		</div>
+	</div>
+}
+
+// flowBar is the back button and the "1/2" progress bar. Step 0 (editing) has no progress.
+templ flowBar(step int, back string) {
+	<div class="flow-bar">
+		<a class="icon-btn" href={ templ.URL(back) } aria-label="Back">
+			@Icon("chevron-left", 20)
+		</a>
+		if step > 0 {
+			<div class="steps" role="img" aria-label={ fmt.Sprintf("Step %d of 2", step) }>
+				<span class="steps__seg steps__seg--on"></span>
+				<span class={ "steps__seg", templ.KV("steps__seg--on", step >= 2) }></span>
+			</div>
+			<span class="steps__num">{ fmt.Sprintf("%d/2", step) }</span>
+		}
+	</div>
+}
+
+// ---- form fields -------------------------------------------------------------------
+
+type fieldSpec struct {
+	Name        string
+	Label       string
+	Placeholder string
+	Value       string
+	Help        string
+	Err         string
+	Mono        bool
+	Required    bool
+	Secret      bool // never prefilled, whatever the page was given
+	Password    bool
+	Rows        int
+}
+
+func (f fieldSpec) ID() string       { return "f-" + f.Name }
+func (f fieldSpec) ErrID() string    { return f.ID() + "-err" }
+func (f fieldSpec) HelpID() string   { return f.ID() + "-help" }
+func (f fieldSpec) InputType() string {
+	if f.Password {
+		return "password"
+	}
+	return "text"
+}
+
+func (f fieldSpec) Autocomplete() string {
+	if f.Password {
+		return "new-password"
+	}
+	return "off"
+}
+
+// Describe is the aria-describedby value: the error and help text ids that exist.
+func (f fieldSpec) Describe() string {
+	var ids []string
+	if f.Err != "" {
+		ids = append(ids, f.ErrID())
+	}
+	if f.Help != "" {
+		ids = append(ids, f.HelpID())
+	}
+	return strings.Join(ids, " ")
+}
+
+// field builds a spec for a non-secret field from the page values and errors.
+func (p SourceFormPage) field(name, label string) fieldSpec {
+	return fieldSpec{Name: name, Label: label, Value: p.Values[name], Err: p.Errors[name]}
+}
+
+// secret builds a spec for a secret field. It ignores p.Values on purpose (secrets are
+// never rendered back into HTML) and turns a stored mask into the placeholder.
+func (p SourceFormPage) secret(name, label, placeholder string) fieldSpec {
+	f := fieldSpec{Name: name, Label: label, Placeholder: placeholder, Err: p.Errors[name], Secret: true, Mono: true, Required: p.EditID == ""}
+	if m := p.SecretMasks[name]; m != "" {
+		f.Placeholder = "Leave blank to keep " + m
+		f.Required = false
+	}
+	return f
+}
+
+func (p SourceFormPage) kindValue(def string) string {
+	if v := p.Values["kind"]; v != "" {
+		return v
+	}
+	return def
+}
+
+func (p SourceFormPage) isEdit() bool { return p.EditID != "" }
+
+func formTitle(p SourceFormPage) string {
+	if p.isEdit() {
+		if l := p.Values["label"]; l != "" {
+			return "Edit " + l
+		}
+		return "Edit source"
+	}
+	switch p.Type {
+	case "coinbase":
+		return "Connect Coinbase"
+	case "kraken":
+		return "Connect Kraken"
+	case "bitcoin":
+		return "Track a Bitcoin wallet"
+	case "solana":
+		return "Track a Solana wallet"
+	case "manual":
+		return "Add manual holdings"
+	}
+	return "Add a source"
+}
+
+func formLede(p SourceFormPage) string {
+	if p.isEdit() {
+		return "Change how this source is labelled or connected. Secrets stay as saved unless you paste new ones."
+	}
+	switch p.Type {
+	case "coinbase":
+		return "Create an API key in your Coinbase settings and paste it below."
+	case "kraken":
+		return "Create an API key in your Kraken settings and paste it below."
+	case "bitcoin":
+		return "Export the extended public key (xpub / zpub) from your device app, or paste an output descriptor or address. Vault derives every address from it."
+	case "solana":
+		return "Paste a public address. Vault reads SOL, tokens and DeFi positions from it."
+	case "manual":
+		return "List coins you hold anywhere else. Vault prices them like everything else."
+	}
+	return ""
+}
+
+func saveLabel(p SourceFormPage) string {
+	if p.isEdit() {
+		return "Save changes"
+	}
+	return "Save source"
+}
+
+func cancelHref(p SourceFormPage) string {
+	if p.isEdit() {
+		return walletHref(p.EditID)
+	}
+	return "/"
+}
+
+func backHref(p SourceFormPage) string {
+	if p.isEdit() {
+		return walletHref(p.EditID)
+	}
+	return "/sources/new"
+}
+
+func formStep(p SourceFormPage) int {
+	if p.isEdit() {
+		return 0
+	}
+	return 2
+}
+
+// SourceFormFull is step 2 of 2: the form for one source type (or the edit form).
+templ SourceFormFull(p SourceFormPage) {
+	@layoutFocus(p.Shell, sourceForm(p))
+}
+
+templ sourceForm(p SourceFormPage) {
+	<div class="sheet">
+		@flowBar(formStep(p), backHref(p))
+		<div class="sheet__intro">
+			<h1 class="h-flow">{ formTitle(p) }</h1>
+			<p class="lede">{ formLede(p) }</p>
+		</div>
+		<form
+			id="source-form"
+			class="form"
+			method="post"
+			action={ templ.URL(formAction(p.EditID)) }
+			if p.Type == "bitcoin" {
+				enctype="multipart/form-data"
+			}
+			data-indicator="saving"
+			data-on:submit={ submitClick(p.EditID) }
+		>
+			<input type="hidden" name="type" value={ p.Type }/>
+			if p.EditID != "" {
+				<input type="hidden" name="editId" value={ p.EditID }/>
+			}
+			@FormErrors(p.Errors)
+			switch p.Type {
+				case "coinbase":
+					@coinbaseFields(p)
+				case "kraken":
+					@krakenFields(p)
+				case "bitcoin":
+					@bitcoinFields(p)
+				case "solana":
+					@solanaFields(p)
+				default:
+					@manualFields(p)
+			}
+			@TestResultView(TestResult{})
+			<div class="form-actions">
+				<a class="btn btn--ghost" href={ templ.URL(cancelHref(p)) }>Cancel</a>
+				<button
+					type="button"
+					class="btn btn--secondary"
+					data-indicator="testing"
+					data-attr:disabled="$testing || $saving"
+					data-class="{'is-busy': $testing}"
+					data-on:click={ testClick }
+				>Test connection</button>
+				<button
+					type="submit"
+					class="btn btn--primary btn--submit"
+					data-attr:disabled="$saving"
+				>{ saveLabel(p) }</button>
+			</div>
+		</form>
+	</div>
+}
+
+templ coinbaseFields(p SourceFormPage) {
+	@Notice("info", "shield") {
+		Grant <strong>view</strong> permissions only. Vault never needs trade or transfer access.
+	}
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required = true }}
+	if label.Value == "" && !p.isEdit() {
+		{{ label.Value = "Coinbase" }}
+	}
+	@textField(label)
+	{{ keyName := p.field("keyName", "API key name") }}
+	{{ keyName.Mono, keyName.Required, keyName.Placeholder = true, true, "organizations/…/apiKeys/…" }}
+	@textField(keyName)
+	@areaField(p.secret("privateKey", "Private key (PEM or Ed25519)", "-----BEGIN EC PRIVATE KEY-----"), 5)
+	<p class="flow-foot">Keys are encrypted on this device and never leave it.</p>
+}
+
+templ krakenFields(p SourceFormPage) {
+	@Notice("info", "shield") {
+		Enable <strong>Query Funds</strong> and <strong>Query Ledger Entries</strong> only.
+	}
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required = true }}
+	if label.Value == "" && !p.isEdit() {
+		{{ label.Value = "Kraken" }}
+	}
+	@textField(label)
+	@textField(p.secret("apiKey", "API key", "Paste key"))
+	{{ secret := p.secret("apiSecret", "API secret (private key)", "Paste secret") }}
+	{{ secret.Password = true }}
+	@textField(secret)
+	<p class="flow-foot">Keys are encrypted on this device and never leave it.</p>
+}
+
+templ bitcoinFields(p SourceFormPage) {
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required, label.Placeholder = true, "e.g. Cold storage" }}
+	@textField(label)
+	@selectField("kind", "Wallet type", p.kindValue("hardware"), []selectOpt{{"hardware", "Hardware wallet"}, {"hot", "Hot wallet"}}, p.Errors["kind"])
+	{{ key := p.field("key", "Extended public key, output descriptor, or address") }}
+	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. Vault scans the addresses it derives." }}
+	if key.Value == "" {
+		{{ key.Value = p.Values["descriptor"] }}
+	}
+	@areaField(key, 3)
+	@selectField("scriptType", "Script type", p.Values["scriptType"], []selectOpt{{"", "Auto-detect"}, {"p2tr", "Taproot (p2tr) override"}}, p.Errors["scriptType"])
+	<div class="field">
+		<label class="field__label" for="f-walletFile">Wallet file <span class="field__opt">optional</span></label>
+		<input
+			class={ "input", "input--file", templ.KV("input--error", p.Errors["walletFile"] != "") }
+			id="f-walletFile"
+			name="walletFile"
+			type="file"
+			accept=".json,.txt"
+			if p.Errors["walletFile"] != "" {
+				aria-invalid="true"
+				aria-describedby="f-walletFile-err f-walletFile-help"
+			} else {
+				aria-describedby="f-walletFile-help"
+			}
+		/>
+		@fieldNote(fieldSpec{Name: "walletFile", Err: p.Errors["walletFile"], Help: "Caravan / Unchained JSON or a Sparrow descriptor export."})
+	</div>
+	@Notice("neutral", "info") {
+		Watch-only. Never enter a seed phrase or private key here.
+	}
+}
+
+templ solanaFields(p SourceFormPage) {
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required, label.Placeholder = true, "e.g. Phantom" }}
+	@textField(label)
+	@selectField("kind", "Wallet type", p.kindValue("hot"), []selectOpt{{"hot", "Hot wallet"}, {"hardware", "Hardware wallet"}}, p.Errors["kind"])
+	{{ addr := p.field("address", "Public address") }}
+	{{ addr.Mono, addr.Required, addr.Placeholder = true, true, "7xKX…" }}
+	@textField(addr)
+	@Notice("neutral", "info") {
+		Watch-only. Never enter a seed phrase or private key here.
+	}
+}
+
+templ manualFields(p SourceFormPage) {
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required, label.Placeholder = true, "e.g. Paper wallet at mom's" }}
+	@textField(label)
+	{{ h := p.field("holdings", "Holdings") }}
+	{{ h.Mono, h.Required, h.Placeholder, h.Help = true, true, "BTC 0.25 owed by Sam\nETH 2 cold backup", "One holding per line: the asset, the amount, then an optional note." }}
+	@areaField(h, 6)
+}
+
+templ textField(f fieldSpec) {
+	<div class="field">
+		<label class="field__label" for={ f.ID() }>{ f.Label }</label>
+		<input
+			class={ "input", templ.KV("input--mono", f.Mono), templ.KV("input--error", f.Err != "") }
+			id={ f.ID() }
+			name={ f.Name }
+			type={ f.InputType() }
+			autocomplete={ f.Autocomplete() }
+			spellcheck="false"
+			if !f.Secret && f.Value != "" {
+				value={ f.Value }
+			}
+			if f.Placeholder != "" {
+				placeholder={ f.Placeholder }
+			}
+			if f.Required {
+				required
+			}
+			if f.Err != "" {
+				aria-invalid="true"
+			}
+			if f.Describe() != "" {
+				aria-describedby={ f.Describe() }
+			}
+		/>
+		@fieldNote(f)
+	</div>
+}
+
+templ areaField(f fieldSpec, rows int) {
+	<div class="field">
+		<label class="field__label" for={ f.ID() }>{ f.Label }</label>
+		<textarea
+			class={ "input", "input--area", templ.KV("input--mono", f.Mono), templ.KV("input--error", f.Err != "") }
+			id={ f.ID() }
+			name={ f.Name }
+			rows={ fmt.Sprint(rows) }
+			autocomplete="off"
+			autocapitalize="off"
+			spellcheck="false"
+			if f.Placeholder != "" {
+				placeholder={ f.Placeholder }
+			}
+			if f.Required {
+				required
+			}
+			if f.Err != "" {
+				aria-invalid="true"
+			}
+			if f.Describe() != "" {
+				aria-describedby={ f.Describe() }
+			}
+		>
+			if !f.Secret {
+				{ f.Value }
+			}
+		</textarea>
+		@fieldNote(f)
+	</div>
+}
+
+type selectOpt struct{ Value, Label string }
+
+templ selectField(name, label, current string, opts []selectOpt, errMsg string) {
+	<div class="field">
+		<label class="field__label" for={ "f-" + name }>{ label }</label>
+		<div class="select">
+			<select
+				class={ "input", templ.KV("input--error", errMsg != "") }
+				id={ "f-" + name }
+				name={ name }
+				if errMsg != "" {
+					aria-invalid="true"
+					aria-describedby={ "f-" + name + "-err" }
+				}
+			>
+				for _, o := range opts {
+					<option value={ o.Value } selected?={ o.Value == current }>{ o.Label }</option>
+				}
+			</select>
+		</div>
+		@fieldNote(fieldSpec{Name: name, Err: errMsg})
+	</div>
+}
+
+// fieldNote is the error and help text under a field, wired up with aria-describedby.
+templ fieldNote(f fieldSpec) {
+	if f.Err != "" {
+		<p id={ f.ErrID() } class="field__error">
+			<span aria-hidden="true">✕</span>
+			{ f.Err }
+		</p>
+	}
+	if f.Help != "" {
+		<p id={ f.HelpID() } class="field__help">{ f.Help }</p>
+	}
+}
+
+// ---- inline results -------------------------------------------------------------------
+
+type errLine struct{ Label, Msg string }
+
+// errorLines orders errors for the summary: the form-level message first, then fields by name.
+func errorLines(errs map[string]string) (general string, fields []errLine) {
+	general = errs[""]
+	names := make([]string, 0, len(errs))
+	for k, v := range errs {
+		if k != "" && v != "" {
+			names = append(names, k)
+		}
+	}
+	sortStrings(names)
+	for _, k := range names {
+		fields = append(fields, errLine{FieldLabel(k), errs[k]})
+	}
+	return general, fields
+}
+
+// FormErrors is the error summary at the top of the source form. Its root is
+// #form-errors; an empty map renders an empty container, so a patch can clear it.
+templ FormErrors(errs map[string]string) {
+	{{ general, fields := errorLines(errs) }}
+	<div id="form-errors" class="form-errors">
+		if general != "" || len(fields) > 0 {
+			<div role="alert">
+				@Notice("loss", "alert") {
+					if general != "" {
+						<p class="notice__line">{ general }</p>
+					}
+					if len(fields) > 0 {
+						<ul class="notice__list">
+							for _, f := range fields {
+								<li><strong>{ f.Label }:</strong> { f.Msg }</li>
+							}
+						</ul>
+					}
+				}
+			</div>
+		}
+	</div>
+}
+
+// TestResultView is the outcome of "Test connection". Its root is #test-result; the zero
+// value renders an empty container.
+templ TestResultView(r TestResult) {
+	<div id="test-result" class="test-result" aria-live="polite">
+		if r.OK {
+			@Notice("gain", "check") {
+				{ r.Message }
+			}
+			if len(r.Rows) > 0 {
+				<div class="test-rows">
+					for i, row := range r.Rows {
+						if i < 8 {
+							<div class="test-row">
+								<span class="test-row__name">{ HoldingName(row.Holding) }</span>
+								<span class="test-row__amt mono">
+									@FigCoin(row.Amount, row.Symbol)
+								</span>
+								<span class="test-row__val mono">
+									if row.Priced {
+										@FigFiat(row.ValueUSD)
+									} else {
+										<span class="muted">unpriced</span>
+									}
+								</span>
+							</div>
+						}
+					}
+					if len(r.Rows) > 8 {
+						<p class="test-more">and { fmt.Sprint(len(r.Rows) - 8) } more</p>
+					}
+				</div>
+			}
+		} else if r.Message != "" {
+			@Notice("loss", "x") {
+				{ r.Message }
+			}
+		}
+	</div>
+}

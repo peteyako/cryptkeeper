@@ -1,0 +1,71 @@
+{
+ "jsonrpc": "2.0",
+ "result": {
+  "context": {
+   "slot": 457730028,
+   "apiVersion": "4.3.0-beta.2"
+  },
+  "value": [
+   {
+    "pubkey": "2ocS3orPq3jyszjsJ4NozKWyhdotr3csDjAizmkj65aH",
+    "account": {
+     "lamports": 2500000,
+     "data": {
+      "program": "spl-token",
+      "parsed": {
+       "info": {
+        "closeAuthority": "E35BZeFMGiAddXnWdcU4npmW8RFtHjq5JsHKz9YHxPZr",
+        "isNative": false,
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "owner": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
+        "state": "initialized",
+        "tokenAmount": {
+         "amount": "204613300",
+         "decimals": 6,
+         "uiAmount": 204.6133,
+         "uiAmountString": "204.6133"
+        }
+       },
+       "type": "account"
+      },
+      "space": 165
+     },
+     "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+     "executable": false,
+     "rentEpoch": 18446744073709551615,
+     "space": 165
+    }
+   },
+   {
+    "pubkey": "FzbcyEZ9m8xjtergWgWDq7mfPoHEbboBF791B6cTpzbq",
+    "account": {
+     "lamports": 2040003,
+     "data": {
+      "program": "spl-token",
+      "parsed": {
+       "info": {
+        "isNative": false,
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "owner": "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
+        "state": "initialized",
+        "tokenAmount": {
+         "amount": "1956383150898",
+         "decimals": 6,
+         "uiAmount": 1956383.150898,
+         "uiAmountString": "1956383.150898"
+        }
+       },
+       "type": "account"
+      },
+      "space": 165
+     },
+     "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+     "executable": false,
+     "rentEpoch": 18446744073709551615,
+     "space": 165
+    }
+   }
+  ]
+ },
+ "id": 1
+}

@@ -1,0 +1,311 @@
+package templates
+
+import (
+	"strconv"
+	"strings"
+
+	"crypto-portfolio/internal/portfolio"
+)
+
+// OverviewFull is the whole overview page.
+templ OverviewFull(p OverviewPage) {
+	@Layout(p.Shell, overviewBody(p))
+}
+
+templ overviewBody(p OverviewPage) {
+	@LiveStream()
+	@Dashboard(p)
+}
+
+// Dashboard is everything the live stream refreshes: the header, value card, allocation,
+// sources, holdings and watch list. Its root is #dashboard.
+templ Dashboard(p OverviewPage) {
+	<div id="dashboard" class="dashboard">
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Portfolio</span>
+				<h1 class="h-title">{ p.PortfolioName }</h1>
+				if len(p.Portfolios) > 1 {
+					<details class="pf-menu">
+						<summary class="pf-menu__btn" aria-label="Switch portfolio">
+							@Icon("chevron-down", 16)
+						</summary>
+						<div class="pf-menu__list">
+							for _, pf := range p.Portfolios {
+								@portfolioLink(p.Shell, pf)
+							}
+						</div>
+					</details>
+				}
+			</div>
+			<div class="page-head__actions">
+				@pageHeadTools(p.Sync)
+				<a class="btn btn--primary btn--add" href="/sources/new">
+					@Icon("plus", 16)
+					Add source
+				</a>
+			</div>
+		</header>
+		if len(p.Snap.Wallets) == 0 {
+			@emptyState()
+		} else {
+			<div class="overview-grid">
+				@ValueCard(p)
+				@sourcesSection(p)
+				@AllocationCard(p.Snap)
+				@holdingsCard(p)
+			</div>
+			if len(p.Watch) > 0 {
+				@watchCard(p)
+			}
+		}
+	</div>
+}
+
+// ValueCard is the total, the change over the selected range, the range control and the
+// chart. Its root is #value-card, so the range buttons patch just this.
+templ ValueCard(p OverviewPage) {
+	<section id="value-card" class="value-card" aria-label="Total value">
+		<div class="value-card__total">
+			<span class="label">Total value</span>
+			<span class="display">
+				@FigFiat(p.Snap.TotalUSD)
+			</span>
+			@changeLine(p.Change)
+			if p.Snap.HasStale {
+				<p class="note note--warn">
+					<span aria-hidden="true">◐</span>
+					Includes stale data
+				</p>
+			}
+			if normPF(p.PF) != "all" && p.NetWorthShare > 0 {
+				<p class="note">{ sharePct(p.NetWorthShare) } of all holdings</p>
+			}
+		</div>
+		@RangeControl(p.Range)
+		@chartSVG(p.Chart, p.Change.Label)
+	</section>
+}
+
+func sharePct(f float64) string {
+	return strconv.Itoa(int(f*100+0.5)) + "%"
+}
+
+templ changeLine(c portfolio.Change) {
+	if c.Valid {
+		{{ dir := Direction(c.Pct) }}
+		<div class={ "change", "change--" + dir }>
+			<span class="change__abs">
+				{ Arrow(dir) + " " }
+				@FigText(ChangeAbs(c.Abs), "$ ••••")
+			</span>
+			<span>{ SignedPct(c.Pct) }</span>
+			<span class="change__label">{ c.Label }</span>
+		</div>
+	} else {
+		<div class="change change--flat">
+			<span>—</span>
+			<span class="change__label">Not enough history yet</span>
+		</div>
+	}
+}
+
+func chartLabel(label string) string {
+	if label == "" {
+		return "Portfolio value over the selected range"
+	}
+	return "Portfolio value, " + label
+}
+
+// chartSVG is the server-rendered area chart: 3 gridlines, an accent area at 8% and a 2px
+// line. preserveAspectRatio="none" lets CSS set its height per breakpoint.
+templ chartSVG(points []portfolio.Point, label string) {
+	{{ line, area := SVGPath(points, 800, 220) }}
+	<div class="chart-wrap">
+		<svg class="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label={ chartLabel(label) }>
+			<path class="chart__grid" d="M0 55H800M0 110H800M0 165H800"></path>
+			if line != "" && len(points) >= 2 {
+				<path class="chart__area" d={ area }></path>
+				<path class="chart__line" d={ line }></path>
+			}
+		</svg>
+		if len(points) < 2 {
+			<p class="chart__empty">History fills in as Vault records your balances.</p>
+		}
+	</div>
+}
+
+func allocStyle(s AllocSlice) templ.SafeCSS {
+	return templ.SafeCSS("flex-grow:" + strconv.FormatFloat(s.Pct, 'f', 2, 64) + ";background:" + s.Color() + ";")
+}
+
+func swatchStyle(s AllocSlice) templ.SafeCSS {
+	return templ.SafeCSS("background:" + s.Color() + ";")
+}
+
+func allocLabel(sl []AllocSlice) string {
+	parts := make([]string, 0, len(sl))
+	for _, s := range sl {
+		parts = append(parts, s.Name+" "+s.PctText)
+	}
+	return "Allocation by asset: " + strings.Join(parts, ", ")
+}
+
+// AllocationCard is the bar plus a legend that always carries the percentage.
+templ AllocationCard(snap portfolio.Snapshot) {
+	{{ slices := Allocation(snap.Assets) }}
+	<section class="card alloc" aria-labelledby="alloc-h">
+		<div class="alloc__head">
+			<h2 id="alloc-h" class="h-card">Allocation</h2>
+			<span class="meta">by asset</span>
+		</div>
+		if len(slices) == 0 {
+			<p class="empty-note">No priced holdings yet.</p>
+		} else {
+			<div class="alloc__bar" role="img" aria-label={ allocLabel(slices) }>
+				for _, s := range slices {
+					<span class="alloc__seg" style={ allocStyle(s) }></span>
+				}
+			</div>
+			<ul class="alloc__legend">
+				for _, s := range slices {
+					<li class="alloc__row">
+						<span class="alloc__swatch" style={ swatchStyle(s) } aria-hidden="true"></span>
+						<span class="alloc__name">{ s.Name }</span>
+						<span class="alloc__val">
+							@FigFiat(s.ValueUSD)
+						</span>
+						<span class="alloc__pct">{ s.PctText }</span>
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+templ sourcesSection(p OverviewPage) {
+	<section class="sources" aria-labelledby="sources-h">
+		<div class="sec-head">
+			<h2 id="sources-h" class="h-sec">Sources</h2>
+			<a class="link link--wide" href="/wallets">Manage</a>
+			<a class="link link--narrow" href="/sources/new">+ Add</a>
+		</div>
+		<div class="acct-grid">
+			for _, w := range p.Snap.Wallets {
+				@AccountCard(w, p.Now)
+			}
+		</div>
+	</section>
+}
+
+const searchShow = `!$q || el.dataset.search.includes($q.toLowerCase())`
+
+templ holdingsCard(p OverviewPage) {
+	<section class="card holdings" aria-labelledby="holdings-h">
+		<div class="holdings__head">
+			<h2 id="holdings-h" class="h-sec">Holdings</h2>
+			<label class="search" for="p-search">
+				@Icon("search", 15)
+				<span class="sr-only">Search holdings</span>
+				<input id="p-search" type="text" placeholder="Search holdings" autocomplete="off" data-bind="q"/>
+			</label>
+		</div>
+		if len(p.Snap.Assets) == 0 {
+			<p class="empty-note">No holdings yet. Balances appear after the first sync.</p>
+		} else {
+			<div class="table-scroll">
+				<table class="tbl tbl--holdings">
+					<thead>
+						<tr>
+							<th class="col-asset" scope="col">Asset</th>
+							<th class="col-held" scope="col">Held in</th>
+							<th class="col-price num" scope="col">Price</th>
+							<th class="col-amt num" scope="col">Holdings</th>
+							<th class="col-val num" scope="col">Value</th>
+							<th class="col-chg num" scope="col">24h</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, a := range p.Snap.Assets {
+							<tr data-search={ SearchKey(a) } data-show={ searchShow }>
+								<td class="col-asset">
+									<div class="asset">
+										@AssetMark(a.Symbol, a.LogoURL, p.ShowLogos)
+										<div class="asset__id">
+											<span class="asset__name">{ AssetName(a) }</span>
+											<span class="asset__sub">{ Plural(len(a.HeldIn), "source") }</span>
+										</div>
+									</div>
+								</td>
+								<td class="col-held">{ strings.Join(a.HeldIn, " · ") }</td>
+								<td class="col-price num">
+									@priceCell(a.Price, p.Now)
+								</td>
+								<td class="col-amt num">
+									@FigCoin(a.Amount, a.Symbol)
+								</td>
+								<td class="col-val num">
+									if a.Priced {
+										@FigFiat(a.ValueUSD)
+									} else {
+										<span class="muted">—</span>
+									}
+								</td>
+								<td class="col-chg num">
+									@changeCell(a.Price)
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ watchCard(p OverviewPage) {
+	<section class="card holdings watch" aria-labelledby="watch-h">
+		<div class="holdings__head">
+			<h2 id="watch-h" class="h-sec">Watching</h2>
+			<span class="meta">prices only</span>
+		</div>
+		<div class="table-scroll">
+			<table class="tbl tbl--watch">
+				<thead>
+					<tr>
+						<th class="col-asset" scope="col">Asset</th>
+						<th class="col-price num" scope="col">Price</th>
+						<th class="col-chg num" scope="col">24h</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, r := range p.Watch {
+						<tr>
+							<td class="col-asset">
+								<div class="asset">
+									@Disc(r.Symbol)
+									<div class="asset__id">
+										<span class="asset__name">
+											if r.Name != "" {
+												{ r.Name }
+											} else {
+												{ r.Symbol }
+											}
+										</span>
+										<span class="asset__sub">{ r.Symbol }</span>
+									</div>
+								</div>
+							</td>
+							<td class="col-price num">
+								@priceCell(r.Price, p.Now)
+							</td>
+							<td class="col-chg num">
+								@changeCell(r.Price)
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+}

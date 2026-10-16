@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault — Components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#8FB2FF}a:hover{color:#B5CCFF}
+button{font-family:inherit}
+input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1720px; box-sizing: border-box; padding: 72px 80px; background: #0D0F12; color: #ECEEF1; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 48px">
+
+  <header style="display: flex; flex-direction: column; gap: 12px; padding-bottom: 32px; border-bottom: 1px solid #262B33">
+    <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">Vault · design system · v0.1</span>
+    <h1 style="margin: 0; font-size: 48px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em">Components</h1>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px">
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Buttons</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <button type="button" style="height: 44px; padding: 0 20px; border: 0; border-radius: 10px; background: #6E9BFF; color: #0D0F12; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+          Add source
+        </button>
+        <button type="button" style="height: 44px; padding: 0 20px; border: 1px solid #343A44; border-radius: 10px; background: #1B1F26; color: #ECEEF1; font-size: 14px; font-weight: 500">Receive</button>
+        <button type="button" style="height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: transparent; color: #A3AAB5; font-size: 14px; font-weight: 500">Cancel</button>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+        <button type="button" style="height: 44px; padding: 0 20px; border: 1px solid #5A2A26; border-radius: 10px; background: #2A1717; color: #FF8A7A; font-size: 14px; font-weight: 500">Disconnect</button>
+        <button type="button" aria-label="Refresh balances" style="width: 44px; height: 44px; border: 1px solid #343A44; border-radius: 10px; background: #1B1F26; color: #ECEEF1; display: flex; align-items: center; justify-content: center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
+        </button>
+        <button type="button" aria-label="Hide balances" style="width: 44px; height: 44px; border: 1px solid #343A44; border-radius: 10px; background: #1B1F26; color: #ECEEF1; display: flex; align-items: center; justify-content: center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+        <button type="button" disabled style="height: 44px; padding: 0 20px; border: 0; border-radius: 10px; background: #1B1F26; color: #5E6672; font-size: 14px; font-weight: 600">Disabled</button>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">Height 44. One primary per view. Destructive actions are outlined, never solid red.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Chips &amp; status</h2>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <span style="height: 28px; padding: 0 10px; border-radius: 6px; background: #1B1F26; border: 1px solid #262B33; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #ECEEF1"><span style="width: 8px; height: 8px; border-radius: 50%; background: #6E9BFF"></span>Coinbase</span>
+        <span style="height: 28px; padding: 0 10px; border-radius: 6px; background: #1B1F26; border: 1px solid #262B33; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #ECEEF1"><span style="width: 8px; height: 8px; border-radius: 50%; background: #6E9BFF"></span>Kraken</span>
+        <span style="height: 28px; padding: 0 10px; border-radius: 6px; background: #1B1F26; border: 1px solid #262B33; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #ECEEF1"><span style="width: 8px; height: 8px; border-radius: 2px; background: #F2B84B"></span>Ledger</span>
+        <span style="height: 28px; padding: 0 10px; border-radius: 6px; background: #1B1F26; border: 1px solid #262B33; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #ECEEF1"><span style="width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg); background: #C08CFF"></span>MetaMask</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #12291F; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #4FD69C; font-family: 'IBM Plex Mono', monospace">● Synced</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #2E2410; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #F2B84B; font-family: 'IBM Plex Mono', monospace">◐ Stale 3h</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #2A1717; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #FF8A7A; font-family: 'IBM Plex Mono', monospace">✕ Key expired</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #1E2A44; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8FB2FF; font-family: 'IBM Plex Mono', monospace">Read-only</span>
+        <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #1B1F26; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">Watch-only</span>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">Source dot shape follows type: circle exchange, diamond hot wallet, square hardware, so it reads without color.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Range &amp; tabs</h2>
+      <div role="group" aria-label="Chart range" style="display: inline-flex; align-self: flex-start; padding: 4px; background: #0D0F12; border: 1px solid #262B33; border-radius: 10px; gap: 2px">
+        <button type="button" style="height: 36px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #A3AAB5; font-size: 13px; font-family: 'IBM Plex Mono', monospace">1D</button>
+        <button type="button" aria-pressed="true" style="height: 36px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: #1B1F26; color: #ECEEF1; font-size: 13px; font-family: 'IBM Plex Mono', monospace; box-shadow: inset 0 0 0 1px #343A44">1W</button>
+        <button type="button" style="height: 36px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #A3AAB5; font-size: 13px; font-family: 'IBM Plex Mono', monospace">1M</button>
+        <button type="button" style="height: 36px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #A3AAB5; font-size: 13px; font-family: 'IBM Plex Mono', monospace">1Y</button>
+        <button type="button" style="height: 36px; min-width: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #A3AAB5; font-size: 13px; font-family: 'IBM Plex Mono', monospace">All</button>
+      </div>
+      <div style="display: flex; gap: 24px; border-bottom: 1px solid #262B33">
+        <a href="#" style="padding: 12px 0; font-size: 14px; font-weight: 500; color: #ECEEF1; text-decoration: none; box-shadow: inset 0 -2px 0 #6E9BFF">Holdings</a>
+        <a href="#" style="padding: 12px 0; font-size: 14px; font-weight: 500; color: #A3AAB5; text-decoration: none">Activity</a>
+        <a href="#" style="padding: 12px 0; font-size: 14px; font-weight: 500; color: #A3AAB5; text-decoration: none">Addresses</a>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">Segmented control for time ranges, underline tabs for views. Selected state uses weight and a ring, not just color.</p>
+    </section>
+
+    <section style="grid-column: span 2; display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Asset row</h2>
+      <div style="display: grid; grid-template-columns: 2.2fr 1.2fr 1.4fr 1.4fr 1fr; gap: 16px; padding: 0 16px 8px; font-size: 12px; color: #7C8592; border-bottom: 1px solid #262B33">
+        <span>Asset</span><span style="text-align: right">Price</span><span style="text-align: right">Holdings</span><span style="text-align: right">Value</span><span style="text-align: right">24h</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 2.2fr 1.2fr 1.4fr 1.4fr 1fr; gap: 16px; align-items: center; padding: 12px 16px; border-radius: 10px">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="width: 36px; height: 36px; border-radius: 50%; background: #2E2410; color: #F2B84B; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-family: 'IBM Plex Mono', monospace">BTC</span>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 500">Bitcoin</span><span style="font-size: 12px; color: #7C8592">3 sources</span></div>
+        </div>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #A3AAB5">$64,120.00</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px">0.42108 BTC</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500">$26,999.65</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4FD69C">▲ +2.14%</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 2.2fr 1.2fr 1.4fr 1.4fr 1fr; gap: 16px; align-items: center; padding: 12px 16px; border-radius: 10px; background: #1B1F26">
+        <div style="display: flex; align-items: center; gap: 12px">
+          <span style="width: 36px; height: 36px; border-radius: 50%; background: #1E2A44; color: #8FB2FF; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-family: 'IBM Plex Mono', monospace">ETH</span>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 500">Ethereum</span><span style="font-size: 12px; color: #7C8592">Hover state</span></div>
+        </div>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #A3AAB5">$3,180.40</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px">3.2500 ETH</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500">$10,336.30</span>
+        <span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #FF8A7A">▼ −0.86%</span>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">Coin marks are ticker monograms on a tinted disc, so the system never depends on third-party logos. Swap in real icons in production if licensing allows.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Stat tile</h2>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 20px; background: #0D0F12; border: 1px solid #262B33; border-radius: 14px">
+        <span style="font-size: 13px; color: #A3AAB5">Total value</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 32px; font-weight: 500; letter-spacing: -0.02em">$48,210.37</span>
+        <div style="display: flex; gap: 12px; align-items: center">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4FD69C">▲ +$1,204.18</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #4FD69C">+2.56%</span>
+          <span style="font-size: 12px; color: #7C8592">past week</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Account card</h2>
+      <div style="display: flex; gap: 0; background: #0D0F12; border: 1px solid #262B33; border-radius: 14px; overflow: hidden">
+        <div style="width: 3px; background: #F2B84B"></div>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 18px 20px">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">Cold storage</span><span style="font-size: 12px; color: #7C8592">Ledger · Bitcoin</span></div>
+            <span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #1B1F26; display: inline-flex; align-items: center; font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">Watch-only</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: baseline">
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 500">$19,240.00</span>
+            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8592">0.30006 BTC</span>
+          </div>
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">3px rail in the source color. Click opens wallet detail.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Inputs</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="c-search" style="font-size: 13px; font-weight: 500; color: #A3AAB5">Search assets</label>
+        <div style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; background: #1B1F26; border: 1px solid #343A44; border-radius: 10px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C8592" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+          <input id="c-search" type="text" placeholder="BTC, Ethereum, address…" style="flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #ECEEF1; font-size: 14px">
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="c-key" style="font-size: 13px; font-weight: 500; color: #A3AAB5">API key</label>
+        <div style="display: flex; align-items: center; height: 44px; padding: 0 14px; background: #1B1F26; border: 1px solid #6E9BFF; border-radius: 10px; box-shadow: 0 0 0 3px #1E2A44">
+          <input id="c-key" type="text" value="kr_live_••••••••••••3f9a" style="flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #ECEEF1; font-size: 14px; font-family: 'IBM Plex Mono', monospace">
+        </div>
+        <span style="font-size: 12px; color: #7C8592">Focus ring: accent border + 3px soft halo.</span>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Address</h2>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #0D0F12; border: 1px solid #262B33; border-radius: 10px">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+          <span style="font-size: 12px; color: #7C8592">Bitcoin · Native SegWit</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #ECEEF1">bc1q8f3k…9a7x4</span>
+        </div>
+        <button type="button" aria-label="Copy address" style="width: 44px; height: 44px; border: 1px solid #343A44; border-radius: 10px; background: #1B1F26; color: #ECEEF1; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        </button>
+        <button type="button" aria-label="Show QR code" style="width: 44px; height: 44px; border: 1px solid #343A44; border-radius: 10px; background: #1B1F26; color: #ECEEF1; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3M21 14v7h-7"></path></svg>
+        </button>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">Truncate the middle, never the ends. Full address shows on hover and in the QR sheet.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Allocation bar</h2>
+      <div style="display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px">
+        <div style="width: 56%; background: #F2B84B"></div>
+        <div style="width: 21%; background: #6E9BFF"></div>
+        <div style="width: 12%; background: #C08CFF"></div>
+        <div style="width: 7%; background: #4FD69C"></div>
+        <div style="width: 4%; background: #5E6672"></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; font-size: 13px">
+        <span style="display: flex; align-items: center; gap: 8px; color: #A3AAB5"><span style="width: 8px; height: 8px; border-radius: 2px; background: #F2B84B"></span>BTC <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #ECEEF1">56%</span></span>
+        <span style="display: flex; align-items: center; gap: 8px; color: #A3AAB5"><span style="width: 8px; height: 8px; border-radius: 2px; background: #6E9BFF"></span>ETH <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #ECEEF1">21%</span></span>
+        <span style="display: flex; align-items: center; gap: 8px; color: #A3AAB5"><span style="width: 8px; height: 8px; border-radius: 2px; background: #C08CFF"></span>SOL <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #ECEEF1">12%</span></span>
+        <span style="display: flex; align-items: center; gap: 8px; color: #A3AAB5"><span style="width: 8px; height: 8px; border-radius: 2px; background: #4FD69C"></span>USDC <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #ECEEF1">7%</span></span>
+        <span style="display: flex; align-items: center; gap: 8px; color: #A3AAB5"><span style="width: 8px; height: 8px; border-radius: 2px; background: #5E6672"></span>Other <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; color: #ECEEF1">4%</span></span>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #7C8592">2px gaps between segments; legend always carries the percentage.</p>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 16px; padding: 28px; background: #14171C; border: 1px solid #262B33; border-radius: 14px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Notices</h2>
+      <div style="display: flex; gap: 12px; padding: 14px 16px; background: #1E2A44; border-radius: 10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8FB2FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path></svg>
+        <span style="font-size: 13px; line-height: 1.5; color: #ECEEF1">Use a read-only API key. Vault never needs trade or withdrawal permission.</span>
+      </div>
+      <div style="display: flex; gap: 12px; padding: 14px 16px; background: #2E2410; border-radius: 10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F2B84B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3 2 21h20z"></path><path d="M12 10v5M12 18h.01"></path></svg>
+        <span style="font-size: 13px; line-height: 1.5; color: #ECEEF1">Kraken last synced 3 hours ago. Values may be out of date.</span>
+      </div>
+    </section>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

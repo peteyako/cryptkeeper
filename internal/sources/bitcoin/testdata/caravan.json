@@ -1,0 +1,36 @@
+{
+  "name": "Vault test 2-of-3",
+  "addressType": "P2WSH",
+  "network": "mainnet",
+  "client": {
+    "type": "public"
+  },
+  "quorum": {
+    "requiredSigners": 2,
+    "totalSigners": 3
+  },
+  "extendedPublicKeys": [
+    {
+      "name": "Trezor",
+      "bip32Path": "m/48'/0'/0'/2'",
+      "xpub": "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL",
+      "xfp": "f57ec65d",
+      "method": "trezor"
+    },
+    {
+      "name": "Coldcard",
+      "bip32Path": "m/48'/0'/0'/2'",
+      "xpub": "xpub68NZiKmJWnxxS6aaHmn81bvJeTESw724CRDs6HbuccFQN9Ku14VQrADWgqbhhTHBaohPX4CjNLf9fq9MYo6oDaPPLPxSb7gwQN3ih19Zm4Y",
+      "xfp": "0B287198",
+      "method": "coldcard"
+    },
+    {
+      "name": "Unchained",
+      "bip32Path": "Unknown",
+      "xpub": "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH",
+      "xfp": "Unknown",
+      "method": "text"
+    }
+  ],
+  "startingAddressIndex": 0
+}

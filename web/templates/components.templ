@@ -1,0 +1,192 @@
+package templates
+
+import (
+	"time"
+
+	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/portfolio"
+)
+
+// SyncChip is the header sync status, patched on its own by /refresh.
+templ SyncChip(s SyncInfo) {
+	{{ glyph, label, tone := SyncView(s) }}
+	<span id="sync-status" class={ "chip", "chip--" + tone }>
+		<span aria-hidden="true">{ glyph }</span>
+		<span>{ label }</span>
+	</span>
+}
+
+// FigText renders a private figure: the real value and its mask. body.amounts-hidden
+// swaps them in CSS, and the hidden one is display:none so screen readers skip it too.
+templ FigText(value, mask string) {
+	<span class="fig"><span class="fig-v">{ value }</span><span class="fig-m" role="img" aria-label="Hidden amount">{ mask }</span></span>
+}
+
+templ FigFiat(v float64) {
+	@FigText(Fiat(v), "$ ••••••")
+}
+
+templ FigCoin(v float64, sym string) {
+	@FigText(Coin(v, sym), "•••• "+sym)
+}
+
+// Disc is the ticker monogram on a tinted disc. It is decorative: the asset name follows.
+templ Disc(symbol string) {
+	{{ text, _, _ := Monogram(symbol) }}
+	<span class={ DiscClass(symbol) } aria-hidden="true">{ text }</span>
+}
+
+// AssetMark is the coin mark in a table row: the ticker monogram, or, when the Settings
+// toggle (Shell.ShowLogos) is on and the asset has an https logo, that logo.
+templ AssetMark(symbol, logoURL string, show bool) {
+	if show && SafeLogoURL(logoURL) != "" {
+		<img class="disc disc--logo" src={ SafeLogoURL(logoURL) } alt="" width="36" height="36" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>
+	} else {
+		@Disc(symbol)
+	}
+}
+
+// Notice is an info, warn, loss, gain or neutral callout with an icon.
+templ Notice(tone, icon string) {
+	<div class={ "notice", "notice--" + tone }>
+		@Icon(icon, 18)
+		<div class="notice__body">
+			{ children... }
+		</div>
+	</div>
+}
+
+// StatusChip is a mono status pill. The glyph makes the state readable without color.
+templ StatusChip(glyph, label, tone string) {
+	<span class={ "chip", "chip--" + tone }>
+		<span aria-hidden="true">{ glyph }</span>
+		<span>{ label }</span>
+	</span>
+}
+
+// SourceChip carries the source kind as a dot whose shape encodes it too: circle
+// exchange, diamond hot wallet, square hardware, ring manual.
+templ SourceChip(kind core.Kind, text string) {
+	<span class="src-chip">
+		<span class={ "src-dot", "src-dot--" + SourceTone(kind) } aria-hidden="true"></span>
+		{ text }
+	</span>
+}
+
+// AccountCard is a source: a 3px rail in the source color, name, kind, status, value and meta.
+templ AccountCard(w portfolio.WalletView, now time.Time) {
+	{{ glyph, label, tone := StatusView(w, now) }}
+	<a class="acct" href={ templ.URL(walletHref(w.ID)) }>
+		<span class={ "acct__rail", "rail--" + SourceTone(w.Kind) } aria-hidden="true"></span>
+		<span class="acct__body">
+			<span class="acct__top">
+				<span class="acct__id">
+					<span class="acct__name">{ w.Label }</span>
+					<span class="acct__kind">{ KindLabel(w) }</span>
+				</span>
+				<span class={ "chip", "chip--sm", "chip--" + tone }>
+					<span aria-hidden="true">{ glyph }</span>
+					<span class="chip__text">{ label }</span>
+				</span>
+			</span>
+			<span class="acct__value">
+				@FigFiat(w.ValueUSD)
+			</span>
+			<span class="acct__meta">{ WalletMeta(w) }</span>
+		</span>
+	</a>
+}
+
+// RangeControl is the 1D/1W/1M/1Y/All segmented control. The server renders the selected
+// state; Datastar keeps it in sync with $range between patches.
+templ RangeControl(current string) {
+	<div class="seg" role="group" aria-label="Chart range">
+		for _, r := range Ranges {
+			<button
+				type="button"
+				class={ "seg__btn", templ.KV("seg--on", r == normRange(current)) }
+				aria-pressed={ boolStr(r == normRange(current)) }
+				data-on:click={ rangeClick(r) }
+				data-attr:aria-pressed={ rangePressed(r) }
+				data-class={ rangeClass(r) }
+			>{ r }</button>
+		}
+	</div>
+}
+
+// HideButton toggles privacy mode (the $hide signal).
+templ HideButton() {
+	<button
+		type="button"
+		class="btn btn--secondary btn--icon btn--hide"
+		aria-label="Hide balances"
+		aria-pressed="false"
+		data-on:click="$hide = !$hide"
+		data-attr:aria-pressed="$hide ? 'true' : 'false'"
+		data-class="{'is-pressed': $hide}"
+	>
+		@Icon("eye", 18)
+	</button>
+}
+
+// RefreshButton asks the server for a forced refresh and spins while it runs.
+templ RefreshButton() {
+	<button
+		type="button"
+		class="btn btn--secondary btn--icon btn--refresh"
+		aria-label="Refresh balances"
+		data-indicator="refreshing"
+		data-attr:disabled="$refreshing"
+		data-class="{'is-busy': $refreshing}"
+		data-on:click={ refreshClick }
+	>
+		@Icon("refresh", 18)
+	</button>
+}
+
+// changeCell is the 24h column: arrow, sign and color, or a dash without data.
+templ changeCell(p *core.Price) {
+	if p != nil && p.Change24h != nil {
+		{{ text, dir := ChangePct(*p.Change24h) }}
+		<span class={ "chg", "chg--" + dir }>{ text }</span>
+	} else {
+		<span class="chg chg--none" aria-label="No 24 hour change available">—</span>
+	}
+}
+
+// priceCell renders a unit price; a stale one gets the tilde and the warn color.
+templ priceCell(p *core.Price, now time.Time) {
+	{{ text, stale := PriceText(p, now) }}
+	if stale {
+		<span class="stale" title={ "Price is stale (" + Ago(p.AsOf, now) + ")" }>{ text }</span>
+	} else {
+		<span>{ text }</span>
+	}
+}
+
+// pageHeadActions is the right-hand side of a page header: sync chip, hide, refresh.
+templ pageHeadTools(sync SyncInfo) {
+	@SyncChip(sync)
+	@HideButton()
+	@RefreshButton()
+}
+
+// emptyState is shown when there are no sources yet.
+templ emptyState() {
+	<section class="card empty" aria-labelledby="empty-h">
+		<span class="empty__icon">
+			@Icon("wallet", 28)
+		</span>
+		<h2 id="empty-h" class="empty__title">Nothing to show yet</h2>
+		<p class="empty__text">Connect an exchange with a read-only key, or track a wallet by its public address. Vault reads your balances and never moves funds.</p>
+		<a class="btn btn--primary" href="/sources/new">
+			@Icon("plus", 16)
+			Add source
+		</a>
+		<div class="empty__notice">
+			@Notice("info", "shield") {
+				Use a read-only API key. Vault never needs trade or withdrawal permission.
+			}
+		</div>
+	</section>
+}

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault — Foundations</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0D0F12}
+a{color:#8FB2FF}a:hover{color:#B5CCFF}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1720px; box-sizing: border-box; padding: 72px 80px; background: #0D0F12; color: #ECEEF1; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 56px">
+
+  <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 48px; padding-bottom: 40px; border-bottom: 1px solid #262B33">
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="width: 36px; height: 36px; border-radius: 10px; background: #6E9BFF; display: flex; align-items: center; justify-content: center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0D0F12" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M3 10h18"></path><circle cx="16.5" cy="15" r="1.5"></circle></svg>
+        </div>
+        <span style="font-size: 15px; font-weight: 600; letter-spacing: 0.02em">Vault</span>
+        <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">design system · v0.1</span>
+      </div>
+      <h1 style="margin: 0; font-size: 48px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em">Foundations</h1>
+      <p style="margin: 0; max-width: 620px; font-size: 16px; line-height: 1.6; color: #A3AAB5">A quiet, dense interface for tracking holdings across exchanges and self-custody wallets. Numbers come first: every figure is set in a tabular mono, every change carries a sign and an arrow, and color never carries meaning alone.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; width: 600px">
+      <div style="padding: 20px; background: #14171C; border: 1px solid #262B33; border-radius: 14px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">01</span>
+        <span style="font-size: 14px; font-weight: 600">Numbers first</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #A3AAB5">Balances are the loudest thing on screen. Chrome stays out of the way.</span>
+      </div>
+      <div style="padding: 20px; background: #14171C; border: 1px solid #262B33; border-radius: 14px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">02</span>
+        <span style="font-size: 14px; font-weight: 600">Source is visible</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #A3AAB5">Every holding shows where it lives: exchange, hot wallet or hardware.</span>
+      </div>
+      <div style="padding: 20px; background: #14171C; border: 1px solid #262B33; border-radius: 14px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">03</span>
+        <span style="font-size: 14px; font-weight: 600">Read-only by default</span>
+        <span style="font-size: 13px; line-height: 1.5; color: #A3AAB5">Viewing never risks funds. Sending is a separate, deliberate step.</span>
+      </div>
+    </div>
+  </header>
+
+  <section style="display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; align-items: baseline; gap: 16px">
+      <h2 style="margin: 0; font-size: 22px; font-weight: 600">Color</h2>
+      <span style="font-size: 13px; color: #7C8592">Dark graphite ground, one accent, semantic hues that also differ in lightness</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 12px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Surfaces</span>
+        <sc-for list="{{surfaces}}" as="s" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid #262B33; border-radius: 10px">
+            <div style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #343A44; background: {{s.hex}}"></div>
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 13px; font-weight: 500">{{s.name}}</span>
+              <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{s.hex}} · {{s.use}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 12px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Text</span>
+        <sc-for list="{{texts}}" as="s" hint-placeholder-count="4">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid #262B33; border-radius: 10px">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: #14171C; border: 1px solid #343A44; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; color: {{s.hex}}">Aa</div>
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 13px; font-weight: 500">{{s.name}}</span>
+              <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{s.hex}} · {{s.use}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 12px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Accent &amp; semantic</span>
+        <sc-for list="{{semantic}}" as="s" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid #262B33; border-radius: 10px">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: {{s.hex}}"></div>
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 13px; font-weight: 500">{{s.name}}</span>
+              <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{s.hex}} · {{s.use}}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 12px; font-weight: 500; color: #A3AAB5; text-transform: uppercase; letter-spacing: 0.08em">Source types</span>
+        <sc-for list="{{sources}}" as="s" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid #262B33; border-radius: 10px">
+            <div style="width: 44px; height: 44px; border-radius: 8px; background: {{s.hex}}"></div>
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 13px; font-weight: 500">{{s.name}}</span>
+              <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{s.hex}} · {{s.use}}</span>
+            </div>
+          </div>
+        </sc-for>
+        <p style="margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #7C8592">Source color tints the 3px rail on account cards and the dot in source chips. Always paired with a text label.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px">
+    <div style="display: flex; flex-direction: column; gap: 24px">
+      <div style="display: flex; align-items: baseline; gap: 16px">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600">Typography</h2>
+        <span style="font-size: 13px; color: #7C8592">IBM Plex Sans for UI · IBM Plex Mono for every number</span>
+      </div>
+      <div style="display: flex; flex-direction: column; border: 1px solid #262B33; border-radius: 14px; overflow: hidden">
+        <sc-for list="{{type}}" as="t" hint-placeholder-count="7">
+          <div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 20px; border-bottom: 1px solid #1B1F26">
+            <span style="width: 120px; flex-shrink: 0; font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{t.token}}</span>
+            <span style="flex: 1; color: #ECEEF1; font-family: {{t.family}}; font-size: {{t.size}}; font-weight: {{t.weight}}; letter-spacing: {{t.track}}; font-variant-numeric: tabular-nums">{{t.sample}}</span>
+            <span style="font-size: 12px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{t.spec}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 24px">
+      <div style="display: flex; align-items: baseline; gap: 16px">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600">Number rules</h2>
+        <span style="font-size: 13px; color: #7C8592">How amounts, changes and addresses render</span>
+      </div>
+      <div style="display: flex; flex-direction: column; border: 1px solid #262B33; border-radius: 14px; overflow: hidden">
+        <sc-for list="{{numbers}}" as="n" hint-placeholder-count="7">
+          <div style="display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid #1B1F26">
+            <span style="width: 140px; flex-shrink: 0; font-size: 13px; color: #A3AAB5">{{n.label}}</span>
+            <span style="width: 200px; flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; color: {{n.color}}">{{n.example}}</span>
+            <span style="flex: 1; font-size: 12px; line-height: 1.5; color: #7C8592">{{n.rule}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px">
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; align-items: baseline; gap: 16px">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600">Spacing</h2>
+        <span style="font-size: 13px; color: #7C8592">4px base</span>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 20px; padding: 24px; border: 1px solid #262B33; border-radius: 14px">
+        <sc-for list="{{spacing}}" as="sp" hint-placeholder-count="8">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
+            <div style="background: #6E9BFF; opacity: 0.85; border-radius: 2px; width: {{sp.px}}; height: {{sp.px}}"></div>
+            <span style="font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">{{sp.name}}</span>
+            <span style="font-size: 11px; color: #7C8592; font-family: 'IBM Plex Mono', monospace">{{sp.px}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; align-items: baseline; gap: 16px">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600">Radius &amp; elevation</h2>
+        <span style="font-size: 13px; color: #7C8592">Elevation is a lighter surface plus a border, never a glow</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 24px; border: 1px solid #262B33; border-radius: 14px">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 72px; background: #1B1F26; border: 1px solid #343A44; border-radius: 6px"></div>
+          <span style="font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">r-sm 6 · chips</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 72px; background: #1B1F26; border: 1px solid #343A44; border-radius: 10px"></div>
+          <span style="font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">r-md 10 · inputs</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 72px; background: #1B1F26; border: 1px solid #343A44; border-radius: 14px"></div>
+          <span style="font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">r-lg 14 · cards</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="height: 72px; background: #1B1F26; border: 1px solid #343A44; border-radius: 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.45)"></div>
+          <span style="font-size: 12px; color: #A3AAB5; font-family: 'IBM Plex Mono', monospace">r-xl 20 · sheets</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const sans = "'IBM Plex Sans', sans-serif";
+    const mono = "'IBM Plex Mono', monospace";
+    return {
+      surfaces: [
+        { name: 'bg', hex: '#0D0F12', use: 'app ground' },
+        { name: 'surface-1', hex: '#14171C', use: 'cards, panels' },
+        { name: 'surface-2', hex: '#1B1F26', use: 'hover, inputs' },
+        { name: 'border', hex: '#262B33', use: 'dividers' },
+        { name: 'border-strong', hex: '#343A44', use: 'focus ring base' }
+      ],
+      texts: [
+        { name: 'text-1', hex: '#ECEEF1', use: 'figures, titles' },
+        { name: 'text-2', hex: '#A3AAB5', use: 'body, labels' },
+        { name: 'text-3', hex: '#7C8592', use: 'meta, captions' },
+        { name: 'on-accent', hex: '#0D0F12', use: 'text on accent' }
+      ],
+      semantic: [
+        { name: 'accent', hex: '#6E9BFF', use: 'actions, focus' },
+        { name: 'gain', hex: '#4FD69C', use: 'up, synced' },
+        { name: 'loss', hex: '#FF8A7A', use: 'down, errors' },
+        { name: 'warn', hex: '#F2B84B', use: 'stale, review' },
+        { name: 'accent-soft', hex: '#1E2A44', use: 'selected rows' }
+      ],
+      sources: [
+        { name: 'exchange', hex: '#6E9BFF', use: 'Coinbase, Kraken' },
+        { name: 'hot wallet', hex: '#C08CFF', use: 'MetaMask, Phantom' },
+        { name: 'hardware', hex: '#F2B84B', use: 'Ledger, Trezor' }
+      ],
+      type: [
+        { token: 'display', family: mono, size: '40px', weight: 500, track: '-0.02em', sample: '$48,210.37', spec: 'Mono 40/48 · 500' },
+        { token: 'title-lg', family: sans, size: '28px', weight: 600, track: '-0.01em', sample: 'Portfolio', spec: 'Sans 28/36 · 600' },
+        { token: 'title', family: sans, size: '20px', weight: 600, track: '0', sample: 'Cold storage', spec: 'Sans 20/28 · 600' },
+        { token: 'body', family: sans, size: '15px', weight: 400, track: '0', sample: 'Last synced 2 min ago', spec: 'Sans 15/24 · 400' },
+        { token: 'label', family: sans, size: '13px', weight: 500, track: '0', sample: 'Allocation', spec: 'Sans 13/20 · 500' },
+        { token: 'figure', family: mono, size: '15px', weight: 500, track: '0', sample: '0.84213907 BTC', spec: 'Mono 15/24 · 500' },
+        { token: 'micro', family: mono, size: '12px', weight: 400, track: '0', sample: 'bc1q…7x4f', spec: 'Mono 12/16 · 400' }
+      ],
+      numbers: [
+        { label: 'Fiat value', example: '$12,480.20', color: '#ECEEF1', rule: 'Always 2 decimals, thousands separators, currency prefix.' },
+        { label: 'Coin amount', example: '0.84213907', color: '#ECEEF1', rule: 'Up to 8 decimals; trim trailing zeros past 4.' },
+        { label: 'Gain', example: '▲ +4.21%', color: '#4FD69C', rule: 'Arrow + sign + color. Never color alone.' },
+        { label: 'Loss', example: '▼ −1.08%', color: '#FF8A7A', rule: 'True minus sign (−), not a hyphen.' },
+        { label: 'Hidden', example: '$ ••••••', color: '#A3AAB5', rule: 'Privacy mode masks every fiat and coin amount.' },
+        { label: 'Address', example: 'bc1q8f…a7x4', color: '#A3AAB5', rule: 'First 6 + last 4, copy button beside it.' },
+        { label: 'Stale', example: '~$3,912.00', color: '#F2B84B', rule: 'Tilde when price is older than 15 min.' }
+      ],
+      spacing: [
+        { name: 's1', px: '4px' }, { name: 's2', px: '8px' }, { name: 's3', px: '12px' }, { name: 's4', px: '16px' },
+        { name: 's5', px: '24px' }, { name: 's6', px: '32px' }, { name: 's7', px: '48px' }, { name: 's8', px: '64px' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

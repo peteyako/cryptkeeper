@@ -1,0 +1,154 @@
+// Package sources manages the user's connected sources (exchanges, wallets, manual
+// holdings): the data/sources.yaml store, secret sealing, and building live core.Source
+// instances through a factory.
+package sources
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
+	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/sources/manual"
+)
+
+// Source types.
+const (
+	TypeCoinbase = "coinbase"
+	TypeKraken   = "kraken"
+	TypeBitcoin  = "bitcoin"
+	TypeSolana   = "solana"
+	TypeManual   = "manual"
+)
+
+// Types lists every supported type in display order.
+var Types = []string{TypeCoinbase, TypeKraken, TypeBitcoin, TypeSolana, TypeManual}
+
+// Def is one entry of data/sources.yaml. Secret fields hold sealed values ("enc:v1:…").
+type Def struct {
+	ID    string    `yaml:"id"`
+	Type  string    `yaml:"type"`
+	Label string    `yaml:"label"`
+	Kind  core.Kind `yaml:"kind"`
+
+	// coinbase
+	KeyName    string `yaml:"keyName,omitempty"`
+	PrivateKey string `yaml:"privateKey,omitempty"` // secret
+	// kraken
+	APIKey    string `yaml:"apiKey,omitempty"`    // secret
+	APISecret string `yaml:"apiSecret,omitempty"` // secret
+	// bitcoin
+	Key         string `yaml:"key,omitempty"`        // xpub/ypub/zpub or address
+	Descriptor  string `yaml:"descriptor,omitempty"` // output descriptor (also the result of a wallet-file import)
+	ScriptType  string `yaml:"scriptType,omitempty"`
+	ImportedVia string `yaml:"importedVia,omitempty"` // "wallet file" when the descriptor came from an upload
+	// solana
+	Address string `yaml:"address,omitempty"`
+	// manual
+	Holdings []manual.Holding `yaml:"holdings,omitempty"`
+
+	CreatedAt time.Time `yaml:"createdAt,omitempty"`
+}
+
+// File is the on-disk shape of data/sources.yaml.
+type File struct {
+	Version int   `yaml:"version"`
+	Sources []Def `yaml:"sources"`
+}
+
+// SecretFields lists the Def fields that are sealed at rest, by form/field name.
+var SecretFields = []string{"privateKey", "apiKey", "apiSecret"}
+
+// Secret returns a pointer to the named secret field.
+func (d *Def) Secret(name string) *string {
+	switch name {
+	case "privateKey":
+		return &d.PrivateKey
+	case "apiKey":
+		return &d.APIKey
+	case "apiSecret":
+		return &d.APISecret
+	}
+	return nil
+}
+
+var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+// Validate checks the type-independent shape. Type-specific validation (parsing keys,
+// addresses) happens when the factory builds the source.
+func (d *Def) Validate() error {
+	if !idRe.MatchString(d.ID) {
+		return fmt.Errorf("id %q: use 1–40 lowercase letters, digits or dashes", d.ID)
+	}
+	if strings.TrimSpace(d.Label) == "" {
+		return fmt.Errorf("%s: label is required", d.ID)
+	}
+	switch d.Kind {
+	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:
+	default:
+		return fmt.Errorf("%s: kind %q must be exchange, hot, hardware or manual", d.ID, d.Kind)
+	}
+	switch d.Type {
+	case TypeCoinbase:
+		if d.KeyName == "" || d.PrivateKey == "" {
+			return fmt.Errorf("%s: Coinbase needs an API key name and private key", d.ID)
+		}
+	case TypeKraken:
+		if d.APIKey == "" || d.APISecret == "" {
+			return fmt.Errorf("%s: Kraken needs an API key and secret", d.ID)
+		}
+	case TypeBitcoin:
+		if d.Key == "" && d.Descriptor == "" {
+			return fmt.Errorf("%s: Bitcoin needs an extended public key, descriptor or address", d.ID)
+		}
+	case TypeSolana:
+		if d.Address == "" {
+			return fmt.Errorf("%s: Solana needs an address", d.ID)
+		}
+	case TypeManual:
+		if len(d.Holdings) == 0 {
+			return fmt.Errorf("%s: add at least one holding", d.ID)
+		}
+	default:
+		return fmt.Errorf("%s: unknown type %q", d.ID, d.Type)
+	}
+	return nil
+}
+
+// DefaultKind is the kind a new source of type t gets unless the user picks another.
+func DefaultKind(t string) core.Kind {
+	switch t {
+	case TypeCoinbase, TypeKraken:
+		return core.KindExchange
+	case TypeBitcoin:
+		return core.KindHardware
+	case TypeSolana:
+		return core.KindHot
+	}
+	return core.KindManual
+}
+
+// Slug turns a label into an id candidate: "Cold storage" → "cold-storage".
+func Slug(label string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(label) {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if len(s) > 40 {
+		s = strings.Trim(s[:40], "-")
+	}
+	if s == "" {
+		s = "source"
+	}
+	return s
+}

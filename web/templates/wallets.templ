@@ -1,0 +1,508 @@
+package templates
+
+import (
+	"strings"
+	"time"
+
+	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/portfolio"
+)
+
+// WalletsFull lists every source as an account card.
+templ WalletsFull(p WalletsPage) {
+	@Layout(p.Shell, walletsBody(p))
+}
+
+templ walletsBody(p WalletsPage) {
+	<div class="wallets">
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">{ Plural(len(p.Wallets), "source") }</span>
+				<h1 class="h-title">Wallets</h1>
+			</div>
+			<div class="page-head__actions">
+				@pageHeadTools(p.Sync)
+				<a class="btn btn--primary btn--add" href="/sources/new">
+					@Icon("plus", 16)
+					Add source
+				</a>
+			</div>
+		</header>
+		if len(p.Wallets) == 0 {
+			@emptyState()
+		} else {
+			<div class="acct-grid acct-grid--wide">
+				for _, w := range p.Wallets {
+					@AccountCard(w, p.Now)
+				}
+			</div>
+			<p class="foot-note">Vault is read-only. It reads balances from exchange keys with view permission and from public addresses, and it never moves funds.</p>
+		}
+	</div>
+}
+
+// WalletFull is the whole wallet detail page.
+templ WalletFull(p WalletPage) {
+	@Layout(p.Shell, walletBody(p))
+}
+
+templ walletBody(p WalletPage) {
+	<div class="wallet">
+		<a class="back" href={ templ.URL(pfHref(normPF(p.PF))) }>
+			@Icon("chevron-left", 16)
+			{ p.BackLabel() }
+		</a>
+		<header class="wallet-head">
+			<div class="wallet-head__id">
+				<span class={ "tile", "tile--" + SourceTone(p.W.Kind) } aria-hidden="true">
+					@Icon(SourceIcon(p.W.Kind), 26)
+				</span>
+				<div class="wallet-head__text">
+					<h1 class="h-title">{ p.W.Label }</h1>
+					<div class="chips">
+						@SourceChip(p.W.Kind, SourceChipText(p.W))
+						<span class="chip chip--neutral">{ AccessLabel(p.W) }</span>
+						@walletStatusChip(p)
+					</div>
+				</div>
+			</div>
+			<div class="wallet-head__actions">
+				if p.Receive != "" {
+					<a class="btn btn--secondary" href="#receive">
+						@Icon("arrow-down", 16)
+						Receive
+					</a>
+				}
+				<a class="btn btn--secondary" href={ templ.URL(editHref(p.W.ID)) }>
+					@Icon("pencil", 16)
+					Edit
+				</a>
+			</div>
+		</header>
+		for _, msg := range p.W.Warnings {
+			@Notice("warn", "alert") {
+				{ msg }
+			}
+		}
+		if p.W.Err != "" {
+			<div role="alert">
+				@Notice("loss", "x") {
+					{ p.W.Err }
+				}
+			</div>
+		}
+		<div class="wallet-grid">
+			<div class="wallet-main">
+				@statTiles(p)
+				@WalletTab(p)
+			</div>
+			<aside class="wallet-aside">
+				if p.Receive != "" {
+					@receiveCard(p)
+				}
+				@connectionCard(p)
+			</aside>
+		</div>
+	</div>
+}
+
+// walletStatusChip is "● Synced · block 866,412" when the wallet reports a block height.
+templ walletStatusChip(p WalletPage) {
+	{{ glyph, label, tone := StatusView(p.W, p.Now) }}
+	{{ block := metaValue(p.W.Meta, "Block height") }}
+	if block != "" && p.W.Status == portfolio.StatusSynced {
+		@StatusChip(glyph, label+" · block "+block, tone)
+	} else {
+		@StatusChip(glyph, label, tone)
+	}
+}
+
+func metaValue(kv []core.KV, key string) string {
+	for _, e := range kv {
+		if strings.EqualFold(e.K, key) {
+			return e.V
+		}
+	}
+	return ""
+}
+
+// statTiles are Balance, Cost basis and Unrealized P/L.
+templ statTiles(p WalletPage) {
+	<div class="stat-grid">
+		<div class="stat">
+			<span class="label">Balance</span>
+			<span class="stat__value">
+				@FigFiat(p.W.ValueUSD)
+			</span>
+			{{ row, single := SingleAsset(p.W) }}
+			if single {
+				<span class="stat__sub mono">
+					@FigCoin(row.Amount, row.Symbol)
+				</span>
+			}
+		</div>
+		<div class="stat">
+			<span class="label">Cost basis</span>
+			if p.CostBasis != nil {
+				<span class="stat__value">
+					@FigFiat(*p.CostBasis)
+				</span>
+				{{ rowc, singlec := SingleAsset(p.W) }}
+				if singlec && rowc.Amount > 0 {
+					<span class="stat__sub stat__sub--inline">
+						<span>avg</span>
+						@FigFiat(*p.CostBasis / rowc.Amount)
+						<span>/ { rowc.Symbol }</span>
+					</span>
+				}
+			} else {
+				<span class="stat__value stat__value--none">—</span>
+				<span class="stat__sub">Set cost basis</span>
+			}
+		</div>
+		<div class="stat">
+			<span class="label">Unrealized P/L</span>
+			if p.Unrealized != nil {
+				{{ dir := Direction(*p.Unrealized) }}
+				<span class={ "stat__value", "chg--" + dir }>
+					{ Arrow(dir) + " " }
+					@FigText(ChangeAbs(*p.Unrealized), "$ ••••")
+				</span>
+				{{ pct, okPct := UnrealizedPct(p.Unrealized, p.CostBasis) }}
+				if okPct {
+					<span class={ "stat__sub", "chg--" + dir }>{ SignedPct(pct) }</span>
+				}
+			} else {
+				<span class="stat__value stat__value--none">—</span>
+				<span class="stat__sub">Needs a cost basis</span>
+			}
+		</div>
+	</div>
+}
+
+type walletTabItem struct{ Key, Label string }
+
+func walletTabs(p WalletPage) []walletTabItem {
+	tabs := []walletTabItem{{"holdings", "Holdings"}, {"activity", "Activity"}}
+	if p.IsBitcoin {
+		tabs = append(tabs, walletTabItem{"addresses", "Addresses"}, walletTabItem{"utxos", "UTXOs"})
+	}
+	return tabs
+}
+
+func activeTab(p WalletPage) string {
+	for _, t := range walletTabs(p) {
+		if t.Key == p.Tab {
+			return t.Key
+		}
+	}
+	return "holdings"
+}
+
+// WalletTab is the tab strip plus the selected tab's content. Its root is #wallet-tab,
+// so the tab links patch just this.
+templ WalletTab(p WalletPage) {
+	{{ tab := activeTab(p) }}
+	<section id="wallet-tab" class="card wallet-tab">
+		<nav class="tabs" aria-label="Wallet sections">
+			for _, t := range walletTabs(p) {
+				<a
+					class={ "tab", templ.KV("tab--on", t.Key == tab) }
+					href={ templ.URL(tabHref(p.W.ID, t.Key)) }
+					data-on:click__prevent={ tabClick(p.W.ID, t.Key) }
+					if t.Key == tab {
+						aria-current="page"
+					}
+				>{ t.Label }</a>
+			}
+		</nav>
+		switch tab {
+			case "activity":
+				@activityTab()
+			case "addresses":
+				@addressesTab(p)
+			case "utxos":
+				@utxosTab(p)
+			default:
+				@holdingsTab(p)
+		}
+	</section>
+}
+
+templ activityTab() {
+	<div class="empty empty--inline">
+		<span class="empty__icon">
+			@Icon("clock", 24)
+		</span>
+		<h2 class="empty__title">Coming soon</h2>
+		<p class="empty__text">Transactions for this wallet will show up here once Vault starts syncing activity.</p>
+	</div>
+}
+
+templ holdingsTab(p WalletPage) {
+	{{ plain, groups := SplitPositions(p.W.Rows) }}
+	if len(p.W.Rows) == 0 && !hasHidden(p.W) {
+		<p class="empty-note">No balances yet.</p>
+	} else {
+		<div class="table-scroll">
+			<table class="tbl tbl--holdings tbl--wallet">
+				<thead>
+					<tr>
+						<th class="col-asset" scope="col">Asset</th>
+						<th class="col-price num" scope="col">Price</th>
+						<th class="col-amt num" scope="col">Holdings</th>
+						<th class="col-val num" scope="col">Value</th>
+						<th class="col-chg num" scope="col">24h</th>
+					</tr>
+				</thead>
+				if len(plain) > 0 {
+					<tbody>
+						for _, r := range plain {
+							@holdingRow(r, p.Now, false, p.ShowLogos)
+						}
+					</tbody>
+				}
+				for _, g := range groups {
+					<tbody class="position">
+						<tr class="position__head">
+							<th colspan="5" scope="colgroup">
+								<div class="position__bar">
+									<span class="position__name">
+										if g.Protocol != "" {
+											{ g.Protocol } · { g.Position }
+										} else {
+											{ g.Position }
+										}
+									</span>
+									if lbl := PositionKindLabel(g.Kind); lbl != "" {
+										<span class="badge">{ lbl }</span>
+									}
+									<span class="position__value">
+										@FigFiat(g.ValueUSD)
+									</span>
+								</div>
+							</th>
+						</tr>
+						for _, r := range g.Rows {
+							@holdingRow(r, p.Now, true, p.ShowLogos)
+						}
+					</tbody>
+				}
+				if hasHidden(p.W) {
+					<tbody>
+						<tr class="hidden-toggle">
+							<td colspan="5">
+								<button
+									type="button"
+									class="hidden-toggle__btn"
+									aria-expanded="false"
+									data-on:click="$showHidden = !$showHidden"
+									data-attr:aria-expanded="$showHidden ? 'true' : 'false'"
+								>
+									@Icon("chevron-right", 16)
+									{ hiddenSummary(p.W) }
+								</button>
+							</td>
+						</tr>
+					</tbody>
+					<tbody class="hidden-rows" data-show="$showHidden" style="display:none">
+						for _, r := range firstN(p.W.HiddenRows, maxHiddenRows) {
+							@holdingRow(r, p.Now, false, p.ShowLogos)
+						}
+						if n := len(p.W.HiddenRows) - maxHiddenRows; n > 0 {
+							<tr class="hidden-note">
+								<td colspan="5">…and { Plural(n, "more hidden token") }, mostly unpriced airdrops.</td>
+							</tr>
+						}
+						if p.W.NFTCount > 0 {
+							<tr class="hidden-note">
+								<td colspan="5">{ Plural(p.W.NFTCount, "NFT") } are counted but not valued.</td>
+							</tr>
+						}
+					</tbody>
+				}
+			</table>
+		</div>
+	}
+}
+
+templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, showLogos bool) {
+	<tr class={ templ.KV("leg", indent) }>
+		<td class="col-asset">
+			<div class="asset">
+				@AssetMark(r.Symbol, r.LogoURL, showLogos)
+				<div class="asset__id">
+					<span class="asset__name">
+						{ HoldingName(r.Holding) }
+						if r.Staked {
+							<span class="badge">Staked</span>
+						}
+						if r.Vault {
+							<span class="badge">Vault</span>
+						}
+					</span>
+					if r.Note != "" {
+						<span class="asset__sub">{ r.Note }</span>
+					} else {
+						<span class="asset__sub">{ r.Symbol }</span>
+					}
+				</div>
+			</div>
+		</td>
+		<td class="col-price num">
+			@priceCell(r.Price, now)
+		</td>
+		<td class="col-amt num">
+			@FigCoin(r.Amount, r.Symbol)
+		</td>
+		<td class="col-val num">
+			if r.Priced {
+				@FigFiat(r.ValueUSD)
+			} else {
+				<span class="muted">—</span>
+			}
+		</td>
+		<td class="col-chg num">
+			@changeCell(r.Price)
+		</td>
+	</tr>
+}
+
+templ addressesTab(p WalletPage) {
+	if len(p.Addresses) == 0 {
+		<p class="empty-note">No addresses to show yet.</p>
+	} else {
+		{{ sym := NativeSymbol(p.W.Type) }}
+		<div class="table-scroll">
+			<table class="tbl tbl--plain">
+				<thead>
+					<tr>
+						<th scope="col">Address</th>
+						<th scope="col">Path</th>
+						<th scope="col">Type</th>
+						<th class="num" scope="col">Transactions</th>
+						<th class="num" scope="col">Balance</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, a := range p.Addresses {
+						<tr>
+							<td class="mono" title={ a.Address }>{ ShortAddr(a.Address) }</td>
+							<td class="mono muted">{ a.Path }</td>
+							<td>
+								if a.Change {
+									<span class="chip chip--neutral">Change</span>
+								} else {
+									<span class="chip chip--neutral">Receive</span>
+								}
+								if a.TxCount > 0 {
+									<span class="chip chip--info">Used</span>
+								} else {
+									<span class="chip chip--neutral">Unused</span>
+								}
+							</td>
+							<td class="num mono">{ Plural(a.TxCount, "tx") }</td>
+							<td class="num mono">
+								@FigCoin(a.Balance, sym)
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ utxosTab(p WalletPage) {
+	if len(p.UTXOs) == 0 {
+		<p class="empty-note">No unspent outputs.</p>
+	} else {
+		<div class="table-scroll">
+			<table class="tbl tbl--plain">
+				<thead>
+					<tr>
+						<th scope="col">Output</th>
+						<th scope="col">Address</th>
+						<th scope="col">Status</th>
+						<th class="num" scope="col">Value</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, u := range p.UTXOs {
+						<tr>
+							<td class="mono" title={ u.TxID }>{ shortTx(u.TxID) }:{ uintStr(u.Vout) }</td>
+							<td class="mono" title={ u.Address }>{ ShortAddr(u.Address) }</td>
+							<td>
+								if u.Confirmed {
+									<span class="chip chip--gain">
+										<span aria-hidden="true">●</span>
+										Confirmed
+										if u.Height > 0 {
+											· { Comma(u.Height) }
+										}
+									</span>
+								} else {
+									<span class="chip chip--warn">
+										<span aria-hidden="true">◐</span>
+										Pending
+									</span>
+								}
+							</td>
+							<td class="num mono">
+								@FigCoin(u.Value, "BTC")
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+// receiveCard shows the next unused receive address: QR, copy button and, for hardware
+// wallets, a reminder to verify it on the device.
+templ receiveCard(p WalletPage) {
+	<section id="receive" class="card side-card" aria-labelledby="receive-h">
+		<h2 id="receive-h" class="h-card">Receive address</h2>
+		if p.ReceiveQR != nil {
+			<div class="qr">
+				@p.ReceiveQR
+			</div>
+		}
+		<div class="addr-row">
+			<span class="addr-row__text mono" title={ p.Receive }>{ ShortAddr(p.Receive) }</span>
+			<button type="button" class="btn btn--secondary btn--icon" aria-label="Copy address" data-on:click={ copyClick(p.Receive) }>
+				@Icon("copy", 16)
+			</button>
+		</div>
+		if p.W.Kind == core.KindHardware {
+			@Notice("warn", "alert") {
+				Verify this address on your device before sharing it.
+			}
+		}
+	</section>
+}
+
+// connectionCard lists how Vault reads this source and has the destructive Remove action.
+templ connectionCard(p WalletPage) {
+	<section class="card side-card" aria-labelledby="conn-h">
+		<h2 id="conn-h" class="h-card">Connection</h2>
+		<dl class="kv">
+			<div class="kv__row">
+				<dt>Type</dt>
+				<dd>{ KindLabel(p.W) } · { strings.ToLower(AccessLabel(p.W)) }</dd>
+			</div>
+			for _, e := range p.W.Meta {
+				<div class="kv__row">
+					<dt>{ e.K }</dt>
+					<dd>{ e.V }</dd>
+				</div>
+			}
+			<div class="kv__row">
+				<dt>Last sync</dt>
+				<dd>{ Ago(p.W.AsOf, p.Now) }</dd>
+			</div>
+		</dl>
+		<button type="button" class="btn btn--danger btn--block" data-on:click={ removeClick(p.W.ID) }>Remove wallet</button>
+	</section>
+}

@@ -1,0 +1,149 @@
+package templates
+
+import "time"
+
+// SettingsFull is the settings screen: appearance, privacy, the list of sources and facts
+// about this install.
+templ SettingsFull(p SettingsPage) {
+	@Layout(p.Shell, settingsBody(p))
+}
+
+type themeOpt struct{ Value, Label string }
+
+var themeOpts = []themeOpt{{"system", "System"}, {"light", "Light"}, {"dark", "Dark"}}
+
+templ settingsBody(p SettingsPage) {
+	<div class="settings">
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Vault</span>
+				<h1 class="h-title">Settings</h1>
+			</div>
+			<div class="page-head__actions">
+				<a class="btn btn--primary btn--add" href="/sources/new">
+					@Icon("plus", 16)
+					Add source
+				</a>
+			</div>
+		</header>
+		<div class="settings-grid">
+			<section class="card setting" aria-labelledby="set-theme-h">
+				<div class="setting__text">
+					<h2 id="set-theme-h" class="h-card">Appearance</h2>
+					<p class="muted-text">Follow your system, or pin a theme. The choice is saved on this device.</p>
+				</div>
+				<div class="seg" role="group" aria-label="Theme">
+					for _, o := range themeOpts {
+						<button
+							type="button"
+							class="seg__btn"
+							aria-pressed="false"
+							data-on:click={ themeClick(o.Value) }
+							data-attr:aria-pressed={ themePressed(o.Value) }
+							data-class={ themeClass(o.Value) }
+						>{ o.Label }</button>
+					}
+				</div>
+			</section>
+			<section class="card setting" aria-labelledby="set-privacy-h">
+				<div class="setting__text">
+					<h2 id="set-privacy-h" class="h-card">Privacy</h2>
+					<p class="muted-text">Hide balances by default. Every fiat and coin amount is masked, and the eye button in the header toggles it. Vault remembers the last choice on this device.</p>
+				</div>
+				<div class="seg" role="group" aria-label="Balances">
+					<button
+						type="button"
+						class="seg__btn"
+						aria-pressed="true"
+						data-on:click={ hideSetClick(false) }
+						data-attr:aria-pressed={ hideSetPressed(false) }
+						data-class={ hideSetClass(false) }
+					>Shown</button>
+					<button
+						type="button"
+						class="seg__btn"
+						aria-pressed="false"
+						data-on:click={ hideSetClick(true) }
+						data-attr:aria-pressed={ hideSetPressed(true) }
+						data-class={ hideSetClass(true) }
+					>Hidden</button>
+				</div>
+			</section>
+			<section class="card sources-card" aria-labelledby="set-sources-h">
+				<div class="sources-card__head">
+					<h2 id="set-sources-h" class="h-card">Sources</h2>
+					<span class="meta">{ Plural(len(p.Wallets), "source") }</span>
+					<a class="link" href="/sources/new">+ Add</a>
+				</div>
+				if len(p.Wallets) == 0 {
+					<p class="empty-note">No sources yet.</p>
+				} else {
+					<ul class="src-list">
+						for _, w := range p.Wallets {
+							{{ glyph, label, tone := StatusView(w, time.Now()) }}
+							<li class="src-row">
+								<a class="src-row__main" href={ templ.URL(walletHref(w.ID)) }>
+									<span class={ "src-dot", "src-dot--" + SourceTone(w.Kind) } aria-hidden="true"></span>
+									<span class="src-row__text">
+										<span class="src-row__name">{ w.Label }</span>
+										<span class="src-row__kind">{ KindLabel(w) }</span>
+									</span>
+								</a>
+								<span class={ "chip", "chip--sm", "chip--" + tone }>
+									<span aria-hidden="true">{ glyph }</span>
+									{ label }
+								</span>
+								<a class="btn btn--secondary" href={ templ.URL(editHref(w.ID)) } aria-label={ "Edit " + w.Label }>Edit</a>
+							</li>
+						}
+					</ul>
+				}
+			</section>
+			<section class="card about" aria-labelledby="set-about-h">
+				<h2 id="set-about-h" class="h-card">About this install</h2>
+				<dl class="kv">
+					<div class="kv__row">
+						<dt>Mode</dt>
+						<dd>Read-only. Vault never moves funds.</dd>
+					</div>
+					<div class="kv__row">
+						<dt>Data directory</dt>
+						<dd class="mono">{ p.DataDir }</dd>
+					</div>
+					<div class="kv__row">
+						<dt>Sign-in</dt>
+						<dd>
+							if p.AuthEnabled {
+								Password required
+							} else {
+								Off. Anyone who can reach this address can open Vault.
+							}
+						</dd>
+					</div>
+					<div class="kv__row">
+						<dt>Version</dt>
+						<dd class="mono">{ p.Version }</dd>
+					</div>
+				</dl>
+			</section>
+		</div>
+	</div>
+}
+
+// ErrorFull is a full-page message, for example a missing wallet.
+templ ErrorFull(s Shell, msg string) {
+	@Layout(s, errorBody(msg))
+}
+
+templ errorBody(msg string) {
+	<div class="error-page">
+		<section class="card empty" aria-labelledby="err-h">
+			<span class="empty__icon">
+				@Icon("alert", 28)
+			</span>
+			<h1 id="err-h" class="empty__title">Something went wrong</h1>
+			<p class="empty__text">{ msg }</p>
+			<a class="btn btn--secondary" href="/">Back to overview</a>
+		</section>
+	</div>
+}

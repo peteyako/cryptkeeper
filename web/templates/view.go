@@ -1,0 +1,362 @@
+package templates
+
+import (
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/web/static"
+)
+
+// This file holds the small display decisions the templates share, kept in Go so they
+// can be unit tested.
+
+// Theme colors for <meta name="theme-color">. They mirror --bg in tokens.css (a test
+// keeps them in sync); a meta tag cannot reference a CSS variable.
+const (
+	ThemeColorDark  = "#0D0F12"
+	ThemeColorLight = "#F6F7F9"
+)
+
+func typeName(t string) string {
+	switch t {
+	case "coinbase":
+		return "Coinbase"
+	case "kraken":
+		return "Kraken"
+	case "bitcoin":
+		return "Bitcoin"
+	case "solana":
+		return "Solana"
+	case "manual":
+		return "Manual"
+	}
+	if t == "" {
+		return ""
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
+}
+
+// NativeSymbol is the chain's own coin for a source type ("BTC" for bitcoin), or "".
+func NativeSymbol(sourceType string) string {
+	switch sourceType {
+	case "bitcoin":
+		return "BTC"
+	case "solana":
+		return "SOL"
+	}
+	return ""
+}
+
+// KindLabel is the small caption under an account name: "Exchange · API",
+// "Hardware · Bitcoin", "Hot wallet · Solana", "Manual · holdings".
+func KindLabel(w portfolio.WalletView) string {
+	switch w.Kind {
+	case core.KindExchange:
+		return "Exchange · API"
+	case core.KindHardware:
+		return "Hardware · " + typeName(w.Type)
+	case core.KindHot:
+		return "Hot wallet · " + typeName(w.Type)
+	case core.KindManual:
+		return "Manual · holdings"
+	}
+	return typeName(w.Type)
+}
+
+// SourceChipText is the text of the source chip in the wallet header:
+// "Bitcoin · hardware", "Coinbase · exchange", "Solana · hot wallet", "Manual · holdings".
+func SourceChipText(w portfolio.WalletView) string {
+	switch w.Kind {
+	case core.KindExchange:
+		return typeName(w.Type) + " · exchange"
+	case core.KindHardware:
+		return typeName(w.Type) + " · hardware"
+	case core.KindHot:
+		return typeName(w.Type) + " · hot wallet"
+	case core.KindManual:
+		return "Manual · holdings"
+	}
+	return typeName(w.Type)
+}
+
+// AccessLabel says how Vault sees the source: "Read-only" for exchanges (a view-only API
+// key), "Watch-only" for wallets, "Hand-entered" for manual holdings.
+func AccessLabel(w portfolio.WalletView) string {
+	switch w.Kind {
+	case core.KindExchange:
+		return "Read-only"
+	case core.KindManual:
+		return "Hand-entered"
+	}
+	return "Watch-only"
+}
+
+// WalletMeta is the footer line of an account card: "1 asset · watch-only".
+func WalletMeta(w portfolio.WalletView) string {
+	n := Plural(len(w.Rows), "asset")
+	switch w.Kind {
+	case core.KindExchange:
+		return n + " · read-only key"
+	case core.KindManual:
+		return n + " · entered by hand"
+	}
+	return n + " · watch-only"
+}
+
+// SourceTone is the color family of a source kind: "exchange", "hot", "hardware", "manual".
+func SourceTone(k core.Kind) string {
+	switch k {
+	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:
+		return string(k)
+	}
+	return "manual"
+}
+
+// SourceIcon is the icon name for a source kind tile.
+func SourceIcon(k core.Kind) string {
+	switch k {
+	case core.KindHardware:
+		return "device"
+	case core.KindExchange:
+		return "exchange"
+	case core.KindManual:
+		return "pencil"
+	}
+	return "wallet"
+}
+
+// StatusView describes a wallet's sync state as a chip: a glyph (so state never relies on
+// color alone), a label and a tone ("gain", "warn", "loss", "neutral").
+func StatusView(w portfolio.WalletView, now time.Time) (glyph, label, tone string) {
+	switch w.Status {
+	case portfolio.StatusSynced:
+		return "●", "Synced", "gain"
+	case portfolio.StatusStale:
+		label = "Stale"
+		if s := Since(w.AsOf, now); s != "" {
+			label += " " + s
+		}
+		return "◐", label, "warn"
+	case portfolio.StatusError:
+		return "✕", "Error", "loss"
+	}
+	return "◌", "Syncing…", "neutral"
+}
+
+// SyncView is StatusView for the header sync chip.
+func SyncView(s SyncInfo) (glyph, label, tone string) {
+	label = s.Label
+	switch s.Status {
+	case portfolio.StatusSynced:
+		glyph, tone = "●", "gain"
+		if label == "" {
+			label = "Synced"
+		}
+	case portfolio.StatusStale:
+		glyph, tone = "◐", "warn"
+		if label == "" {
+			label = "Stale"
+		}
+	case portfolio.StatusError:
+		glyph, tone = "✕", "loss"
+		if label == "" {
+			label = "Error"
+		}
+	default:
+		glyph, tone = "◌", "neutral"
+		if label == "" {
+			label = "Syncing…"
+		}
+	}
+	return glyph, label, tone
+}
+
+// SearchKey is the lower-case string the holdings search box matches against.
+func SearchKey(a portfolio.AssetRow) string {
+	parts := []string{a.Symbol, a.Name}
+	parts = append(parts, a.HeldIn...)
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+// HoldingName is the display name of a holding: its name, else its symbol.
+func HoldingName(h core.Holding) string {
+	if h.Name != "" {
+		return h.Name
+	}
+	return h.Symbol
+}
+
+// AssetName is the display name of a merged asset: its name, else its symbol.
+func AssetName(a portfolio.AssetRow) string {
+	if a.Name != "" {
+		return a.Name
+	}
+	return a.Symbol
+}
+
+// HoldingGroup is a DeFi position and its legs.
+type HoldingGroup struct {
+	Protocol string
+	Position string
+	Kind     string // "lp", "perp", "locked" or ""
+	Rows     []portfolio.HoldingRow
+	ValueUSD float64
+}
+
+// SplitPositions separates plain balances from DeFi positions. Positions are grouped by
+// protocol and position name in order of first appearance.
+func SplitPositions(rows []portfolio.HoldingRow) (plain []portfolio.HoldingRow, groups []HoldingGroup) {
+	idx := map[string]int{}
+	for _, r := range rows {
+		if r.Position == "" {
+			plain = append(plain, r)
+			continue
+		}
+		key := r.Protocol + "\x00" + r.Position
+		i, ok := idx[key]
+		if !ok {
+			i = len(groups)
+			idx[key] = i
+			groups = append(groups, HoldingGroup{Protocol: r.Protocol, Position: r.Position, Kind: r.PositionKind})
+		}
+		groups[i].Rows = append(groups[i].Rows, r)
+		groups[i].ValueUSD += r.ValueUSD
+	}
+	return plain, groups
+}
+
+// PositionKindLabel is the badge text for a DeFi position kind.
+func PositionKindLabel(kind string) string {
+	switch kind {
+	case "lp":
+		return "Liquidity pool"
+	case "perp":
+		return "Perpetuals"
+	case "locked":
+		return "Locked"
+	}
+	return ""
+}
+
+// SingleAsset returns the only holding of a single-asset wallet (for the native amount
+// under the balance).
+func SingleAsset(w portfolio.WalletView) (portfolio.HoldingRow, bool) {
+	if len(w.Rows) != 1 {
+		return portfolio.HoldingRow{}, false
+	}
+	return w.Rows[0], true
+}
+
+// UnrealizedPct is the unrealized P/L as a percent of cost basis, or ok=false when it
+// cannot be computed.
+func UnrealizedPct(pl, cost *float64) (pct float64, ok bool) {
+	if pl == nil || cost == nil || *cost <= 0 {
+		return 0, false
+	}
+	return *pl / *cost * 100, true
+}
+
+// PortfolioNameFor finds the display name of the current portfolio in the shell.
+func (s Shell) PortfolioNameFor() string {
+	pf := normPF(s.PF)
+	for _, p := range s.Portfolios {
+		if p.ID == pf {
+			return p.Name
+		}
+	}
+	if pf == "all" {
+		return "All holdings"
+	}
+	return pf
+}
+
+// BackLabel is the text of the "back to portfolio" link on the wallet page.
+func (s Shell) BackLabel() string {
+	if normPF(s.PF) == "all" {
+		return "Overview"
+	}
+	return s.PortfolioNameFor() + " portfolio"
+}
+
+// FieldLabel is the visible label for a source form field name, used in the error summary.
+func FieldLabel(name string) string {
+	switch name {
+	case "label":
+		return "Label"
+	case "keyName":
+		return "API key name"
+	case "privateKey":
+		return "Private key"
+	case "apiKey":
+		return "API key"
+	case "apiSecret":
+		return "API secret"
+	case "key":
+		return "Public key"
+	case "kind":
+		return "Wallet type"
+	case "scriptType":
+		return "Script type"
+	case "walletFile":
+		return "Wallet file"
+	case "address":
+		return "Address"
+	case "holdings":
+		return "Holdings"
+	}
+	return name
+}
+
+func hasHidden(w portfolio.WalletView) bool { return len(w.HiddenRows) > 0 || w.NFTCount > 0 }
+
+func hiddenSummary(w portfolio.WalletView) string {
+	var parts []string
+	if n := len(w.HiddenRows); n > 0 {
+		parts = append(parts, Plural(n, "hidden token"))
+	}
+	if w.NFTCount > 0 {
+		parts = append(parts, Plural(w.NFTCount, "NFT"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func shortTx(txid string) string {
+	if len(txid) <= 12 {
+		return txid
+	}
+	return txid[:4] + "…" + txid[len(txid)-4:]
+}
+
+func uintStr(v uint32) string { return strconv.FormatUint(uint64(v), 10) }
+
+func sortStrings(s []string) { sort.Strings(s) }
+
+// Comma groups an integer with thousands separators: 866412 -> "866,412".
+func Comma(v int64) string {
+	if v < 0 {
+		return Minus + group(strconv.FormatInt(-v, 10))
+	}
+	return group(strconv.FormatInt(v, 10))
+}
+
+// SafeLogoURL returns a token logo URL only when it is a plain https URL; anything else
+// (empty, http, data:, javascript:) is dropped and the monogram is used instead.
+func SafeLogoURL(u string) string {
+	if len(u) > 8 && strings.EqualFold(u[:8], "https://") && !strings.ContainsAny(u, " \t\r\n\"'<>") {
+		return u
+	}
+	return ""
+}
+
+// maxHiddenRows caps the collapsed "hidden tokens" list: a wallet full of spam airdrops can
+// hold thousands, and every row would ride along on each live patch.
+const maxHiddenRows = 50
+
+func firstN[T any](xs []T, n int) []T { return xs[:min(n, len(xs))] }
+
+// asset returns a cache-busted URL for an embedded static file.
+func asset(name string) string { return "/static/" + name + "?v=" + static.Version }

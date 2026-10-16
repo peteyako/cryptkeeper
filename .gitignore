@@ -1,0 +1,9 @@
+# local state and secrets
+/data/
+/config.yaml
+/.env
+/wallets/
+# build output
+/crypto-portfolio
+/dist/
+*.test

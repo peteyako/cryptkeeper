@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault — Add a source</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; overflow: hidden; background: {{t.bg}}; color: {{t.t1}}; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; padding: 16px 16px 28px; gap: 20px">
+
+  <div style="display: flex; align-items: center; gap: 8px">
+    <button type="button" onClick="{{back}}" aria-label="Back" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: {{t.t1}}; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+    </button>
+    <div style="flex: 1; display: flex; gap: 6px" aria-label="{{stepLabel}}" role="img">
+      <span style="flex: 1; height: 4px; border-radius: 2px; background: {{t.acc}}"></span>
+      <span style="flex: 1; height: 4px; border-radius: 2px; background: {{bar2}}"></span>
+    </div>
+    <span style="width: 44px; text-align: right; font-size: 12px; color: {{t.t3}}; font-family: 'IBM Plex Mono', monospace">{{stepNum}}/2</span>
+  </div>
+
+  <sc-if value="{{isPick}}" hint-placeholder-val="{{ true }}">
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em">Add a source</h1>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5; color: {{t.t2}}">Connect an exchange with a read-only key, or track a wallet by its public address.</p>
+      </div>
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 12px; font-weight: 500; color: {{t.t3}}; text-transform: uppercase; letter-spacing: 0.08em">{{g.title}}</span>
+          <div style="display: flex; flex-direction: column; background: {{t.s1}}; border: 1px solid {{t.bd}}; border-radius: 14px; overflow: hidden">
+            <sc-for list="{{g.items}}" as="o" hint-placeholder-count="2">
+              <button type="button" onClick="{{o.pick}}" style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; border: 0; border-bottom: 1px solid {{t.bd}}; background: transparent; color: {{t.t1}}; text-align: left; font-family: inherit; cursor: pointer">
+                <span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: {{o.iconBg}}; color: {{o.iconFg}}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; font-family: 'IBM Plex Mono', monospace">{{o.mono}}</span>
+                <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 15px; font-weight: 500">{{o.name}}</span>
+                  <span style="font-size: 12px; color: {{t.t3}}">{{o.how}}</span>
+                </span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{t.t3}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isExchange}}" hint-placeholder-val="{{ false }}">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em">Connect {{sel.name}}</h1>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5; color: {{t.t2}}">Create an API key in your {{sel.name}} settings and paste it below.</p>
+      </div>
+      <div style="display: flex; gap: 10px; padding: 12px 14px; background: {{t.accSoft}}; border-radius: 10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.link}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"></path></svg>
+        <span style="font-size: 13px; line-height: 1.5; color: {{t.t1}}">Grant <b>view</b> permissions only. Vault never needs trade or withdraw access.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="mc-name" style="font-size: 13px; font-weight: 500; color: {{t.t2}}">Label</label>
+        <input id="mc-name" type="text" value="{{sel.name}}" style="height: 44px; padding: 0 14px; box-sizing: border-box; background: {{t.s1}}; border: 1px solid {{t.bd2}}; border-radius: 10px; color: {{t.t1}}; font-size: 14px; font-family: inherit">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="mc-key" style="font-size: 13px; font-weight: 500; color: {{t.t2}}">API key</label>
+        <input id="mc-key" type="text" placeholder="Paste key" style="height: 44px; padding: 0 14px; box-sizing: border-box; background: {{t.s1}}; border: 1px solid {{t.acc}}; box-shadow: 0 0 0 3px {{t.accSoft}}; border-radius: 10px; color: {{t.t1}}; font-size: 14px; font-family: 'IBM Plex Mono', monospace">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="mc-secret" style="font-size: 13px; font-weight: 500; color: {{t.t2}}">{{sel.secretLabel}}</label>
+        <input id="mc-secret" type="password" placeholder="Paste secret" style="height: 44px; padding: 0 14px; box-sizing: border-box; background: {{t.s1}}; border: 1px solid {{t.bd2}}; border-radius: 10px; color: {{t.t1}}; font-size: 14px; font-family: 'IBM Plex Mono', monospace">
+      </div>
+      <span style="font-size: 12px; line-height: 1.5; color: {{t.t3}}">Keys are encrypted on this device and never leave it.</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isWallet}}" hint-placeholder-val="{{ false }}">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em">Track {{sel.name}}</h1>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5; color: {{t.t2}}">{{sel.help}}</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="mw-name" style="font-size: 13px; font-weight: 500; color: {{t.t2}}">Label</label>
+        <input id="mw-name" type="text" placeholder="e.g. Cold storage" style="height: 44px; padding: 0 14px; box-sizing: border-box; background: {{t.s1}}; border: 1px solid {{t.bd2}}; border-radius: 10px; color: {{t.t1}}; font-size: 14px; font-family: inherit">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <label for="mw-addr" style="font-size: 13px; font-weight: 500; color: {{t.t2}}">{{sel.fieldLabel}}</label>
+        <div style="display: flex; gap: 8px">
+          <input id="mw-addr" type="text" placeholder="{{sel.placeholder}}" style="flex: 1; min-width: 0; height: 44px; padding: 0 14px; box-sizing: border-box; background: {{t.s1}}; border: 1px solid {{t.acc}}; box-shadow: 0 0 0 3px {{t.accSoft}}; border-radius: 10px; color: {{t.t1}}; font-size: 14px; font-family: 'IBM Plex Mono', monospace">
+          <button type="button" aria-label="Scan QR code" style="width: 44px; height: 44px; flex-shrink: 0; border: 1px solid {{t.bd2}}; border-radius: 10px; background: {{t.s2}}; color: {{t.t1}}; display: flex; align-items: center; justify-content: center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; padding: 12px 14px; background: {{t.s1}}; border: 1px solid {{t.bd}}; border-radius: 10px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{{t.t2}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path></svg>
+        <span style="font-size: 13px; line-height: 1.5; color: {{t.t2}}">Watch-only. Never enter a seed phrase or private key here.</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{isForm}}" hint-placeholder-val="{{ false }}">
+    <button type="button" style="height: 52px; border: 0; border-radius: 12px; background: {{t.acc}}; color: {{t.onAcc}}; font-size: 15px; font-weight: 600; font-family: inherit">{{sel.cta}}</button>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: null };
+  }
+  renderVals() {
+    const themes = {
+      dark: { bg: '#0D0F12', s1: '#14171C', s2: '#1B1F26', bd: '#262B33', bd2: '#343A44', t1: '#ECEEF1', t2: '#A3AAB5', t3: '#7C8592', acc: '#6E9BFF', onAcc: '#0D0F12', accSoft: '#1E2A44', link: '#8FB2FF', exBg: '#1E2A44', exFg: '#8FB2FF', hwBg: '#2E2410', hwFg: '#F2B84B', hotBg: '#271B3A', hotFg: '#C08CFF' },
+      light: { bg: '#F6F7F9', s1: '#FFFFFF', s2: '#F0F2F5', bd: '#E1E4E9', bd2: '#CDD2D9', t1: '#12151A', t2: '#4A525E', t3: '#69717D', acc: '#2F5FD9', onAcc: '#FFFFFF', accSoft: '#E6EDFC', link: '#2F5FD9', exBg: '#E6EDFC', exFg: '#2F5FD9', hwBg: '#FBF0D9', hwFg: '#8A5A00', hotBg: '#F0E8FB', hotFg: '#6A32C0' }
+    };
+    const t = themes[this.props.theme ?? 'dark'] || themes.dark;
+    const opts = {
+      coinbase: { kind: 'exchange', name: 'Coinbase', mono: 'CB', how: 'Read-only API key', iconBg: t.exBg, iconFg: t.exFg, secretLabel: 'API secret', cta: 'Connect Coinbase' },
+      kraken: { kind: 'exchange', name: 'Kraken', mono: 'KR', how: 'Read-only API key', iconBg: t.exBg, iconFg: t.exFg, secretLabel: 'Private key', cta: 'Connect Kraken' },
+      hardware: { kind: 'wallet', name: 'hardware wallet', mono: 'HW', how: 'Ledger, Trezor · xpub', iconBg: t.hwBg, iconFg: t.hwFg, help: 'Export the extended public key (xpub / zpub) from your device app. Vault derives every address from it.', fieldLabel: 'Extended public key', placeholder: 'zpub6r…', cta: 'Track wallet' },
+      address: { kind: 'wallet', name: 'an address', mono: '0x', how: 'MetaMask, Phantom, any chain', iconBg: t.hotBg, iconFg: t.hotFg, help: 'Paste a public address. The chain is detected automatically.', fieldLabel: 'Public address', placeholder: 'bc1… / 0x… / Sol…', cta: 'Track address' }
+    };
+    const pick = (k) => () => this.setState({ sel: k });
+    const sel = this.state.sel ? opts[this.state.sel] : null;
+    return {
+      t,
+      sel: sel || opts.coinbase,
+      isPick: !sel,
+      isExchange: !!sel && sel.kind === 'exchange',
+      isWallet: !!sel && sel.kind === 'wallet',
+      isForm: !!sel,
+      stepNum: sel ? 2 : 1,
+      stepLabel: sel ? 'Step 2 of 2' : 'Step 1 of 2',
+      bar2: sel ? t.acc : t.bd2,
+      back: () => this.setState({ sel: null }),
+      groups: [
+        { title: 'Exchanges', items: [{ ...opts.coinbase, pick: pick('coinbase') }, { ...opts.kraken, pick: pick('kraken') }] },
+        { title: 'Self-custody', items: [{ ...opts.hardware, name: 'Hardware wallet', pick: pick('hardware') }, { ...opts.address, name: 'Wallet address', pick: pick('address') }] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
