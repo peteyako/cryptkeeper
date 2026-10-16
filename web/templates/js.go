@@ -72,7 +72,7 @@ func normPF(id string) string {
 // signals live for the whole page.
 func bodySignals(s Shell) string {
 	return "{hide: false, theme: 'system', range: " + JSString(normRange(s.Range)) +
-		", pf: " + JSString(normPF(s.PF)) + ", q: '', showHidden: false}"
+		", pf: " + JSString(normPF(s.PF)) + ", q: '', showHidden: false, showPnl: false}"
 }
 
 // bodyInit restores the persisted privacy and theme choice. Every storage access is
@@ -237,3 +237,74 @@ const assetShow = `!$assetQ || el.dataset.search.includes($assetQ.toLowerCase())
 
 // noEnterSubmit stops Enter in the asset search from submitting the whole form.
 const noEnterSubmit = `evt.key === 'Enter' && evt.preventDefault()`
+
+// ---- activity ---------------------------------------------------------------------------
+
+// actFilter limits the signals sent to the activity endpoints to the three filters.
+const actFilter = `{filterSignals: {include: /^act/}}`
+
+// actFilterGet reloads the list from the current filters.
+const actFilterGet = `@get('/activity/list', ` + actFilter + `)`
+
+// actSignals is the data-signals object of the Activity page. The wrapper that carries it
+// is never patched (only #activity-list is), so the filters survive every patch.
+func actSignals(p ActivityPage) string {
+	return "{actSource: " + JSString(p.SourceID) + ", actAsset: " + JSString(p.AssetKey) +
+		", actKind: " + JSString(p.Kind) + "}"
+}
+
+// actMoreGet loads the page of older entries that starts at the opaque cursor.
+func actMoreGet(cursor string) string {
+	return "@get(" + JSString("/activity/list?before="+url.QueryEscape(cursor)) + ", " + actFilter + ")"
+}
+
+// ---- reports ----------------------------------------------------------------------------
+
+// basisSubmit posts the manual cost form.
+const basisSubmit = `@post('/reports/basis', {contentType: 'form'})`
+
+// csvSubmit posts the CSV import form (multipart, so the file rides along).
+const csvSubmit = `@post('/reports/import', {contentType: 'form'})`
+
+func basisDeleteClick(asset string) string {
+	return "confirm(" + JSString("Remove the manual cost for "+asset+"?") + ") && @post(" + JSString("/reports/basis/"+url.PathEscape(asset)+"/delete") + ")"
+}
+
+// setCostClick fills the manual cost form for a row without a known cost and moves the
+// cursor to the cost field. The href (#basis-form) is the fallback without scripting.
+func setCostClick(asset string, amount float64) string {
+	return "document.getElementById('f-asset').value = " + JSString(asset) +
+		"; document.getElementById('f-amount').value = " + JSString(numTrim(amount)) +
+		"; document.getElementById('f-cost').focus()"
+}
+
+// ---- alerts -----------------------------------------------------------------------------
+
+// alertTestClick sends a test notification.
+const alertTestClick = `@post('/alerts/test')`
+
+func alertEditHref(id string) string { return "/alerts/" + url.PathEscape(id) + "/edit" }
+
+func alertDeleteClick(id, name string) string {
+	return "confirm(" + JSString("Delete the alert "+name+"?") + ") && @post(" + JSString("/alerts/"+url.PathEscape(id)+"/delete") + ")"
+}
+
+func alertFormAction(editID string) string {
+	if editID == "" {
+		return "/alerts"
+	}
+	return "/alerts/" + url.PathEscape(editID)
+}
+
+func alertSubmitClick(editID string) string {
+	return "@post(" + JSString(alertFormAction(editID)) + ", {contentType: 'form'})"
+}
+
+// alertSignals is the data-signals object of the alert editor's wrapper, which is never
+// patched (only #form-errors is), so the chosen type survives a failed save.
+func alertSignals(p AlertFormPage) string {
+	return "{ruleType: " + JSString(p.ruleType()) + "}"
+}
+
+// ruleTypeIs is true while the given alert type is chosen.
+func ruleTypeIs(t string) string { return "$ruleType === " + JSString(t) }

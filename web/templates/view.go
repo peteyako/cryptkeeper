@@ -317,6 +317,32 @@ func FieldLabel(name string) string {
 		return "Extra assets"
 	case "watch":
 		return "Watch list"
+	case "type":
+		return "Alert type"
+	case "minPct":
+		return "Minimum drop"
+	case "asset":
+		return "Asset"
+	case "amount":
+		return "Amount"
+	case "cost":
+		return "Total cost"
+	case "above":
+		return "Rises above"
+	case "below":
+		return "Falls below"
+	case "portfolio":
+		return "Portfolio"
+	case "pct":
+		return "Move"
+	case "window":
+		return "Window"
+	case "minutes":
+		return "Minutes"
+	case "minUsd":
+		return "Minimum value"
+	case "cooldown":
+		return "Wait before telling you again"
 	}
 	return name
 }
@@ -396,7 +422,14 @@ func ByteSize(n int64) string {
 }
 
 // BackupWhen is the time of a backup: "Oct 16, 11:42".
-func BackupWhen(t time.Time) string { return t.Format("Jan 2, 15:04") }
+func BackupWhen(t time.Time) string { return Local(t).Format("Jan 2, 15:04") }
+
+// Location is the time zone dates and clock times are shown in: the server's local zone
+// (set TZ, e.g. TZ=America/Los_Angeles, in Docker). Tests pin it to UTC.
+var Location = time.Local
+
+// Local converts t to the display time zone.
+func Local(t time.Time) time.Time { return t.In(Location) }
 
 // missingText says which wallets a portfolio still lists but no longer exist.
 func missingText(ids []string) string {

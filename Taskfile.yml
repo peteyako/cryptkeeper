@@ -1,0 +1,77 @@
+# Vault tasks — run with go-task (https://taskfile.dev): `task --list`
+version: "3"
+
+vars:
+  BIN: crypto-portfolio
+  LDFLAGS: -s -w
+
+tasks:
+  generate:
+    desc: Generate Go code from templ templates
+    sources: ["web/templates/**/*.templ"]
+    generates: ["web/templates/**/*_templ.go"]
+    cmds:
+      - go tool templ generate
+
+  run:
+    desc: Run Vault locally (http://localhost:8787)
+    deps: [generate]
+    cmds:
+      - go run . serve -config config.yaml
+
+  dev:
+    desc: Live reload while editing templates (templ watch + proxy)
+    cmds:
+      - go tool templ generate --watch --proxy="http://localhost:8787" --cmd="go run . serve -config config.yaml"
+
+  preview:
+    desc: Serve every screen with demo data on http://localhost:8790
+    deps: [generate]
+    cmds:
+      - go run ./cmd/uipreview
+
+  build:
+    desc: Build a static binary (CGO off)
+    deps: [generate]
+    env: { CGO_ENABLED: "0" }
+    cmds:
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o {{.BIN}} .
+
+  test:
+    desc: Run all tests with the race detector
+    deps: [generate]
+    cmds:
+      - go test -race ./...
+
+  vet:
+    desc: go vet + gofmt check
+    cmds:
+      - go vet ./...
+      - test -z "$(gofmt -l . | grep -v _templ.go)" || (gofmt -l . | grep -v _templ.go; exit 1)
+
+  check:
+    desc: Everything CI should run — generate (and verify no drift), vet, test
+    cmds:
+      - task: generate
+      - git diff --exit-code -- 'web/templates/*_templ.go'
+      - task: vet
+      - task: test
+
+  linux-amd64:
+    desc: Cross-compile for linux/amd64 into dist/
+    deps: [generate]
+    env: { CGO_ENABLED: "0", GOOS: linux, GOARCH: amd64 }
+    cmds:
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o dist/{{.BIN}}-linux-amd64 .
+
+  linux-arm64:
+    desc: Cross-compile for linux/arm64 (Raspberry Pi, NAS) into dist/
+    deps: [generate]
+    env: { CGO_ENABLED: "0", GOOS: linux, GOARCH: arm64 }
+    cmds:
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o dist/{{.BIN}}-linux-arm64 .
+
+  docker:
+    desc: Build the container image (docker or podman)
+    cmds:
+      - '{{if eq OS "darwin"}}podman{{else}}docker{{end}} build -t vault-portfolio .'

@@ -79,6 +79,10 @@ type ActivityResult struct {
 }
 
 // ActivitySource is implemented by sources that can list transactions.
+//
+// On failure a source may return an error together with a result: if the result carries a
+// non-nil State, the entries and State reflect valid progress up to the failure and are
+// saved (the error is still reported). An error with a nil State discards the result.
 type ActivitySource interface {
 	Activity(ctx context.Context, req ActivityRequest) (ActivityResult, error)
 }

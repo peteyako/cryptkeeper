@@ -246,9 +246,12 @@ func (s *Syncer) syncSource(ctx context.Context, e Entry, since time.Time, vals 
 		calls = backfillCalls // history fills faster on the first ticks
 	}
 	for i := 0; i < calls; i++ {
-		var res core.ActivityResult
-		res, err = e.Src.Activity(callCtx, core.ActivityRequest{State: state, Since: since, Budget: budget})
-		if err != nil {
+		res, callErr := e.Src.Activity(callCtx, core.ActivityRequest{State: state, Since: since, Budget: budget})
+		// A source may fail partway and still return what it fetched plus a State that
+		// resumes after it (e.g. one slow Esplora page out of many). Keep that progress;
+		// without a State nothing can be trusted, so drop the result.
+		if callErr != nil && res.State == nil {
+			err = callErr
 			return fresh
 		}
 		valCtx, stopVal := context.WithTimeout(ctx, s.callTimeout()) // pricing gets its own budget
@@ -259,7 +262,11 @@ func (s *Syncer) syncSource(ctx context.Context, e Entry, since time.Time, vals 
 			return fresh
 		}
 		fresh = append(fresh, added...)
-		if err = s.Store.saveProgress(ctx, e.ID, res.State, res.BackfillDone, time.Now()); err != nil {
+		if err = s.Store.saveProgress(ctx, e.ID, res.State, res.BackfillDone && callErr == nil, time.Now()); err != nil {
+			return fresh
+		}
+		if callErr != nil {
+			err = callErr // recorded as last_error by the deferred handler, after the progress
 			return fresh
 		}
 		state, done = res.State, res.BackfillDone

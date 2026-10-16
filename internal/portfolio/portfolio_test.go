@@ -315,7 +315,7 @@ func TestPriceChanges(t *testing.T) {
 		hist.Record(ctx, Snapshot{UpdatedAt: ts, Prices: map[string]core.Price{"BTC": {USD: btc}},
 			Wallets: []WalletView{{ID: "w", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("w", "BTC", 1)}}}}})
 	}
-	row(now.Add(-week-30*time.Hour), 50)  // outside tolerance (±16.8h)
+	row(now.Add(-week-30*time.Hour), 50) // outside tolerance (±16.8h)
 	row(now.Add(-week+2*time.Hour), 100) // nearest within tolerance
 	got, err := hist.PriceChanges(ctx, map[string]float64{"BTC": 110, "ETH": 3000}, week, now)
 	if err != nil || !near(got["BTC"], 10) {
@@ -327,5 +327,25 @@ func TestPriceChanges(t *testing.T) {
 	none, _ := hist.PriceChanges(ctx, map[string]float64{"BTC": 110}, 365*24*time.Hour, now)
 	if len(none) != 0 {
 		t.Fatalf("no history a year back: %v", none)
+	}
+}
+
+func TestValueAt(t *testing.T) {
+	db := openDB(t)
+	hist := &History{DB: db, Interval: time.Minute}
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	hist.Record(ctx, Snapshot{UpdatedAt: base, Prices: map[string]core.Price{"BTC": {USD: 100}, "SOL": {USD: 10}},
+		Wallets: []WalletView{{ID: "w", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("w", "BTC", 2)}, {Holding: h("w", "SOL", 5)}}}}})
+	v, ok, err := hist.ValueAt(ctx, base.Add(20*time.Minute), time.Hour, nil)
+	if err != nil || !ok || v != 250 {
+		t.Fatalf("%v %v %v", v, ok, err)
+	}
+	v, _, _ = hist.ValueAt(ctx, base, time.Hour, func(_, k string) bool { return k == "SOL" })
+	if v != 50 {
+		t.Fatalf("filtered %v", v)
+	}
+	if _, ok, _ := hist.ValueAt(ctx, base.Add(5*time.Hour), time.Hour, nil); ok {
+		t.Fatal("no row within tolerance")
 	}
 }

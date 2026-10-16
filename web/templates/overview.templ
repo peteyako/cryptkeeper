@@ -206,11 +206,23 @@ templ holdingsCard(p OverviewPage) {
 	<section class="card holdings" aria-labelledby="holdings-h">
 		<div class="holdings__head">
 			<h2 id="holdings-h" class="h-sec">Holdings</h2>
-			<label class="search" for="p-search">
-				@Icon("search", 15)
-				<span class="sr-only">Search holdings</span>
-				<input id="p-search" type="text" placeholder="Search holdings" autocomplete="off" data-bind="q"/>
-			</label>
+			<div class="holdings__tools">
+				if len(p.PnL) > 0 {
+					<button
+						type="button"
+						class="btn btn--secondary btn--sm pnl-toggle"
+						aria-pressed="false"
+						data-on:click="$showPnl = !$showPnl"
+						data-attr:aria-pressed="$showPnl ? 'true' : 'false'"
+						data-class="{'is-pressed': $showPnl}"
+					>P/L</button>
+				}
+				<label class="search" for="p-search">
+					@Icon("search", 15)
+					<span class="sr-only">Search holdings</span>
+					<input id="p-search" type="text" placeholder="Search holdings" autocomplete="off" data-bind="q"/>
+				</label>
+			</div>
 		</div>
 		if len(p.Snap.Assets) == 0 {
 			<p class="empty-note">No holdings yet. Balances appear after the first sync.</p>
@@ -226,6 +238,9 @@ templ holdingsCard(p OverviewPage) {
 							<th class="col-val num" scope="col">Value</th>
 							<th class="col-chg num" scope="col">24h</th>
 							<th class="col-chg7 num" scope="col">7d</th>
+							if len(p.PnL) > 0 {
+								<th class="col-pnl num" scope="col" data-show="$showPnl" style="display:none">P/L</th>
+							}
 						</tr>
 					</thead>
 					<tbody>
@@ -260,6 +275,11 @@ templ holdingsCard(p OverviewPage) {
 								<td class="col-chg7 num">
 									@changeCell7(a.Change7d)
 								</td>
+								if len(p.PnL) > 0 {
+									<td class="col-pnl num" data-show="$showPnl" style="display:none">
+										@pnlCell(p.PnL[a.AssetKey])
+									</td>
+								}
 							</tr>
 						}
 					</tbody>
@@ -267,6 +287,17 @@ templ holdingsCard(p OverviewPage) {
 			</div>
 		}
 	</section>
+}
+
+// pnlCell is the optional P/L column: the arrow, sign and percent of the unrealized result,
+// or a dash when the cost of the asset is not known.
+templ pnlCell(c PnLCell) {
+	if c.OK {
+		{{ text, dir := ChangePct(c.Pct) }}
+		<span class={ "chg", "chg--" + dir }>{ text }</span>
+	} else {
+		<span class="chg chg--none" aria-label="No profit or loss available">—</span>
+	}
 }
 
 templ watchCard(p OverviewPage) {

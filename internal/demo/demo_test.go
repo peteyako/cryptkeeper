@@ -2,10 +2,13 @@ package demo
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 
+	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/web/templates"
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
@@ -268,5 +271,358 @@ func TestPortfolioPageBuilders(t *testing.T) {
 	}
 	if bad := PortfolioFormInvalid(now); bad.Errors["name"] == "" || bad.Errors[""] == "" || bad.AllWallets {
 		t.Error("invalid form should show errors")
+	}
+}
+
+// ---- activity, reports, alerts -------------------------------------------------------------
+
+func TestActivityFixtures(t *testing.T) {
+	rows := ActivityRows(now)
+	if len(rows) < 60 {
+		t.Fatalf("want a long feed, got %d rows", len(rows))
+	}
+	ids := map[string]bool{}
+	byID := map[string]core.Tx{}
+	kinds := map[core.TxKind]bool{}
+	statuses := map[core.TxStatus]bool{}
+	for i, r := range rows {
+		tx := r.Tx
+		if ids[tx.ID] {
+			t.Errorf("duplicate id %s", tx.ID)
+		}
+		ids[tx.ID] = true
+		byID[tx.ID] = tx
+		kinds[tx.Kind], statuses[tx.Status] = true, true
+		if tx.ID != core.TxID(tx.SourceID, tx.ExternalID) {
+			t.Errorf("%s: id is not source:external", tx.ID)
+		}
+		if i > 0 && tx.Time.After(rows[i-1].Tx.Time) {
+			t.Errorf("row %d is newer than the one before it", i)
+		}
+		if tx.Time.After(now) {
+			t.Errorf("%s is in the future", tx.ID)
+		}
+		if r.SourceLabel == "" {
+			t.Errorf("%s: no source label", tx.ID)
+		}
+		if tx.Fee != nil && tx.Fee.Amount >= 0 {
+			t.Errorf("%s: a fee is a negative leg", tx.ID)
+		}
+		for _, l := range tx.Legs {
+			if l.USD != nil && (*l.USD < 0) != (l.Amount < 0) {
+				t.Errorf("%s: %s value %v is not signed like its amount %v", tx.ID, l.Symbol, *l.USD, l.Amount)
+			}
+		}
+		if tx.ExplorerURL != "" && !strings.HasPrefix(tx.ExplorerURL, "https://") {
+			t.Errorf("%s: explorer link %s", tx.ID, tx.ExplorerURL)
+		}
+	}
+	for _, k := range []core.TxKind{core.TxReceive, core.TxSend, core.TxTransfer, core.TxTrade, core.TxSwap, core.TxReward, core.TxStake, core.TxFee, core.TxOther} {
+		if !kinds[k] {
+			t.Errorf("no %s entry in the fixtures", k)
+		}
+	}
+	for _, s := range []core.TxStatus{core.TxPending, core.TxConfirmed, core.TxFailed} {
+		if !statuses[s] {
+			t.Errorf("no %s entry in the fixtures", s)
+		}
+	}
+	// Matched transfers point at each other, across two sources, and share a hash.
+	matched := 0
+	for _, r := range rows {
+		tx := r.Tx
+		if tx.PeerID == "" {
+			continue
+		}
+		matched++
+		peer, ok := byID[tx.PeerID]
+		if !ok {
+			t.Errorf("%s: peer %s does not exist", tx.ID, tx.PeerID)
+			continue
+		}
+		if peer.PeerID != tx.ID || peer.SourceID != tx.PeerSource || tx.SourceID != peer.PeerSource || peer.TxHash != tx.TxHash {
+			t.Errorf("%s and %s are not a matched pair", tx.ID, peer.ID)
+		}
+		if tx.Legs[0].Amount != -peer.Legs[0].Amount {
+			t.Errorf("%s: the two sides of a transfer move opposite amounts", tx.ID)
+		}
+		if r.PeerLabel == "" {
+			t.Errorf("%s: no peer label", tx.ID)
+		}
+	}
+	if matched != 4 {
+		t.Errorf("want two matched transfers (4 rows), got %d", matched)
+	}
+}
+
+func TestActivityPaging(t *testing.T) {
+	all := ActivityRows(now)
+	var got []string
+	page := Activity("", "", "", "", now)
+	for n := 0; ; n++ {
+		if n > 100 {
+			t.Fatal("paging does not end")
+		}
+		if len(page.Rows) == 0 || len(page.Rows) > ActivityPageSize {
+			t.Fatalf("page %d has %d rows", n, len(page.Rows))
+		}
+		for _, r := range page.Rows {
+			got = append(got, r.Tx.ID)
+		}
+		if page.More == "" {
+			break
+		}
+		if len(page.Rows) != ActivityPageSize {
+			t.Errorf("a page with more after it must be full, got %d rows", len(page.Rows))
+		}
+		page = Activity("", "", "", page.More, now)
+	}
+	if len(got) != len(all) {
+		t.Fatalf("paging returned %d rows, want %d", len(got), len(all))
+	}
+	for i, r := range all {
+		if got[i] != r.Tx.ID {
+			t.Fatalf("row %d is %s, want %s", i, got[i], r.Tx.ID)
+		}
+	}
+	if p := Activity("", "", "", "not-a-cursor", now); len(p.Rows) != ActivityPageSize || p.More == "" {
+		t.Error("a bad cursor starts from the top")
+	}
+
+	// Filters apply before paging.
+	cb := Activity(IDCoinbase, "", "", "", now)
+	for _, r := range cb.Rows {
+		if r.Tx.SourceID != IDCoinbase {
+			t.Errorf("source filter let %s through", r.Tx.SourceID)
+		}
+	}
+	for _, r := range Activity("", "ETH", "", "", now).Rows {
+		found := false
+		for _, l := range r.Tx.Legs {
+			found = found || l.AssetKey == "ETH"
+		}
+		if !found {
+			t.Errorf("asset filter let %s through", r.Tx.ID)
+		}
+	}
+	for _, r := range Activity("", "", "reward", "", now).Rows {
+		if r.Tx.Kind != core.TxReward {
+			t.Errorf("kind filter let %s through", r.Tx.Kind)
+		}
+	}
+	if p := Activity(IDCold, "ETH", "", "", now); len(p.Rows) != 0 || p.More != "" {
+		t.Error("Cold storage has no ETH activity")
+	}
+	p := Activity(IDKraken, "BTC", "trade", "", now)
+	if p.SourceID != IDKraken || p.AssetKey != "BTC" || p.Kind != "trade" || len(p.Rows) == 0 {
+		t.Errorf("filters are echoed back: %+v", p)
+	}
+	for _, o := range p.Sources {
+		if o.ID == IDMom {
+			t.Error("a manual source has no activity to filter by")
+		}
+	}
+	if len(p.Assets) < 5 || len(p.Sync) != 4 {
+		t.Errorf("filter options: %d assets, %d sync rows", len(p.Assets), len(p.Sync))
+	}
+	e := ActivityEmpty(now)
+	if len(e.Rows) != 0 || e.More != "" {
+		t.Error("empty activity has no rows")
+	}
+	for _, s := range e.Sync {
+		if s.Count != 0 || !s.LastSync.IsZero() || s.BackfillDone {
+			t.Errorf("an empty feed has nothing synced: %+v", s)
+		}
+	}
+}
+
+func TestWalletActivity(t *testing.T) {
+	for _, tc := range []struct {
+		id   string
+		more bool
+		min  int
+	}{{IDCold, false, 5}, {IDCoinbase, true, 25}, {IDKraken, false, 3}, {IDPhantom, false, 5}, {IDMom, false, 0}} {
+		p, _ := Wallet(tc.id, "activity", now)
+		if p.ActivityMore != tc.more {
+			t.Errorf("%s: ActivityMore = %v", tc.id, p.ActivityMore)
+		}
+		if len(p.Activity) < tc.min || len(p.Activity) > 25 {
+			t.Errorf("%s: %d rows", tc.id, len(p.Activity))
+		}
+		for _, r := range p.Activity {
+			if r.Tx.SourceID != tc.id {
+				t.Errorf("%s shows an entry of %s", tc.id, r.Tx.SourceID)
+			}
+		}
+	}
+}
+
+func TestReportsFixtures(t *testing.T) {
+	p := Reports(now)
+	snap := Snapshot(now)
+	if len(p.Rows) != len(snap.Assets) {
+		t.Fatalf("%d P/L rows for %d assets", len(p.Rows), len(snap.Assets))
+	}
+	var basis, unreal, known float64
+	var manual, noBasis int
+	for i, r := range p.Rows {
+		a := snap.Assets[i]
+		if r.AssetKey != a.AssetKey || !near(r.Amount, a.Amount) || !near(r.Value, a.ValueUSD) {
+			t.Errorf("%s: row does not match the snapshot", r.Symbol)
+		}
+		if r.Overridden {
+			manual++
+		}
+		if !r.HasBasis {
+			noBasis++
+			if r.Basis != 0 || r.Unrealized != 0 || r.UnknownUnits <= 0 {
+				t.Errorf("%s: no basis, nothing computed: %+v", r.Symbol, r)
+			}
+			continue
+		}
+		k := r.Amount - r.UnknownUnits
+		kv := r.Value * k / r.Amount
+		if !near(r.Unrealized, kv-r.Basis) {
+			t.Errorf("%s: unrealized %v != known value %v - basis %v", r.Symbol, r.Unrealized, kv, r.Basis)
+		}
+		if math.Abs(r.AvgCost*k-r.Basis) > 0.01 {
+			t.Errorf("%s: avg cost x known units != basis", r.Symbol)
+		}
+		if math.Abs(r.UnrealizedPct-r.Unrealized/r.Basis*100) > 1e-9 {
+			t.Errorf("%s: pct", r.Symbol)
+		}
+		basis += r.Basis
+		unreal += r.Unrealized
+		known += kv
+	}
+	if manual != 2 || noBasis != 2 {
+		t.Errorf("want 2 manual and 2 without a cost, got %d and %d", manual, noBasis)
+	}
+	if !near(p.TotalBasis, basis) || !near(p.TotalUnrealized, unreal) || !near(p.TotalValue, snap.TotalUSD) {
+		t.Errorf("totals %v %v %v vs %v %v %v", p.TotalBasis, p.TotalUnrealized, p.TotalValue, basis, unreal, snap.TotalUSD)
+	}
+	if want := known / snap.TotalUSD; math.Abs(p.Coverage-want) > 1e-9 || p.Coverage <= 0 || p.Coverage >= 1 {
+		t.Errorf("coverage %v, want %v (strictly between 0 and 1)", p.Coverage, want)
+	}
+	if len(p.Realized) != 3 || p.Realized[0].Year != now.Year() || p.Realized[0].Year < p.Realized[1].Year {
+		t.Errorf("realized newest year first: %+v", p.Realized)
+	}
+	if len(p.Manual) != 2 || len(p.AssetOptions) != len(snap.Assets) {
+		t.Errorf("manual %d, options %d", len(p.Manual), len(p.AssetOptions))
+	}
+
+	cells := PnLCells(now)
+	if len(cells) != len(snap.Assets) {
+		t.Errorf("%d cells", len(cells))
+	}
+	for _, r := range p.Rows {
+		if c := cells[r.AssetKey]; c.OK != r.HasBasis || c.Pct != r.UnrealizedPct {
+			t.Errorf("%s: cell %+v vs row", r.Symbol, c)
+		}
+	}
+	if ov := Overview(now); len(ov.PnL) != len(snap.Assets) {
+		t.Error("the overview carries the P/L cells")
+	}
+
+	// Dropping a fixture's manual cost takes its badge away; a new one overrides the cost.
+	without := ReportsWith(now, p.Manual[1:])
+	if without.Rows[0].Overridden {
+		t.Error("BTC lost its manual cost")
+	}
+	dot := ReportsWith(now, append(append([]templates.ManualBasisRow(nil), p.Manual...), templates.ManualBasisRow{Asset: "DOT", Amount: 185.20, CostUSD: 1500}))
+	for _, r := range dot.Rows {
+		if r.AssetKey == "DOT" && (!r.HasBasis || !r.Overridden || r.Basis != 1500 || r.UnknownUnits != 0 || !near(r.Unrealized, r.Value-1500)) {
+			t.Errorf("DOT after a manual cost: %+v", r)
+		}
+	}
+	if dot.Coverage <= p.Coverage || dot.TotalBasis != p.TotalBasis+1500 {
+		t.Errorf("a new cost raises the coverage (%v -> %v) and the basis", p.Coverage, dot.Coverage)
+	}
+	same := ReportsWith(now, p.Manual)
+	if same.TotalBasis != p.TotalBasis || same.Coverage != p.Coverage {
+		t.Error("the fixture's own manual costs change nothing")
+	}
+	if e := ReportsEmpty(now); len(e.Rows) != 0 || e.Coverage != 0 {
+		t.Error("empty reports")
+	}
+}
+
+func TestAlertFixtures(t *testing.T) {
+	p := Alerts(now)
+	types := map[string]bool{}
+	var paused int
+	for _, r := range p.Rules {
+		types[r.Type] = true
+		if !r.Enabled {
+			paused++
+		}
+		if r.Name == "" || r.Summary == "" || r.ID == "" {
+			t.Errorf("incomplete rule %+v", r)
+		}
+		if _, ok := alertValues[r.ID]; !ok {
+			t.Errorf("rule %s has no form values", r.ID)
+		}
+	}
+	for _, typ := range []string{"balance_drop", "price", "portfolio_move", "source_down", "large_activity"} {
+		if !types[typ] {
+			t.Errorf("no %s rule", typ)
+		}
+	}
+	if paused != 1 {
+		t.Errorf("want one paused rule, got %d", paused)
+	}
+	var withErr int
+	for i, e := range p.Recent {
+		if e.Err != "" {
+			withErr++
+		}
+		if i > 0 && e.Time.After(p.Recent[i-1].Time) {
+			t.Error("recent alerts are newest first")
+		}
+	}
+	if withErr != 1 || p.NtfyHost == "" || !p.Redact {
+		t.Errorf("one failed delivery, ntfy configured, amounts hidden: %d %q %v", withErr, p.NtfyHost, p.Redact)
+	}
+	if e := AlertsEmpty(now); len(e.Rules) != 0 || e.NtfyHost != "" {
+		t.Error("empty alerts: no rules, no ntfy")
+	}
+	if l := AlertsLoadError(now); l.LoadError == "" {
+		t.Error("load error")
+	}
+
+	n := AlertForm("", now)
+	if n.EditID != "" || n.Values["type"] != "balance_drop" || n.Values["enabled"] == "" || n.Values["cooldown"] != "6h" {
+		t.Errorf("new form defaults: %+v", n.Values)
+	}
+	if len(n.WalletOptions) != 5 || len(n.AssetOptions) == 0 || n.PortfolioOptions[0].ID != "all" {
+		t.Errorf("form options: %d wallets, %d assets, %v", len(n.WalletOptions), len(n.AssetOptions), n.PortfolioOptions)
+	}
+	for id := range alertValues {
+		f := AlertForm(id, now)
+		if f.EditID != id || f.Values["type"] == "" {
+			t.Errorf("edit %s: %+v", id, f)
+		}
+	}
+	if AlertForm("nope", now).EditID != "" {
+		t.Error("an unknown id gives the create form")
+	}
+	// The fixture map is not shared between forms.
+	a := AlertForm(AlertBTCAbove, now)
+	a.Values["asset"] = "changed"
+	if AlertForm(AlertBTCAbove, now).Values["asset"] != "BTC" {
+		t.Error("form values must be copied")
+	}
+	if inv := AlertFormInvalid(now); inv.Errors["asset"] == "" || inv.Errors[""] == "" {
+		t.Error("invalid form has errors")
+	}
+}
+
+func TestSettingsCarriesSync(t *testing.T) {
+	s := Settings(now)
+	if len(s.Sync) != 4 || s.Now.IsZero() {
+		t.Errorf("settings sync: %d rows, now %v", len(s.Sync), s.Now)
+	}
+	if got := SyncRows(now); got[2].LastError == "" || got[0].BackfillDone != true || got[2].BackfillDone {
+		t.Errorf("sync fixtures: %+v", got)
 	}
 }

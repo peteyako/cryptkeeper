@@ -20,9 +20,13 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+	_ "time/tzdata" // TZ works in the distroless image (no system zoneinfo)
 
+	"crypto-portfolio/internal/activity"
+	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/httpx"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
@@ -77,6 +81,9 @@ type app struct {
 	registry   *sources.Registry
 	portfolios *portfolios.Store
 	prices     *prices.Service
+	activity   *activity.Store
+	costbasis  *costbasis.ManualStore
+	alertRules *alerts.RuleStore
 }
 
 // setup loads config, opens the database and the sources registry.
@@ -125,6 +132,15 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 		return nil, fs, err
 	}
 	a.portfolios = ps
+	a.activity = &activity.Store{DB: db}
+	if a.costbasis, err = costbasis.NewManualStore(filepath.Join(*dataDir, "costbasis.yaml"), filepath.Join(*dataDir, "backups")); err != nil {
+		db.Close()
+		return nil, fs, err
+	}
+	if a.alertRules, err = alerts.NewRuleStore(filepath.Join(*dataDir, "alerts.yaml"), filepath.Join(*dataDir, "backups")); err != nil {
+		db.Close()
+		return nil, fs, err
+	}
 	return a, fs, nil
 }
 
@@ -145,6 +161,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 			return asSource(solana.New(solana.Config{
 				ID: d.ID, Label: d.Label, Address: d.Address, RPCURL: a.cfg.Solana.RPCURL,
 				IncludeStake: a.cfg.Solana.IncludeStakeAccounts, HideMints: a.cfg.Solana.HideMints, AllowMints: a.cfg.Solana.AllowMints, Overrides: a.cfg.Solana.TokenOverrides,
+				DeFi: a.cfg.Solana.DeFi,
 			}, a.client, meta))
 		case sources.TypeManual:
 			return manual.New(d.ID, d.Holdings), nil
@@ -181,6 +198,73 @@ func (a *app) wallets() []portfolio.Wallet {
 		out = append(out, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
 	}
 	return out
+}
+
+// activitySources lists live sources that can report transactions.
+func (a *app) activitySources() []activity.Entry {
+	var out []activity.Entry
+	for _, e := range a.registry.Entries() {
+		if src, ok := e.Source.(core.ActivitySource); ok {
+			out = append(out, activity.Entry{ID: e.Def.ID, Label: e.Def.Label, Src: src})
+		}
+	}
+	return out
+}
+
+func (a *app) walletKinds() map[string]core.Kind {
+	kinds := map[string]core.Kind{}
+	for _, d := range a.registry.Defs() {
+		kinds[d.ID] = d.Kind
+	}
+	return kinds
+}
+
+// alertsEngine wires alert rules to ntfy, portfolio filters and history.
+func (a *app) alertsEngine(hist *portfolio.History) *alerts.Engine {
+	e := &alerts.Engine{
+		Rules:  a.alertRules,
+		DB:     a.db,
+		Redact: a.cfg.Ntfy.RedactAmounts,
+		Log:    a.log,
+		Labels: func(id string) string {
+			if d, ok := a.registry.Get(id); ok {
+				return d.Label
+			}
+			return id
+		},
+		PortfolioLabel: func(id string) string {
+			if p, ok := a.portfolios.Get(id); ok {
+				return p.Name
+			}
+			return "All holdings"
+		},
+		Portfolio: func(id string, snap portfolio.Snapshot) (float64, bool) {
+			if id != "" && id != "all" {
+				p, ok := a.portfolios.Get(id)
+				if !ok {
+					return 0, false
+				}
+				snap = portfolios.Apply(p, snap)
+			}
+			return snap.TotalUSD, !snap.HasStale
+		},
+		History: func(ctx context.Context, id string, at time.Time) (float64, bool) {
+			var inc portfolio.Include
+			if id != "" && id != "all" {
+				p, ok := a.portfolios.Get(id)
+				if !ok {
+					return 0, false
+				}
+				inc = portfolios.Include(p)
+			}
+			v, ok, err := hist.ValueAt(ctx, at, time.Hour, inc)
+			return v, ok && err == nil
+		},
+	}
+	if a.cfg.Ntfy.URL != "" {
+		e.Notifier = &alerts.Ntfy{URL: a.cfg.Ntfy.URL, Token: a.cfg.NtfyToken, Client: a.client}
+	}
+	return e
 }
 
 // seed imports config.yaml seedSources on first run only.
@@ -238,12 +322,30 @@ func serve(args []string) error {
 		MinUSD:       a.cfg.Solana.MinUSD,
 	}
 	ref := &portfolio.Refresher{Agg: agg, Broker: broker, History: hist, Interval: a.cfg.RefreshInterval(), Log: a.log}
-	a.registry.OnChange(ref.Kick)
+
+	engine := a.alertsEngine(hist)
+	ref.OnSnapshot = func(snap portfolio.Snapshot) {
+		go engine.OnSnapshot(context.WithoutCancel(ctx), snap) // never block the refresher on notifications
+	}
+	syncer := &activity.Syncer{
+		Store:    a.activity,
+		Sources:  a.activitySources,
+		Since:    func() time.Time { return time.Now().AddDate(0, 0, -a.cfg.Activity.BackfillDays) },
+		Interval: a.cfg.ActivityInterval(),
+		Log:      a.log,
+		Valuer:   a.prices,
+		OnNew: func(txs []core.Tx) {
+			engine.OnActivity(context.WithoutCancel(ctx), txs, a.walletKinds())
+		},
+	}
+	a.registry.OnChange(func() { ref.Kick(); syncer.Kick() })
 	go ref.Run(ctx)
+	go syncer.Run(ctx)
 
 	h := server.New(server.Deps{
 		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log,
-		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref, Broker: broker, History: hist, Prices: a.priceFunc(),
+		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref,
+		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, Broker: broker, History: hist, Prices: a.priceFunc(),
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
 	})

@@ -1,0 +1,239 @@
+package templates
+
+import (
+	"time"
+
+	"crypto-portfolio/internal/core"
+)
+
+// ActivityFull is the whole Activity page: the filters, the feed and the sync status.
+templ ActivityFull(p ActivityPage) {
+	@Layout(p.Shell, activityBody(p))
+}
+
+templ activityBody(p ActivityPage) {
+	<div class="activity" data-signals={ actSignals(p) }>
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Vault</span>
+				<h1 class="h-title">Activity</h1>
+				<p class="lede">Synced from your wallets and exchanges</p>
+			</div>
+			<div class="page-head__actions">
+				@HideButton()
+			</div>
+		</header>
+		<div class="act-grid">
+			<div class="act-main">
+				<div
+					class="act-filters"
+					role="group"
+					aria-label="Filter activity"
+					data-indicator="filtering"
+					data-on:change={ actFilterGet }
+				>
+					@actSelect("f-act-source", "Source", "actSource", withCurrent(p.sourceOpts(), p.SourceID), p.SourceID)
+					@actSelect("f-act-asset", "Asset", "actAsset", withCurrent(p.assetOpts(), p.AssetKey), p.AssetKey)
+					@actSelect("f-act-kind", "Kind", "actKind", withCurrent(actKinds, p.Kind), p.Kind)
+					<span class="act-filters__busy" role="status" data-show="$filtering" style="display:none">Updating…</span>
+				</div>
+				<section class="card act-card" aria-label="Activity feed">
+					@ActivityList(p)
+				</section>
+			</div>
+			<aside class="act-aside">
+				@ActivitySyncCard(p.Sync, p.Now)
+			</aside>
+		</div>
+	</div>
+}
+
+// actSelect is one filter: a labelled select bound to a signal.
+templ actSelect(id, label, signal string, opts []selectOpt, current string) {
+	<div class="field act-field">
+		<label class="field__label" for={ id }>{ label }</label>
+		<div class="select">
+			<select class="input" id={ id } data-bind={ signal }>
+				for _, o := range opts {
+					<option value={ o.Value } selected?={ o.Value == current }>{ o.Label }</option>
+				}
+			</select>
+		</div>
+	</div>
+}
+
+// ActivityList is the feed and its "load older" control, or the empty state. Its root is
+// #activity-list, so a filter change patches just this.
+templ ActivityList(p ActivityPage) {
+	<div id="activity-list" class="act-list">
+		if len(p.Rows) == 0 {
+			@activityEmpty(p)
+		} else {
+			<div id="activity-rows" class="tx-list" role="list" aria-label="Activity">
+				@ActivityRows(p.Rows, p.Now)
+			</div>
+			@ActivityMore(p)
+		}
+	</div>
+}
+
+templ activityEmpty(p ActivityPage) {
+	<div class="empty empty--inline">
+		<span class="empty__icon">
+			@Icon("activity", 24)
+		</span>
+		if p.activityFiltered() {
+			<h2 class="empty__title">No matching activity</h2>
+			<p class="empty__text">Nothing matches these filters.</p>
+			<a class="btn btn--secondary" href="/activity">Clear filters</a>
+		} else {
+			<h2 class="empty__title">No activity yet</h2>
+			<p class="empty__text">It appears as Vault syncs your sources; history is backfilled gradually.</p>
+		}
+	</div>
+}
+
+// ActivityRows are the rows of the feed, with no wrapper, so that a handler can append a
+// page of older rows to #activity-rows.
+templ ActivityRows(rows []ActivityRow, now time.Time) {
+	for _, r := range rows {
+		@activityRow(r, now)
+	}
+}
+
+templ activityRow(r ActivityRow, now time.Time) {
+	{{ glyph, tone := TxGlyph(r.Tx) }}
+	{{ sGlyph, sLabel, sTone := TxStatusView(r.Tx) }}
+	<div class={ "tx", templ.KV("tx--failed", r.Tx.Status == core.TxFailed) } role="listitem">
+		<span class={ "tx__disc", "tx__disc--" + tone } aria-hidden="true">{ glyph }</span>
+		<div class="tx__main">
+			<span class="tx__title">{ TxTitle(r) }</span>
+			<span class="tx__detail">
+				<time class="tx__when" datetime={ r.Tx.Time.Format(time.RFC3339) }>{ TxDate(r.Tx.Time, now) }<span class="tx__clock">{ ", " + TxClock(r.Tx.Time) }</span></time>
+				if r.SourceLabel != "" {
+					<span class="tx__src">
+						<span class={ "src-dot", "src-dot--" + SourceTone(r.SourceKind) } aria-hidden="true"></span>
+						{ r.SourceLabel }
+					</span>
+				}
+				@txHash(r.Tx)
+				if fee, ok := FeeLeg(r.Tx); ok {
+					<span class="tx__fee">
+						{ "fee " }
+						@FigText(Coin(fee.Amount, fee.Symbol), "•••• "+fee.Symbol)
+					</span>
+				}
+			</span>
+		</div>
+		<span class={ "chip", "chip--sm", "chip--" + sTone, "tx__status" } title={ TxStatusTitle(r.Tx) }>
+			if sGlyph != "" {
+				<span aria-hidden="true">{ sGlyph }</span>
+			}
+			<span>{ sLabel }</span>
+		</span>
+		<div class="tx__amts">
+			if len(r.Tx.Legs) == 0 {
+				<span class="tx__amt tx__amt--none" aria-label="No amount">—</span>
+			}
+			for _, l := range firstN(r.Tx.Legs, 2) {
+				<span class={ "tx__amt", templ.KV("tx__amt--in", l.Amount > 0) }>
+					@FigText(LegText(l), LegMask(l))
+				</span>
+			}
+			if n := len(r.Tx.Legs) - 2; n > 0 {
+				<span class="tx__more">+{ Comma(int64(n)) } more</span>
+			}
+			@txFiat(r.Tx)
+		</div>
+	</div>
+}
+
+// txHash is the shortened hash in the detail line: a link to the block explorer when the
+// entry has one, plain text otherwise, nothing for an entry without a hash.
+templ txHash(t core.Tx) {
+	if h := TxHash(t); h != "" {
+		if u := SafeExplorerURL(t.ExplorerURL); u != "" {
+			<span class="tx__hash">
+				<a
+					href={ templ.URL(u) }
+					target="_blank"
+					rel="noopener noreferrer"
+					title={ h }
+					aria-label={ "View transaction " + shortTx(h) + " in the explorer (opens a new tab)" }
+				>{ shortTx(h) }</a>
+			</span>
+		} else {
+			<span class="tx__hash" title={ h }>{ shortTx(h) }</span>
+		}
+	}
+}
+
+// txFiat is the value at the time of the entry, or a dash when it is not known.
+templ txFiat(t core.Tx) {
+	if v, ok := TxFiat(t); ok {
+		<span class="tx__fiat">
+			@FigFiat(v)
+		</span>
+	} else {
+		<span class="tx__fiat" aria-label="Value at the time is not known">—</span>
+	}
+}
+
+// ActivityMore is the "load older activity" control. Its root is #activity-more; with no
+// older entries it is an empty container. The button doubles as the infinite-scroll
+// trigger: one element carries the click, the intersection and the loading indicator, so
+// a click during an automatic load cannot fetch the same page twice.
+templ ActivityMore(p ActivityPage) {
+	<div id="activity-more" class="act-more">
+		if p.More != "" {
+			<button
+				type="button"
+				class="btn btn--ghost"
+				data-indicator="loadingMore"
+				data-attr:disabled="$loadingMore"
+				data-class="{'is-busy': $loadingMore}"
+				data-on:click={ actMoreGet(p.More) }
+				data-on-intersect__once={ actMoreGet(p.More) }
+			>Load older activity</button>
+		}
+	</div>
+}
+
+// ActivitySyncCard lists each source's activity sync state: how many entries it has, whether
+// the history is fully backfilled, when it last synced and its last error. Its root is
+// #activity-sync. The Activity and Settings pages both show it.
+templ ActivitySyncCard(rows []SyncRow, now time.Time) {
+	{{ now = nowOr(now) }}
+	<section id="activity-sync" class="card sync-card" aria-labelledby="sync-h">
+		<div class="sync-card__head">
+			<h2 id="sync-h" class="h-card">Activity sync</h2>
+			<span class="meta">{ Plural(len(rows), "source") }</span>
+		</div>
+		if len(rows) == 0 {
+			<p class="empty-note">No source syncs activity yet.</p>
+		} else {
+			<ul class="sync-list">
+				for _, s := range rows {
+					<li class="sync-row">
+						<div class="sync-row__top">
+							<span class={ "src-dot", "src-dot--" + SourceTone(s.Kind) } aria-hidden="true"></span>
+							<span class="sync-row__name">{ s.Label }</span>
+							if s.BackfillDone {
+								@StatusChip("●", "Up to date", "gain")
+							} else {
+								@StatusChip("◌", "Backfilling history…", "neutral")
+							}
+						</div>
+						<p class="sync-row__meta">{ syncEntries(s.Count) } · { syncWhen(s, now) }</p>
+						if s.LastError != "" {
+							<p class="sync-row__err">
+								<span aria-hidden="true">✕</span>
+								{ s.LastError }
+							</p>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}

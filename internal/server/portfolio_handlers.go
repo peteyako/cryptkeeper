@@ -14,6 +14,7 @@ import (
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
+	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/web/templates"
 )
@@ -133,6 +134,27 @@ func displayKey(k string) string {
 	return m[:4] + "…" + m[len(m)-4:]
 }
 
+// walletOptions lists configured sources for pickers.
+func (s *Server) walletOptions(includeManual bool) []templates.WalletOption {
+	var out []templates.WalletOption
+	for _, d := range s.Registry.Defs() {
+		if includeManual || d.Type != sources.TypeManual {
+			out = append(out, templates.WalletOption{ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind})
+		}
+	}
+	return out
+}
+
+// assetOptions lists currently held assets (by value) for pickers.
+func (s *Server) assetOptions() []templates.AssetOption {
+	snap, _ := s.latest()
+	out := make([]templates.AssetOption, 0, len(snap.Assets))
+	for _, a := range snap.Assets {
+		out = append(out, templates.AssetOption{Key: a.AssetKey, Symbol: a.Symbol, Name: a.Name, ValueUSD: a.ValueUSD})
+	}
+	return out
+}
+
 // --- manager ---
 
 func (s *Server) portfoliosPage(r *http.Request) templates.PortfoliosPage {
@@ -245,12 +267,8 @@ func (s *Server) portfolioForm(r *http.Request, editID string) (templates.Portfo
 		p.Watch = strings.Join(pf.Watch, " ")
 	}
 	p.Shell = s.shell(r, title, "portfolios", "all", "")
-	for _, d := range s.Registry.Defs() {
-		p.WalletOptions = append(p.WalletOptions, templates.WalletOption{ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind})
-	}
-	for _, a := range snap.Assets {
-		p.AssetOptions = append(p.AssetOptions, templates.AssetOption{Key: a.AssetKey, Symbol: a.Symbol, Name: a.Name, ValueUSD: a.ValueUSD})
-	}
+	p.WalletOptions = s.walletOptions(true)
+	p.AssetOptions = s.assetOptions()
 	return p, true
 }
 

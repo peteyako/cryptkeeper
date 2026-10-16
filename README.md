@@ -15,7 +15,7 @@ hiccups, and a design that puts numbers first.
 
 ```sh
 cp config.example.yaml config.yaml     # optional: defaults work
-make run                               # or: go run . serve
+task run                               # or: go run . serve   (go-task: https://taskfile.dev)
 ```
 
 Open http://localhost:8787 and click **Add source**.
@@ -84,6 +84,10 @@ solana:
   rpcUrl: https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 ```
 
+**DeFi:** Orca and Raydium concentrated-liquidity positions, Raydium LP tokens, locked/staked
+JUP and Jupiter perps are read automatically (`solana.defi` in config) and shown as their
+underlying tokens, grouped by position. Uncollected LP fees aren't included.
+
 ### Manual holdings
 Coins held anywhere Vault can't read, one per line: `BTC 0.25 owed by Sam`. Use
 `spl:<mint>` for Solana tokens.
@@ -118,6 +122,42 @@ crypto-portfolio portfolios export -o portfolios.yaml [-id long-term]
 crypto-portfolio portfolios import portfolios.yaml [-replace]
 ```
 
+## Activity
+
+Every source's transactions in one feed (**Activity**, and each wallet's Activity tab):
+Bitcoin from Esplora, Solana from your RPC, Coinbase and Kraken from their APIs. New activity
+syncs every `activityMinutes`; older history is backfilled gradually (down to
+`activity.backfillDays`) so free APIs aren't hammered. A withdrawal from an exchange that lands
+in one of your own wallets is shown once, as a **Transfer · Coinbase → Cold storage**.
+
+## Cost basis and reports
+
+**Reports** shows cost basis and unrealized P/L per asset (average cost across all wallets —
+moving coins between your own wallets never changes it), realized P/L by year, and CSV exports
+(holdings, history, P/L, activity). Basis comes from synced exchange trades and rewards, plus:
+
+- **Manual cost** for an asset (Reports → Manual cost basis, stored in `data/costbasis.yaml`).
+- **CSV import** for history older than the APIs reach: Coinbase *Transaction history* report and
+  Kraken *Ledgers* export. Re-importing the same file is safe.
+
+Not tax advice.
+
+## Alerts
+
+Notifications go to [ntfy](https://ntfy.sh) (the app or self-hosted). Pick a long random topic
+and add it to `config.yaml`:
+
+```yaml
+ntfy:
+  url: https://ntfy.sh/vault-<long-random-string>
+  redactAmounts: true   # notifications say "BTC balance dropped 12%", never amounts
+```
+
+Then **Alerts → New alert**: a cold-wallet balance drop (the security alert — never fires on
+stale data), price above/below, portfolio moves, a source down, or a large send from a
+self-custody wallet. **Send test notification** checks the setup. Rules live in
+`data/alerts.yaml`.
+
 ## Secrets and your data directory
 
 - Exchange secrets are encrypted at rest (AES-256-GCM) in `data/sources.yaml`.
@@ -147,17 +187,21 @@ needs HTTPS (use the `tailscale serve` URL) → menu → *Install app*.
 
 ## Configuration
 
-See `config.example.yaml`. Highlights: `refreshMinutes` (default 5), `staleMaxHours`
+See `config.example.yaml`. Dates and times are shown in the server's time zone; in Docker set
+`TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (default 5), `staleMaxHours`
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.
 
 ## Development
 
 ```sh
-make dev     # templ watch + live reload
-make test    # go test -race ./...
-make build   # static binary (CGO off)
-make linux-arm64
+task --list       # everything available
+task dev          # templ watch + live reload
+task preview      # every screen with demo data on :8790
+task test         # go test -race ./...
+task check        # generate (no drift) + vet + test
+task build        # static binary (CGO off)
+task linux-arm64
 ```
 
 The design source of truth is the Vault design system (`docs/design/`). The full plan is in `docs/plan.md`.

@@ -1,0 +1,438 @@
+package templates
+
+import (
+	"strconv"
+	"time"
+)
+
+// AlertsFull is the whole Alerts page: the notification status, the rules and what fired
+// recently.
+templ AlertsFull(p AlertsPage) {
+	@Layout(p.Shell, alertsBody(p))
+}
+
+templ alertsBody(p AlertsPage) {
+	<div class="alerts">
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Vault</span>
+				<h1 class="h-title">Alerts</h1>
+				<p class="lede">Get a notification when something changes</p>
+			</div>
+			<div class="page-head__actions">
+				<a class="btn btn--primary btn--add" href="/alerts/new">
+					@Icon("plus", 16)
+					New alert
+				</a>
+			</div>
+		</header>
+		<div class="alerts-grid">
+			<div class="alerts-main">
+				@AlertRules(p)
+				@RecentAlerts(p)
+			</div>
+			<aside class="alerts-aside">
+				@ntfyCard(p)
+			</aside>
+		</div>
+	</div>
+}
+
+// ntfyCard says where notifications go and has the test button.
+templ ntfyCard(p AlertsPage) {
+	<section class="card ntfy-card" aria-labelledby="ntfy-h">
+		<h2 id="ntfy-h" class="h-card">Notifications</h2>
+		if p.NtfyHost == "" {
+			@Notice("warn", "alert") {
+				<p class="notice__line"><strong>Notifications aren't set up.</strong> Alerts are saved, but nothing can be sent yet.</p>
+				<p class="notice__line">Add <span class="mono">ntfy.url</span> to <span class="mono">config.yaml</span> and restart Vault.</p>
+			}
+			<button type="button" class="btn btn--secondary btn--block" disabled>Send test notification</button>
+		} else {
+			<dl class="kv">
+				<div class="kv__row">
+					<dt>Delivered with</dt>
+					<dd>ntfy</dd>
+				</div>
+				<div class="kv__row">
+					<dt>Server</dt>
+					<dd>{ p.NtfyHost }</dd>
+				</div>
+			</dl>
+			if p.Redact {
+				@Notice("info", "shield") {
+					Amounts hidden in notifications
+				}
+			} else {
+				<p class="note">Notifications include amounts.</p>
+			}
+			<button
+				type="button"
+				class="btn btn--secondary btn--block"
+				data-indicator="testing"
+				data-attr:disabled="$testing"
+				data-class="{'is-busy': $testing}"
+				data-on:click={ alertTestClick }
+			>Send test notification</button>
+		}
+		@AlertTestResult(p.Test)
+	</section>
+}
+
+// AlertTestResult is the outcome of "Send test notification". Its root is #alert-test; the
+// zero value renders an empty container.
+templ AlertTestResult(r ImportOutcome) {
+	<div id="alert-test" class="import-result" aria-live="polite">
+		@outcomeNotice(r)
+	</div>
+}
+
+// AlertRules is the list of rules, or the empty state with ideas. Its root is
+// #alert-rules, so deleting a rule patches just this.
+templ AlertRules(p AlertsPage) {
+	<section id="alert-rules" class="card alert-rules" aria-labelledby="rules-h">
+		<div class="alert-rules__head">
+			<h2 id="rules-h" class="h-card">Rules</h2>
+			<span class="meta">{ Plural(len(p.Rules), "rule") }</span>
+		</div>
+		if p.LoadError != "" {
+			<div role="alert">
+				@Notice("warn", "alert") {
+					<p class="notice__line"><strong>Vault can't read alerts.yaml.</strong> The list below may be incomplete.</p>
+					<p class="notice__line pf-load-error">{ p.LoadError }</p>
+					<p class="notice__line">Fix the file and reload the page.</p>
+				}
+			</div>
+		}
+		if len(p.Rules) == 0 {
+			if p.LoadError == "" {
+				@alertsEmpty()
+			}
+		} else {
+			<ul class="rule-list">
+				for _, r := range p.Rules {
+					@ruleRow(r)
+				}
+			</ul>
+		}
+	</section>
+}
+
+templ alertsEmpty() {
+	<div class="empty empty--inline">
+		<span class="empty__icon">
+			@Icon("bell", 24)
+		</span>
+		<h3 class="empty__title">No alerts yet</h3>
+		<p class="empty__text">An alert tells you when something changes, so you don't have to keep looking. Some ideas:</p>
+		<ul class="idea-list">
+			<li>The balance of a hardware wallet goes down</li>
+			<li>Bitcoin rises above or falls below a price</li>
+			<li>Your portfolio moves 10% in a day</li>
+			<li>A source stops syncing</li>
+			<li>A large amount leaves a wallet</li>
+		</ul>
+		<a class="btn btn--primary" href="/alerts/new">
+			@Icon("plus", 16)
+			New alert
+		</a>
+	</div>
+}
+
+templ ruleRow(r AlertRuleRow) {
+	{{ name := ruleName(r) }}
+	{{ glyph, label, tone := alertEnabledChip(r.Enabled) }}
+	<li class="rule">
+		<div class="rule__main">
+			<div class="rule__head">
+				<span class="rule__name">{ name }</span>
+				<span class="chip chip--sm chip--info">{ AlertTypeLabel(r.Type) }</span>
+				@StatusChip(glyph, label, tone)
+			</div>
+			<p class="rule__summary">{ r.Summary }</p>
+		</div>
+		<div class="rule__actions">
+			<a class="btn btn--secondary btn--sm" href={ templ.URL(alertEditHref(r.ID)) } aria-label={ "Edit " + name }>Edit</a>
+			<button type="button" class="btn btn--danger btn--sm" aria-label={ "Delete " + name } data-on:click={ alertDeleteClick(r.ID, name) }>Delete</button>
+		</div>
+	</li>
+}
+
+// RecentAlerts lists what fired last, newest first, with delivery errors in red. Its root is
+// #alert-recent.
+templ RecentAlerts(p AlertsPage) {
+	{{ now := nowOr(p.Now) }}
+	<section id="alert-recent" class="card alert-recent" aria-labelledby="recent-h">
+		<div class="alert-rules__head">
+			<h2 id="recent-h" class="h-card">Recent alerts</h2>
+			<span class="meta">{ strconv.Itoa(len(p.Recent)) } shown</span>
+		</div>
+		if len(p.Recent) == 0 {
+			<p class="empty-note">Nothing has fired yet. When an alert triggers, it shows up here.</p>
+		} else {
+			<ul class="log-list">
+				for _, e := range p.Recent {
+					<li class="log-row">
+						<div class="log-row__top">
+							<span class="log-row__title">{ e.Title }</span>
+							<time class="log-row__time" datetime={ e.Time.Format(time.RFC3339) } title={ logWhen(e.Time) }>{ Ago(e.Time, now) }</time>
+						</div>
+						if e.Body != "" {
+							<p class="log-row__body">{ e.Body }</p>
+						}
+						if e.Err != "" {
+							<p class="log-row__err">
+								<span aria-hidden="true">✕</span>
+								Couldn't send: { e.Err }
+							</p>
+						}
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+// AlertFormFull is the create / edit alert form, inside the normal app shell.
+templ AlertFormFull(p AlertFormPage) {
+	@Layout(p.Shell, alertFormBody(p))
+}
+
+templ alertFormBody(p AlertFormPage) {
+	<div class="pf-editor" data-signals={ alertSignals(p) }>
+		<a class="back" href="/alerts">
+			@Icon("chevron-left", 16)
+			Alerts
+		</a>
+		<header class="pf-editor__head">
+			<h1 class="h-title">{ alertFormTitle(p) }</h1>
+			<p class="lede">{ alertFormLede(p) }</p>
+		</header>
+		<form
+			id="alert-form"
+			class="form card pf-form"
+			method="post"
+			action={ templ.URL(alertFormAction(p.EditID)) }
+			data-indicator="saving"
+			data-on:submit={ alertSubmitClick(p.EditID) }
+		>
+			if p.isEdit() {
+				<input type="hidden" name="editId" value={ p.EditID }/>
+			}
+			@FormErrors(p.Errors)
+			@alertTypeField(p)
+			@alertBalanceFields(p)
+			@alertPriceFields(p)
+			@alertMoveFields(p)
+			@alertSourceFields(p)
+			@alertLargeFields(p)
+			@textField(fieldSpec{
+				Name: "name", Label: "Name (optional)", Value: p.val("name"), Placeholder: "e.g. Cold storage watch",
+				Err: p.Errors["name"], MaxLen: 60, Help: "Shown as the title of the notification. Leave it blank to use a default.",
+			})
+			@alertCooldownField(p)
+			<label class="choice" for="f-enabled">
+				<input class="choice__input" type="checkbox" id="f-enabled" name="enabled" value="on" checked?={ p.enabled() }/>
+				<span class="choice__text">
+					<span class="choice__title">Enabled</span>
+					<span class="choice__help">Turn it off to keep the rule without getting notifications.</span>
+				</span>
+			</label>
+			<div class="form-actions">
+				<a class="btn btn--ghost" href="/alerts">Cancel</a>
+				<button
+					type="submit"
+					class="btn btn--primary btn--submit"
+					data-attr:disabled="$saving"
+					data-class="{'is-busy': $saving}"
+				>{ alertSaveLabel(p) }</button>
+			</div>
+		</form>
+	</div>
+}
+
+// alertTypeField is the Type select, bound to the ruleType signal that shows the matching
+// fields.
+templ alertTypeField(p AlertFormPage) {
+	<div class="field">
+		<label class="field__label" for="f-type">Alert type</label>
+		<div class="select">
+			<select
+				class={ "input", templ.KV("input--error", p.Errors["type"] != "") }
+				id="f-type"
+				name="type"
+				data-bind="ruleType"
+				if p.Errors["type"] != "" {
+					aria-invalid="true"
+					aria-describedby="f-type-err"
+				}
+			>
+				for _, o := range alertTypeOpts {
+					<option value={ o.Value } selected?={ o.Value == p.ruleType() }>{ o.Label }</option>
+				}
+			</select>
+		</div>
+		@fieldNote(fieldSpec{Name: "type", Err: p.Errors["type"]})
+	</div>
+}
+
+// alertBalanceFields: which wallets to watch and how big a drop counts. A group that does
+// not apply to the chosen type is hidden and disabled, so its inputs are not posted.
+templ alertBalanceFields(p AlertFormPage) {
+	{{ note := fieldSpec{Name: "wallets", Err: p.Errors["wallets"], Help: "Leave all unchecked to watch every non-exchange wallet."} }}
+	<fieldset
+		class="alert-fields"
+		aria-describedby={ note.Describe() }
+		data-show={ showExpr(alertBalanceDrop) }
+		data-attr:disabled={ hideExpr(alertBalanceDrop) }
+		if !p.shows(alertBalanceDrop) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="field__label pf-legend">Wallets to watch</legend>
+		<p class="muted-text">Warns you when a balance goes down, the first sign that funds left a wallet you thought was safe.</p>
+		if len(p.WalletOptions) == 0 {
+			<p class="field__help">No wallets yet. <a href="/sources/new">Add a source</a> first.</p>
+		} else {
+			for gi, g := range walletGroups(p.WalletOptions) {
+				<div class="choice-group" role="group" aria-labelledby={ "al-wg-" + strconv.Itoa(gi) }>
+					<p id={ "al-wg-" + strconv.Itoa(gi) } class="group-label">{ g.Title }</p>
+					<div class="pick-box">
+						for _, r := range g.Rows {
+							<label class="choice choice--row" for={ "al-w-" + strconv.Itoa(r.Index) }>
+								<input
+									class="choice__input"
+									type="checkbox"
+									id={ "al-w-" + strconv.Itoa(r.Index) }
+									name="wallets"
+									value={ r.ID }
+									checked?={ p.SelectedWallets[r.ID] }
+								/>
+								<span class={ "src-dot", "src-dot--" + SourceTone(r.Kind) } aria-hidden="true"></span>
+								<span class="choice__text">
+									<span class="choice__title">{ r.Label }</span>
+								</span>
+								<span class="choice__meta">{ kindCaption(r.Kind) }</span>
+							</label>
+						}
+					</div>
+				</div>
+			}
+		}
+		@fieldNote(note)
+		@textField(fieldSpec{
+			Name: "minPct", Label: "Minimum drop (%)", Value: p.val("minPct"), Placeholder: "0", Mono: true, InputMode: "decimal",
+			Err: p.Errors["minPct"], Help: "Leave it at 0 to be told about any decrease.",
+		})
+	</fieldset>
+}
+
+templ alertPriceFields(p AlertFormPage) {
+	<fieldset
+		class="alert-fields"
+		data-show={ showExpr(alertPrice) }
+		data-attr:disabled={ hideExpr(alertPrice) }
+		if !p.shows(alertPrice) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="field__label pf-legend">Price target</legend>
+		<p class="muted-text">Tells you when an asset's price crosses a level. Set one of the two.</p>
+		@textField(fieldSpec{
+			Name: "asset", Label: "Asset", Value: p.val("asset"), Placeholder: "BTC", Mono: true, List: "al-assets",
+			Err: p.Errors["asset"], Help: "Pick one you hold, or type any symbol.",
+		})
+		<datalist id="al-assets">
+			for _, o := range p.AssetOptions {
+				<option value={ o.Key }>{ o.Name }</option>
+			}
+		</datalist>
+		@textField(fieldSpec{
+			Name: "above", Label: "Rises above (USD)", Value: p.val("above"), Placeholder: "70000", Mono: true, InputMode: "decimal",
+			Err: p.Errors["above"],
+		})
+		@textField(fieldSpec{
+			Name: "below", Label: "Falls below (USD)", Value: p.val("below"), Placeholder: "55000", Mono: true, InputMode: "decimal",
+			Err: p.Errors["below"],
+		})
+	</fieldset>
+}
+
+templ alertMoveFields(p AlertFormPage) {
+	<fieldset
+		class="alert-fields"
+		data-show={ showExpr(alertPortfolioMove) }
+		data-attr:disabled={ hideExpr(alertPortfolioMove) }
+		if !p.shows(alertPortfolioMove) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="field__label pf-legend">Portfolio move</legend>
+		<p class="muted-text">Tells you when a portfolio's value moves a lot, up or down, within a time window.</p>
+		@selectField("portfolio", "Portfolio", p.portfolio(), p.portfolioOpts(), p.Errors["portfolio"])
+		@textField(fieldSpec{
+			Name: "pct", Label: "Moves by at least (%)", Value: p.val("pct"), Placeholder: "10", Mono: true, InputMode: "decimal",
+			Err: p.Errors["pct"],
+		})
+		@selectField("window", "Within", p.window(), withCurrentLabel(alertWindowOpts, p.window(), p.window()+" (custom)"), p.Errors["window"])
+	</fieldset>
+}
+
+templ alertSourceFields(p AlertFormPage) {
+	<fieldset
+		class="alert-fields"
+		data-show={ showExpr(alertSourceDown) }
+		data-attr:disabled={ hideExpr(alertSourceDown) }
+		if !p.shows(alertSourceDown) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="field__label pf-legend">Source down</legend>
+		<p class="muted-text">Tells you when a wallet or exchange keeps failing or goes stale, so you know the numbers you see may be old.</p>
+		@textField(fieldSpec{
+			Name: "minutes", Label: "Failing or stale for (minutes)", Value: p.val("minutes"), Placeholder: "60", Mono: true, InputMode: "numeric",
+			Err: p.Errors["minutes"],
+		})
+	</fieldset>
+}
+
+templ alertLargeFields(p AlertFormPage) {
+	<fieldset
+		class="alert-fields"
+		data-show={ showExpr(alertLargeActivity) }
+		data-attr:disabled={ hideExpr(alertLargeActivity) }
+		if !p.shows(alertLargeActivity) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="field__label pf-legend">Large send</legend>
+		<p class="muted-text">Tells you when a large amount leaves one of your self-custody wallets.</p>
+		@textField(fieldSpec{
+			Name: "minUsd", Label: "Worth at least (USD)", Value: p.val("minUsd"), Placeholder: "1000", Mono: true, InputMode: "decimal",
+			Err: p.Errors["minUsd"], Help: "Leave it at 0 to be told about every send.",
+		})
+	</fieldset>
+}
+
+// alertCooldownField is how long Vault stays quiet after an alert fires. Balance-drop and
+// source-down alerts re-arm on their own, so they do not show it.
+templ alertCooldownField(p AlertFormPage) {
+	<fieldset
+		class="alert-fields"
+		data-show={ showExpr(alertPrice, alertPortfolioMove, alertLargeActivity) }
+		data-attr:disabled={ hideExpr(alertPrice, alertPortfolioMove, alertLargeActivity) }
+		if !p.shows(alertPrice, alertPortfolioMove, alertLargeActivity) {
+			style="display:none"
+			disabled
+		}
+	>
+		<legend class="sr-only">Repeat notifications</legend>
+		@selectField("cooldown", "Wait before telling you again", p.cooldown(), withCurrentLabel(alertCooldownOpts, p.cooldown(), p.cooldown()+" (custom)"), p.Errors["cooldown"])
+		<p class="field__help">After an alert fires, Vault stays quiet about it for this long.</p>
+	</fieldset>
+}

@@ -128,6 +128,58 @@ func allPages(t *testing.T) []page {
 	full("portfolio form no options", templates.PortfolioFormFull(bare))
 
 	full("settings", templates.SettingsFull(demo.Settings(now)))
+
+	// activity
+	act := demo.Activity("", "", "", "", now)
+	full("activity", templates.ActivityFull(act))
+	older := demo.Activity("", "", "", act.More, now)
+	frag("activity list", templates.ActivityList(act))
+	frag("activity rows", templates.ActivityRows(older.Rows, now))
+	frag("activity more", templates.ActivityMore(act))
+	frag("activity more none", templates.ActivityMore(templates.ActivityPage{}))
+	full("activity filtered", templates.ActivityFull(demo.Activity(demo.IDCoinbase, "BTC", "trade", "", now)))
+	full("activity no match", templates.ActivityFull(demo.Activity(demo.IDCold, "ETH", "", "", now)))
+	full("activity empty", templates.ActivityFull(demo.ActivityEmpty(now)))
+	frag("sync card", templates.ActivitySyncCard(demo.SyncRows(now), now))
+	frag("sync card empty", templates.ActivitySyncCard(nil, now))
+
+	// reports
+	rp := demo.Reports(now)
+	full("reports", templates.ReportsFull(rp))
+	full("reports empty", templates.ReportsFull(demo.ReportsEmpty(now)))
+	rerr := rp
+	rerr.BasisErr = "Enter the amount you hold, e.g. 0.5."
+	rerr.Import = templates.ImportOutcome{OK: true, Message: "Imported 148 transactions (112 new)."}
+	full("reports messages", templates.ReportsFull(rerr))
+	frag("pnl", templates.PnLTable(rp))
+	frag("pnl empty", templates.PnLTable(demo.ReportsEmpty(now)))
+	frag("basis panel", templates.CostBasisPanel(rp))
+	frag("basis panel error", templates.CostBasisPanel(rerr))
+	frag("csv import", templates.CSVImportPanel(rp))
+	frag("csv ok", templates.CSVResultView(rerr.Import))
+	frag("csv failed", templates.CSVResultView(templates.ImportOutcome{Message: "Nothing was imported: line 1: not a Kraken export."}))
+	frag("csv empty", templates.CSVResultView(templates.ImportOutcome{}))
+
+	// alerts
+	ap := demo.Alerts(now)
+	full("alerts", templates.AlertsFull(ap))
+	full("alerts empty", templates.AlertsFull(demo.AlertsEmpty(now)))
+	full("alerts load error", templates.AlertsFull(demo.AlertsLoadError(now)))
+	aok := ap
+	aok.Test = templates.ImportOutcome{OK: true, Message: "Test notification sent. Check your phone."}
+	full("alerts tested", templates.AlertsFull(aok))
+	frag("alert rules", templates.AlertRules(ap))
+	frag("alert recent", templates.RecentAlerts(ap))
+	frag("alert recent empty", templates.RecentAlerts(demo.AlertsEmpty(now)))
+	frag("alert test ok", templates.AlertTestResult(aok.Test))
+	frag("alert test failed", templates.AlertTestResult(templates.ImportOutcome{Message: "Sending failed: 503"}))
+	frag("alert test empty", templates.AlertTestResult(templates.ImportOutcome{}))
+	full("alert form new", templates.AlertFormFull(demo.AlertForm("", now)))
+	for _, id := range []string{demo.AlertColdDrop, demo.AlertBTCAbove, demo.AlertDayMove, demo.AlertKrakenOff, demo.AlertBigSend} {
+		full("alert form edit "+id, templates.AlertFormFull(demo.AlertForm(id, now)))
+	}
+	full("alert form invalid", templates.AlertFormFull(demo.AlertFormInvalid(now)))
+
 	full("error", templates.ErrorFull(demo.Shell("Error", "overview", "all", ""), "That wallet doesn't exist."))
 	return out
 }
@@ -181,6 +233,17 @@ func TestRequiredIDs(t *testing.T) {
 		"portfolio form new":            {"portfolio-form", "form-errors", "f-name"},
 		"portfolio form edit long-term": {"portfolio-form", "form-errors", "f-name"},
 		"portfolio form invalid":        {"portfolio-form", "form-errors", "f-name-err", "f-wallets-err"},
+
+		"activity":           {"activity-list", "activity-rows", "activity-more", "activity-sync"},
+		"activity empty":     {"activity-list", "activity-sync"},
+		"activity no match":  {"activity-list"},
+		"reports":            {"pnl", "basis-panel", "basis-form", "csv-import", "csv-form", "csv-result"},
+		"reports empty":      {"pnl", "basis-panel", "basis-form", "csv-import", "csv-form", "csv-result"},
+		"alerts":             {"alert-rules", "alert-recent", "alert-test"},
+		"alerts empty":       {"alert-rules", "alert-recent", "alert-test"},
+		"alert form new":     {"alert-form", "form-errors", "f-type", "f-name"},
+		"alert form invalid": {"alert-form", "form-errors", "f-asset-err", "f-above-err"},
+		"settings":           {"activity-sync"},
 	}
 	for name, ids := range want {
 		p := byName(t, pages, name)
@@ -191,7 +254,7 @@ func TestRequiredIDs(t *testing.T) {
 		}
 	}
 	// /stream patches #dashboard, so only pages that have one may open it.
-	for _, name := range []string{"wallets", "wallet cold holdings", "portfolios", "portfolio form new"} {
+	for _, name := range []string{"wallets", "wallet cold holdings", "portfolios", "portfolio form new", "activity", "reports", "alerts", "alert form new"} {
 		lacks(t, byName(t, pages, name), `id="live"`)
 	}
 
@@ -202,6 +265,12 @@ func TestRequiredIDs(t *testing.T) {
 		"errors none": "form-errors", "errors some": "form-errors",
 		"portfolio list": "portfolio-list", "portfolio io": "portfolio-io", "portfolio io imported": "portfolio-io",
 		"import ok": "import-result", "import failed": "import-result", "import empty": "import-result",
+		"activity list": "activity-list", "activity more": "activity-more", "activity more none": "activity-more",
+		"sync card": "activity-sync", "sync card empty": "activity-sync",
+		"pnl": "pnl", "pnl empty": "pnl", "basis panel": "basis-panel", "basis panel error": "basis-panel",
+		"csv import": "csv-import", "csv ok": "csv-result", "csv failed": "csv-result", "csv empty": "csv-result",
+		"alert rules": "alert-rules", "alert recent": "alert-recent", "alert recent empty": "alert-recent",
+		"alert test ok": "alert-test", "alert test failed": "alert-test", "alert test empty": "alert-test",
 	}
 	for name, id := range roots {
 		p := byName(t, pages, name)
@@ -212,7 +281,7 @@ func TestRequiredIDs(t *testing.T) {
 }
 
 var (
-	reOnDash      = regexp.MustCompile(`data-on-[a-z]`)
+	reOnDash      = regexp.MustCompile(`data-on-[a-z-]+`)
 	reOnModDot    = regexp.MustCompile(`data-on:[a-z]+\.`)
 	reIndicator   = regexp.MustCompile(`data-indicator="\$`)
 	reAttrHidden  = regexp.MustCompile(`data-attr:hidden`)
@@ -250,8 +319,14 @@ func TestSilentFailureGuards(t *testing.T) {
 				{reJSURL, "javascript: URL"},
 			}
 			for _, g := range guards {
-				if m := g.re.FindString(p.html); m != "" {
+				for _, m := range g.re.FindAllString(p.html, -1) {
+					// data-on-intersect is a Datastar plugin of its own (not an event
+					// handler), as are the interval and signal-patch ones.
+					if g.re == reOnDash && (m == "data-on-intersect" || m == "data-on-interval" || m == "data-on-signal-patch") {
+						continue
+					}
 					t.Errorf("%s (found %q)", g.what, m)
+					break
 				}
 			}
 
@@ -365,7 +440,7 @@ func TestLayoutHead(t *testing.T) {
 	}
 	un := html.UnescapeString(body)
 	has(t, page{"body", un, false},
-		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false}"`,
+		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}"`,
 		`data-class="{'amounts-hidden': $hide}"`,
 		`$hide = s.getItem('vault.hide') === '1'`,
 		`document.documentElement.dataset.theme`,
@@ -533,7 +608,8 @@ func TestWalletContent(t *testing.T) {
 	has(t, mom, "Hand-entered", "owed by Sam")
 
 	act := byName(t, pages, "wallet phantom activity")
-	has(t, act, "Coming soon")
+	lacks(t, act, "Coming soon")
+	has(t, act, `class="tx-list" role="list"`, "Staking reward", "Swapped SOL → USDC")
 
 	// Bitcoin-only tabs.
 	addr := byName(t, pages, "wallet cold addresses")
@@ -731,7 +807,7 @@ func TestDatastarExpressionsCompile(t *testing.T) {
 	}
 	attr := regexp.MustCompile(`\s(data-[^\s=]+)="([^"]*)"`)
 	returns := map[string]bool{"attr": true, "class": true, "show": true, "signals": true, "text": true, "style": true, "computed": true}
-	plain := map[string]bool{"on": true, "effect": true, "init": true}
+	plain := map[string]bool{"on": true, "effect": true, "init": true, "on-intersect": true}
 	seen := map[string]bool{}
 	var bodies []string
 	kinds := map[string]int{}
@@ -750,7 +826,7 @@ func TestDatastarExpressionsCompile(t *testing.T) {
 			}
 		}
 	}
-	for _, k := range []string{"on", "attr", "class", "show", "signals", "init", "effect"} {
+	for _, k := range []string{"on", "attr", "class", "show", "signals", "init", "effect", "on-intersect"} {
 		if kinds[k] == 0 {
 			t.Errorf("no data-%s attributes found; the extraction is broken", k)
 		}
@@ -1126,5 +1202,582 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 	bad.PF = "a b/c"
 	if out := render(t, templates.OverviewFull(bad)); !strings.Contains(out, `href="/portfolios/a%20b%2Fc/edit"`) {
 		t.Error("Edit href must path-escape the portfolio id")
+	}
+}
+
+// ---- activity, reports, alerts ------------------------------------------------------------
+
+func unescaped(p page) page {
+	return page{p.name + " (unescaped)", html.UnescapeString(p.html), p.full}
+}
+
+func TestActivityPage(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "activity")
+	un := unescaped(p)
+	has(t, p,
+		`<title>Activity · Vault</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
+		`aria-label="Hide balances"`, `<a class="nav-item nav-item--on" href="/activity" aria-current="page">`,
+		`<div class="activity" data-signals="{actSource: &#39;&#39;, actAsset: &#39;&#39;, actKind: &#39;&#39;}">`,
+		`role="group" aria-label="Filter activity"`, `data-indicator="filtering"`,
+		`<label class="field__label" for="f-act-source">Source</label>`, `<label class="field__label" for="f-act-asset">Asset</label>`, `<label class="field__label" for="f-act-kind">Kind</label>`,
+		`data-bind="actSource"`, `data-bind="actAsset"`, `data-bind="actKind"`,
+		"All sources", "All assets", "All kinds", "Received", "Sent", "Transfers", "Trades", "Swaps", "Rewards", "Staking", "Fees",
+		`<option value="coinbase">Coinbase</option>`, `<option value="BTC">BTC · Bitcoin</option>`, `<option value="trade">Trades</option>`,
+		`role="list" aria-label="Activity"`, `role="listitem"`,
+	)
+	has(t, un,
+		`data-on:change="@get('/activity/list', {filterSignals: {include: /^act/}})"`,
+		`data-signals="{actSource: '', actAsset: '', actKind: ''}"`,
+	)
+	if n := strings.Count(p.html, `class="tx"`) + strings.Count(p.html, `class="tx tx--failed"`); n != demo.ActivityPageSize {
+		t.Errorf("a page holds %d rows, got %d", demo.ActivityPageSize, n)
+	}
+	// Titles and detail lines of the fixtures.
+	has(t, p,
+		"Transfer · Coinbase → Cold storage", "Swapped SOL → USDC", "Staking reward", "Bought BTC", "Sold ETH",
+		`<span class="tx__disc tx__disc--accent" aria-hidden="true">⇄</span>`, `<span class="tx__disc tx__disc--gain" aria-hidden="true">★</span>`,
+		`<span class="chip chip--sm chip--warn tx__status" title="Pending, 2 confirmations so far"><span aria-hidden="true">◐</span> <span>2 conf</span></span>`,
+		`<span class="chip chip--sm chip--neutral tx__status" title="Confirmed"><span>Confirmed</span></span>`,
+		`<span class="tx__hash"><a href="https://mempool.space/tx/`, `target="_blank" rel="noopener noreferrer"`, `>3f9a…c21e</a>`,
+		`class="src-dot src-dot--hardware"`, `class="src-dot src-dot--exchange"`, `class="src-dot src-dot--hot"`,
+		`<time class="tx__when" datetime="`, `<span class="tx__clock">, `,
+	)
+	// Amounts and values are private figures; direction and status are not.
+	has(t, p,
+		`<span class="tx__amt tx__amt--in"><span class="fig"><span class="fig-v">+0.0500 BTC</span><span class="fig-m" role="img" aria-label="Hidden amount">+•••• BTC</span></span></span>`,
+		`<span class="tx__amt"><span class="fig"><span class="fig-v">−0.0500 BTC</span>`,
+		`<span class="fig-v">$3,206.00</span>`, `$ ••••••`, `<span class="fig-v">+296.12 USDC</span>`,
+	)
+	// The sync card.
+	has(t, p, `id="activity-sync"`, "Activity sync", "4 sources", "1,204 entries", "38 entries", "Synced 2m ago", "Synced 3h ago",
+		"Up to date", "Backfilling history…", `class="sync-row__err"`, "Rate limited by Kraken")
+
+	// Load older: one element carries the click, the intersection and the indicator.
+	if m := byName(t, pages, "activity more"); true {
+		mun := unescaped(m)
+		cursor := demo.Activity("", "", "", "", now).More
+		want := `@get('/activity/list?before=` + cursor + `', {filterSignals: {include: /^act/}})`
+		has(t, mun, `data-on:click="`+want+`"`, `data-on-intersect__once="`+want+`"`, `data-indicator="loadingMore"`,
+			`data-attr:disabled="$loadingMore"`, `data-class="{'is-busy': $loadingMore}"`, ">Load older activity</button>", `type="button"`)
+	}
+	if got := strings.TrimSpace(byName(t, pages, "activity more none").html); got != `<div id="activity-more" class="act-more"></div>` {
+		t.Errorf("no older entries renders an empty container, got %q", got)
+	}
+	last := demo.Activity("", "", "", "", now)
+	for last.More != "" {
+		last = demo.Activity("", "", "", last.More, now)
+	}
+	if got := strings.TrimSpace(render(t, templates.ActivityMore(last))); got != `<div id="activity-more" class="act-more"></div>` {
+		t.Errorf("the last page has no load-more control: %s", got)
+	}
+
+	// Rows only: no wrapper, no ids, so a page can be appended to #activity-rows.
+	rows := byName(t, pages, "activity rows")
+	if !strings.HasPrefix(rows.html, `<div class="tx`) || strings.Contains(rows.html, ` id="`) {
+		t.Errorf("rows fragment must be bare rows, starts with %.60q", rows.html)
+	}
+
+	// Filters: the current values are selected and ride in the signals.
+	f := byName(t, pages, "activity filtered")
+	fun := unescaped(f)
+	has(t, f, `<option value="coinbase" selected>Coinbase</option>`, `<option value="BTC" selected>BTC · Bitcoin</option>`, `<option value="trade" selected>Trades</option>`)
+	has(t, fun, `data-signals="{actSource: 'coinbase', actAsset: 'BTC', actKind: 'trade'}"`)
+	lacks(t, f, "Swapped SOL")
+
+	// Empty states.
+	nm := byName(t, pages, "activity no match")
+	has(t, nm, "No matching activity", "Nothing matches these filters.", `href="/activity"`, "Clear filters")
+	lacks(t, nm, `id="activity-rows"`, "No activity yet")
+	em := byName(t, pages, "activity empty")
+	has(t, em, "No activity yet", "It appears as Vault syncs your sources; history is backfilled gradually.", "Not synced yet", "0 entries")
+	lacks(t, em, `id="activity-rows"`, "Clear filters", "Load older")
+
+	// Failed and pending rows.
+	var failed, pending page
+	for _, pg := range pages {
+		if strings.Contains(pg.html, "tx--failed") && failed.name == "" {
+			failed = pg
+		}
+		if strings.Contains(pg.html, "2 conf") && pending.name == "" {
+			pending = pg
+		}
+	}
+	if failed.name == "" || pending.name == "" {
+		t.Fatal("no page shows a failed and a pending row")
+	}
+	// Confirmations show only while pending.
+	all := ""
+	for _, pg := range pages {
+		all += pg.html
+	}
+	if !regexp.MustCompile(`class="chip chip--sm chip--loss tx__status" title="Failed, no funds moved"><span aria-hidden="true">✕</span> <span>Failed</span>`).MatchString(all) {
+		t.Error("a failed entry shows the loss chip")
+	}
+	if strings.Contains(all, "40 conf") || strings.Contains(all, "6 conf") {
+		t.Error("confirmations are only shown while pending")
+	}
+}
+
+func TestActivityRowsEdgeCases(t *testing.T) {
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	at := now.Add(-time.Hour)
+	row := func(tx core.Tx, label string) templates.ActivityRow {
+		tx.Time = at
+		return templates.ActivityRow{Tx: tx, SourceLabel: label, SourceKind: core.KindHardware}
+	}
+	// No legs: a dash with a name. No fiat value: a dash with a name. More than two legs.
+	out := render(t, templates.ActivityRows([]templates.ActivityRow{
+		row(core.Tx{Kind: core.TxOther, Note: "Contract call"}, "Phantom"),
+		row(core.Tx{Kind: core.TxReceive, Legs: []core.Leg{{Symbol: "BTC", Amount: 1}}}, "Cold storage"),
+		row(core.Tx{Kind: core.TxSwap, Legs: []core.Leg{
+			{Symbol: "SOL", Amount: -1, USD: usdPtr(-150)}, {Symbol: "JUP", Amount: -2}, {Symbol: "USDC", Amount: 150, USD: usdPtr(150)}, {Symbol: "BONK", Amount: 5},
+		}}, "Phantom"),
+	}, now))
+	if !strings.Contains(out, `<span class="tx__amt tx__amt--none" aria-label="No amount">—</span>`) {
+		t.Error("an entry without legs shows a dash")
+	}
+	if !strings.Contains(out, `<span class="tx__fiat" aria-label="Value at the time is not known">—</span>`) {
+		t.Error("an entry without a value shows a dash")
+	}
+	if !strings.Contains(out, `<span class="tx__more">+2 more</span>`) || len(regexp.MustCompile(`class="tx__amt[ "]`).FindAllString(out, -1)) != 1+1+2 {
+		t.Errorf("only two legs show, then +N more: %s", out)
+	}
+	if strings.Contains(out, `class="tx__hash`) || strings.Contains(out, `class="tx__fee`) {
+		t.Error("no hash and no fee, nothing rendered")
+	}
+}
+
+func usdPtr(v float64) *float64 { return &v }
+
+func TestActivityHostileValues(t *testing.T) {
+	const evil = `<img src=x onerror=alert(1)>'"&`
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	rows := demo.ActivityRows(now)[:3]
+	rows[0].SourceLabel, rows[0].PeerLabel = evil, evil
+	rows[0].Tx.Counterparty = evil
+	rows[0].Tx.Kind = core.TxReceive
+	rows[1].Tx.ExplorerURL = "javascript:alert(1)"
+	rows[1].Tx.TxHash = "abc123abc123abc123"
+	rows[2].Tx.ExplorerURL = "http://insecure.example/tx/1"
+	rows[2].Tx.TxHash = "def456def456def456"
+	pg := demo.Activity("", "", "", "", now)
+	pg.Rows = rows
+	pg.More = `1'+"</script><b>`
+	pg.SourceID, pg.AssetKey, pg.Kind = `x'y</script><i>`, evil, evil
+	pg.Sources = append(pg.Sources, templates.WalletOption{ID: `a'b`, Label: evil})
+	pg.Assets = append(pg.Assets, templates.AssetOption{Key: evil, Symbol: evil, Name: evil})
+	pg.Sync = append(pg.Sync, templates.SyncRow{ID: "x", Label: evil, LastError: evil})
+	out := render(t, templates.ActivityFull(pg))
+	for _, bad := range []string{"<img", "<i>", "</script><i>", "</script><b>", "onerror=alert(1)>", "javascript:", "insecure.example"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("unescaped or unsafe %q in output", bad)
+		}
+	}
+	if strings.Count(out, "<script") != 1 {
+		t.Error("script injected")
+	}
+	un := html.UnescapeString(out)
+	if !strings.Contains(un, `{actSource: 'x\'y\u003c/script\u003e\u003ci\u003e', actAsset: '\u003cimg src=x onerror=alert(1)\u003e\'\"\u0026', actKind:`) {
+		t.Errorf("filter signals not escaped:\n%s", grep(un, "actSource"))
+	}
+	if !strings.Contains(un, `@get('/activity/list?before=1%27%2B%22%3C%2Fscript%3E%3Cb%3E', {filterSignals: {include: /^act/}})`) {
+		t.Errorf("cursor not escaped:\n%s", grep(un, "before="))
+	}
+	// Only the one untouched https explorer link opens a tab.
+	if n := strings.Count(out, `target="_blank"`); n != 1 {
+		t.Errorf("only https explorer links may open: %d links", n)
+	}
+}
+
+func TestReportsPage(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "reports")
+	un := unescaped(p)
+	has(t, p,
+		`<title>Reports · Vault</title>`, `<h1 class="h-title">Reports</h1>`, "Profit and loss, cost basis and exports",
+		`<a class="nav-item nav-item--on" href="/reports" aria-current="page">`,
+		// Tiles.
+		"Cost basis", "Value", "Unrealized P/L", "Basis known for 92% of value", `class="cover"`, `style="width:91.8%;"`,
+		`<span class="stat__value chg--up">▲ <span class="fig">`, `<span class="stat__sub chg--up">+23.32%</span>`, "All holdings, at today's prices",
+		// Table.
+		`id="pnl"`, `<th class="col-asset" scope="col">Asset</th>`, `>Amount</th>`, `>Avg cost</th>`, `>Cost basis</th>`, `>Value</th>`, `>Unrealized</th>`,
+		"Bitcoin", "Polkadot", "Bonk", `<span class="badge">manual</span>`, "0.0500 BTC with unknown cost", "185.2000 DOT with unknown cost",
+		`<span class="chg chg--up">▲ <span class="fig"><span class="fig-v">+$9,023.17</span>`, `<span class="chg pl__pct chg--up">+50.18%</span>`,
+		`<span class="chg chg--down">▼ <span class="fig"><span class="fig-v">−$553.50</span>`, `<span class="chg pl__pct chg--down">−4.44%</span>`,
+		`<span class="chg chg--none" aria-label="No profit or loss available">—</span>`, `aria-label="Set the cost of Polkadot"`, `href="#basis-form"`,
+		`<span class="fig-v">$42,694.48</span>`, `$ ••••`,
+		// Realized.
+		"Realized P/L", "by year", ">2026<", ">2025<", ">2024<", "+$1,204.12", "−$212.40", "+$3,880.00",
+		// Exports and the disclaimer.
+		`href="/export/holdings.csv" download`, `href="/export/history.csv?range=All" download`, `href="/export/pnl.csv" download`, `href="/export/activity.csv" download`,
+		`aria-label="Download holdings CSV"`, "Average cost across all wallets. Not tax advice.",
+	)
+	if n := strings.Count(p.html, `<span class="badge">manual</span>`); n != 2 {
+		t.Errorf("BTC and SOL are overridden, got %d manual badges", n)
+	}
+	if n := strings.Count(p.html, ">Set cost</a>"); n != 2 {
+		t.Errorf("DOT and BONK have no cost, got %d Set cost links", n)
+	}
+	has(t, un,
+		`data-on:click__prevent="document.getElementById('f-asset').value = 'DOT'; document.getElementById('f-amount').value = '185.2'; document.getElementById('f-cost').focus()"`,
+		`data-on:click__prevent="document.getElementById('f-asset').value = 'BONK'; document.getElementById('f-amount').value = '12500000'; document.getElementById('f-cost').focus()"`,
+	)
+	for _, m := range regexp.MustCompile(`<a [^>]*download[^>]*>`).FindAllString(p.html, -1) {
+		if strings.Contains(m, "data-on") {
+			t.Errorf("export link must be a plain anchor: %s", m)
+		}
+	}
+	if n := strings.Count(p.html, " download"); n != 4 {
+		t.Errorf("want 4 export links, got %d", n)
+	}
+
+	// Manual costs.
+	has(t, p,
+		`id="basis-panel"`, "Manual cost basis", "0.30006114", "$11,402.50", "Bought over 2021 to 2023", "Kraken, before the API key",
+		`aria-label="Remove the manual cost for BTC"`, `aria-label="Remove the manual cost for SOL"`, `class="btn btn--danger btn--icon"`,
+		`<form id="basis-form" class="form basis-form" method="post" action="/reports/basis"`, `data-indicator="savingBasis"`,
+		`name="asset"`, `name="amount"`, `name="cost"`, `name="note"`, `list="basis-assets"`, `<datalist id="basis-assets">`, `<option value="BTC">Bitcoin</option>`,
+		`inputmode="decimal"`, `maxlength="120"`, "Sets the total you paid for this amount; overrides the computed cost for this asset.",
+		`data-attr:disabled="$savingBasis"`, ">Save cost</button>",
+	)
+	has(t, un,
+		`data-on:submit="@post('/reports/basis', {contentType: 'form'})"`,
+		`data-on:click="confirm('Remove the manual cost for BTC?') && @post('/reports/basis/BTC/delete')"`,
+	)
+	lacks(t, p, "notice--loss")
+	for _, name := range []string{"asset", "amount", "cost"} {
+		if tag := tagOf(t, p.html, `name="`+name+`"`); !strings.Contains(tag, "required") {
+			t.Errorf("%s must be required: %s", name, tag)
+		}
+	}
+	if tag := tagOf(t, p.html, `name="note"`); strings.Contains(tag, "required") {
+		t.Errorf("the note is optional: %s", tag)
+	}
+
+	// CSV import.
+	has(t, p,
+		`id="csv-import"`, "Import from a CSV", `<form id="csv-form" class="form" method="post" action="/reports/import" enctype="multipart/form-data"`,
+		`data-indicator="importingCsv"`, `name="source" value="coinbase" checked`, `name="source" value="kraken"`,
+		"Coinbase transaction history CSV", "Kraken ledgers CSV", `name="file" type="file" accept=".csv,text/csv" required`,
+		`<div id="csv-result" class="import-result" aria-live="polite"></div>`, ">Import CSV</button>",
+	)
+	has(t, un, `data-on:submit="@post('/reports/import', {contentType: 'form'})"`)
+	if strings.Contains(tagOf(t, p.html, `value="kraken"`), "checked") {
+		t.Error("Coinbase is the default export")
+	}
+
+	// Messages.
+	m := byName(t, pages, "reports messages")
+	has(t, m, `<div role="alert"><div class="notice notice--loss">`, "Enter the amount you hold, e.g. 0.5.", "notice--gain", "Imported 148 transactions (112 new).")
+	ok := byName(t, pages, "csv ok")
+	has(t, ok, "notice--gain", "Imported 148 transactions (112 new).")
+	bad := byName(t, pages, "csv failed")
+	has(t, bad, "notice--loss", "Nothing was imported: line 1: not a Kraken export.")
+	if got := strings.TrimSpace(byName(t, pages, "csv empty").html); got != `<div id="csv-result" class="import-result" aria-live="polite"></div>` {
+		t.Errorf("empty csv result should be an empty container, got %q", got)
+	}
+
+	// Nothing held yet.
+	e := byName(t, pages, "reports empty")
+	has(t, e, "Nothing is held yet.", "No sales on record yet.", `<span class="stat__value stat__value--none">—</span>`, "Needs a cost basis", "No cost basis known yet", `id="basis-form"`)
+	lacks(t, e, "<table", `class="basis-list"`, `class="year-list"`)
+}
+
+func TestOverviewPnLColumn(t *testing.T) {
+	pages := allPages(t)
+	ov := byName(t, pages, "overview")
+	un := unescaped(ov)
+	has(t, ov,
+		`<th class="col-pnl num" scope="col" data-show="$showPnl" style="display:none">P/L</th>`,
+		`<td class="col-pnl num" data-show="$showPnl" style="display:none"><span class="chg chg--up">▲ +50.18%</span></td>`,
+		`<td class="col-pnl num" data-show="$showPnl" style="display:none"><span class="chg chg--down">▼ −4.44%</span></td>`,
+		`<span class="chg chg--none" aria-label="No profit or loss available">—</span>`,
+		`class="btn btn--secondary btn--sm pnl-toggle" aria-pressed="false"`,
+	)
+	has(t, un,
+		`data-on:click="$showPnl = !$showPnl"`, `data-attr:aria-pressed="$showPnl ? 'true' : 'false'"`, `data-class="{'is-pressed': $showPnl}"`,
+		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}"`,
+	)
+	if n := strings.Count(ov.html, `<td class="col-pnl num"`); n != 8 {
+		t.Errorf("want a P/L cell on every holdings row (8), got %d", n)
+	}
+	// Without P/L data there is no toggle and no column.
+	bare := demo.Overview(now)
+	bare.PnL = nil
+	out := render(t, templates.OverviewFull(bare))
+	if strings.Contains(out, "pnl-toggle") || strings.Contains(out, "col-pnl") {
+		t.Error("no P/L data, no P/L column")
+	}
+	// The P/L toggle is the only addition to the 24h and 7d columns.
+	has(t, ov, `<th class="col-chg num" scope="col">24h</th><th class="col-chg7 num" scope="col">7d</th>`)
+}
+
+func TestSettingsActivitySync(t *testing.T) {
+	s := byName(t, allPages(t), "settings")
+	has(t, s,
+		`id="activity-sync"`, "Activity sync", "1,204 entries", "Backfilling history…", "Up to date", "Rate limited by Kraken",
+		`id="set-pf-h"`, "Portfolios", `<a class="btn btn--secondary" href="/portfolios">Manage portfolios</a>`,
+		"Appearance", "Privacy", "About this install",
+	)
+	// Without a Now the card still renders relative times from the wall clock.
+	p := demo.Settings(now)
+	p.Now = time.Time{}
+	p.Sync = []templates.SyncRow{{ID: "x", Label: "X", Kind: core.KindExchange, Count: 1, LastSync: time.Now().Add(-time.Minute)}}
+	out := render(t, templates.SettingsFull(p))
+	if !strings.Contains(out, "1 entry") || !strings.Contains(out, "Synced 1m ago") {
+		t.Errorf("zero Now should fall back to the wall clock: %s", grep(out, "entry"))
+	}
+}
+
+func TestWalletActivityTab(t *testing.T) {
+	pages := allPages(t)
+	cb := byName(t, pages, "wallet coinbase activity")
+	has(t, cb, `class="tab tab--on"`, `class="tx-list" role="list"`, "Transfer · Coinbase → Cold storage", "Sold ETH", `class="btn btn--ghost tx-all" href="/activity?source=coinbase"`, "View all activity")
+	if n := strings.Count(cb.html, `role="listitem"`); n != 25 {
+		t.Errorf("the tab shows the 25 most recent entries, got %d", n)
+	}
+	cold := byName(t, pages, "wallet cold activity")
+	has(t, cold, "Received BTC", "Transfer · Kraken → Cold storage", "2 conf")
+	lacks(t, cold, "View all activity", "Coming soon")
+	mom := byName(t, pages, "wallet mom-safe activity")
+	has(t, mom, "No activity synced for this wallet yet.")
+	lacks(t, mom, `role="list"`, "View all activity")
+	// The Datastar tab link still patches the tab.
+	has(t, unescaped(cb), `data-on:click__prevent="history.replaceState(null, '', '/w/coinbase?tab=activity'); @get('/w/coinbase/tab/activity')"`)
+}
+
+func TestAlertsPage(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "alerts")
+	un := unescaped(p)
+	has(t, p,
+		`<title>Alerts · Vault</title>`, `<h1 class="h-title">Alerts</h1>`, "Get a notification when something changes",
+		`<a class="nav-item nav-item--on" href="/alerts" aria-current="page">`, `<a class="btn btn--primary btn--add" href="/alerts/new">`,
+		// Rules.
+		`id="alert-rules"`, "5 rules", "Cold storage watch", "Any decrease in Cold storage", "BTC above $70,000", "Big day", "Kraken down", "Large send",
+		`<span class="chip chip--sm chip--info">Balance drop</span>`, `<span class="chip chip--sm chip--info">Price</span>`, `<span class="chip chip--sm chip--info">Portfolio move</span>`,
+		`<span class="chip chip--sm chip--info">Source down</span>`, `<span class="chip chip--sm chip--info">Large send</span>`,
+		`<span class="chip chip--gain"><span aria-hidden="true">●</span> <span>On</span></span>`, `<span class="chip chip--neutral"><span aria-hidden="true">◌</span> <span>Paused</span></span>`,
+		`href="/alerts/cold-drop/edit" aria-label="Edit Cold storage watch"`, `aria-label="Delete Cold storage watch"`, `class="btn btn--danger btn--sm"`,
+		// Notifications.
+		"ntfy.example.org", "Amounts hidden in notifications", `data-indicator="testing"`, `data-attr:disabled="$testing"`, ">Send test notification</button>",
+		`<div id="alert-test" class="import-result" aria-live="polite"></div>`,
+		// Recent.
+		`id="alert-recent"`, "Large send from Coinbase", "5h ago", "2d ago", "Couldn't send: ntfy returned 503 Service Unavailable.", `class="log-row__err"`,
+		"Cold storage went from 0.32006114 BTC",
+	)
+	has(t, un,
+		`data-on:click="@post('/alerts/test')"`,
+		`data-on:click="confirm('Delete the alert Cold storage watch?') && @post('/alerts/cold-drop/delete')"`,
+	)
+	if n := strings.Count(p.html, `class="log-row"`); n != 4 {
+		t.Errorf("want 4 recent alerts, got %d", n)
+	}
+	lacks(t, p, "ntfy.url", "No alerts yet")
+
+	e := byName(t, pages, "alerts empty")
+	has(t, e, "No alerts yet", "An alert tells you when something changes", "A source stops syncing", `<a class="btn btn--primary" href="/alerts/new">`,
+		"Notifications aren't set up.", `<span class="mono">ntfy.url</span>`, `<span class="mono">config.yaml</span>`, "notice--warn",
+		"Nothing has fired yet.", `id="alert-test"`)
+	if tag := tagOf(t, e.html, `disabled>Send test`); !strings.Contains(tag, "disabled") {
+		t.Errorf("without ntfy the test button is disabled: %s", tag)
+	}
+	lacks(t, e, `@post(&#39;/alerts/test&#39;)`, `data-indicator="testing"`, `class="rule"`)
+
+	le := byName(t, pages, "alerts load error")
+	has(t, le, "Vault can't read alerts.yaml.", "window &#34;1 day&#34; is not a valid duration", "Fix the file and reload the page.", "notice--warn", `class="rule"`)
+	lacks(t, le, "No alerts yet")
+
+	ok := byName(t, pages, "alerts tested")
+	has(t, ok, "notice--gain", "Test notification sent. Check your phone.")
+	has(t, byName(t, pages, "alert test failed"), "notice--loss", "Sending failed: 503")
+	if got := strings.TrimSpace(byName(t, pages, "alert test empty").html); got != `<div id="alert-test" class="import-result" aria-live="polite"></div>` {
+		t.Errorf("empty test result should be an empty container, got %q", got)
+	}
+	// Without redaction the notice says amounts are included.
+	plain := demo.Alerts(now)
+	plain.Redact = false
+	if out := render(t, templates.AlertsFull(plain)); strings.Contains(out, "Amounts hidden") || !strings.Contains(out, "Notifications include amounts.") {
+		t.Error("redaction off: amounts are included")
+	}
+}
+
+// activeGroups returns the legends of the field groups of the alert form that are neither
+// hidden nor disabled on first render.
+func activeGroups(t *testing.T, html string) []string {
+	t.Helper()
+	var out []string
+	for _, m := range regexp.MustCompile(`(?s)<fieldset class="alert-fields"([^>]*)>\s*<legend[^>]*>([^<]*)</legend>`).FindAllStringSubmatch(html, -1) {
+		hidden := strings.Contains(m[1], `style="display:none"`)
+		disabled := regexp.MustCompile(`\sdisabled(\s|>|$)`).MatchString(m[1])
+		if hidden != disabled {
+			t.Errorf("group %q must be hidden and disabled together: %s", m[2], m[1])
+		}
+		if !hidden {
+			out = append(out, m[2])
+		}
+	}
+	return out
+}
+
+func TestAlertForm(t *testing.T) {
+	pages := allPages(t)
+	n := byName(t, pages, "alert form new")
+	un := unescaped(n)
+	has(t, n,
+		`<title>New alert · Vault</title>`, `<h1 class="h-title">New alert</h1>`, "Pick what to watch for", `<a class="back" href="/alerts">`,
+		`<form id="alert-form" class="form card pf-form" method="post" action="/alerts"`, `data-indicator="saving"`, `data-attr:disabled="$saving"`,
+		`<label class="field__label" for="f-type">Alert type</label>`, `name="type"`, `data-bind="ruleType"`,
+		`<option value="balance_drop" selected>Balance drop (cold-storage security)</option>`, `<option value="price">Price above or below</option>`,
+		`<option value="portfolio_move">Portfolio move</option>`, `<option value="source_down">Source down</option>`, `<option value="large_activity">Large send</option>`,
+		"Leave all unchecked to watch every non-exchange wallet.", "Minimum drop (%)", `name="wallets" value="cold"`, `name="wallets" value="coinbase"`,
+		`for="f-enabled"`, `name="enabled" value="on" checked`, ">Create alert</button>", `<a class="btn btn--ghost" href="/alerts">Cancel</a>`, `id="form-errors"`,
+		`name="minPct"`, `name="asset"`, `list="al-assets"`, `name="above"`, `name="below"`, `name="portfolio"`, `name="pct"`, `name="window"`, `name="minutes"`, `name="minUsd"`, `name="cooldown"`,
+		`<option value="1h">1 hour</option>`, `<option value="6h" selected>6 hours</option>`, `<option value="24h">24 hours</option>`, `<option value="168h">7 days</option>`,
+		`<option value="all" selected>All holdings</option>`, `<option value="long-term">Long-term</option>`,
+	)
+	has(t, un,
+		`data-signals="{ruleType: 'balance_drop'}"`, `data-on:submit="@post('/alerts', {contentType: 'form'})"`,
+		`data-show="$ruleType === 'balance_drop'"`, `data-attr:disabled="!($ruleType === 'balance_drop')"`,
+		`data-show="$ruleType === 'price' || $ruleType === 'portfolio_move' || $ruleType === 'large_activity'"`,
+	)
+	lacks(t, un, `name="editId"`, "Save alert")
+	if got := activeGroups(t, n.html); len(got) != 1 || got[0] != "Wallets to watch" {
+		t.Errorf("a new alert shows the balance-drop fields only, got %v", got)
+	}
+	if strings.Contains(tagOf(t, n.html, `name="wallets" value="cold"`), "checked") {
+		t.Error("no wallet is ticked by default (every non-exchange wallet is watched)")
+	}
+
+	// Editing: the signal, the visible group and the values follow the rule.
+	price := byName(t, pages, "alert form edit "+demo.AlertBTCAbove)
+	pun := unescaped(price)
+	has(t, pun,
+		`<title>Edit alert · Vault</title>`, `action="/alerts/btc-70k"`, `name="editId" value="btc-70k"`, `data-signals="{ruleType: 'price'}"`,
+		`data-on:submit="@post('/alerts/btc-70k', {contentType: 'form'})"`, `<option value="price" selected>Price above or below</option>`,
+		`value="BTC"`, `value="70000"`, `value="BTC above $70,000"`, `<option value="24h" selected>24 hours</option>`, ">Save alert</button>",
+		`<datalist id="al-assets">`, `<option value="BTC">Bitcoin</option>`,
+	)
+	lacks(t, pun, "Create alert")
+	if got := activeGroups(t, price.html); len(got) != 2 || got[0] != "Price target" || got[1] != "Repeat notifications" {
+		t.Errorf("price rule groups = %v", got)
+	}
+	if !strings.Contains(tagOf(t, price.html, `name="enabled"`), "checked") {
+		t.Error("an enabled rule has the box ticked")
+	}
+
+	cold := byName(t, pages, "alert form edit "+demo.AlertColdDrop)
+	if !strings.Contains(tagOf(t, cold.html, `name="wallets" value="cold"`), "checked") || strings.Contains(tagOf(t, cold.html, `name="wallets" value="phantom"`), "checked") {
+		t.Error("only the watched wallet is ticked")
+	}
+
+	move := byName(t, pages, "alert form edit "+demo.AlertDayMove)
+	mun := unescaped(move)
+	has(t, mun, `data-signals="{ruleType: 'portfolio_move'}"`, `value="10"`, `<option value="24h" selected>24 hours</option>`, `<option value="all" selected>All holdings</option>`)
+	if got := activeGroups(t, move.html); len(got) != 2 || got[0] != "Portfolio move" || got[1] != "Repeat notifications" {
+		t.Errorf("portfolio move groups = %v", got)
+	}
+
+	down := byName(t, pages, "alert form edit "+demo.AlertKrakenOff)
+	has(t, down, `data-signals="{ruleType: &#39;source_down&#39;}"`, `value="60"`)
+	if strings.Contains(tagOf(t, down.html, `name="enabled"`), "checked") {
+		t.Error("a paused rule has the box cleared")
+	}
+	if got := activeGroups(t, down.html); len(got) != 1 || got[0] != "Source down" {
+		t.Errorf("source down groups = %v (the cooldown does not apply)", got)
+	}
+
+	big := byName(t, pages, "alert form edit "+demo.AlertBigSend)
+	has(t, big, `value="5000"`, `<option value="1h" selected>1 hour</option>`)
+	if got := activeGroups(t, big.html); len(got) != 2 || got[0] != "Large send" || got[1] != "Repeat notifications" {
+		t.Errorf("large send groups = %v", got)
+	}
+	// The cooldown group is the one without a legend of its own: it shows for three types.
+	if !regexp.MustCompile(`(?s)<fieldset class="alert-fields" data-show="[^"]*large_activity[^"]*" data-attr:disabled="[^"]*"><legend class="sr-only">Repeat notifications`).MatchString(strings.ReplaceAll(big.html, "&#39;", "'")) {
+		t.Error("the cooldown group shows for a large send")
+	}
+
+	// Invalid: inline errors and the summary, with the aria wiring.
+	inv := byName(t, pages, "alert form invalid")
+	has(t, inv,
+		`role="alert"`, "Nothing was saved. Fix the fields below and try again.", `<p id="f-asset-err" class="field__error">`, "Choose an asset.",
+		`<p id="f-above-err" class="field__error">`, "Set a price to alert above or below.", "<strong>Asset:</strong> Choose an asset.", "<strong>Rises above:</strong>",
+		`aria-invalid="true"`, `aria-describedby="f-asset-err f-asset-help"`,
+	)
+
+	// A rule edited by hand can carry values the form does not offer: they stay selectable,
+	// so saving does not silently change them.
+	odd := demo.AlertForm(demo.AlertDayMove, now)
+	odd.Values["window"], odd.Values["cooldown"], odd.Values["portfolio"] = "72h", "90m", "retired"
+	out := render(t, templates.AlertFormFull(odd))
+	has(t, page{"odd", out, true}, `<option value="72h" selected>72h (custom)</option>`, `<option value="90m" selected>90m (custom)</option>`, `<option value="retired" selected>retired</option>`)
+}
+
+func TestAlertAndReportPagesEscapeHostileValues(t *testing.T) {
+	const evil = `<img src=x onerror=alert(1)>'"&`
+	ap := demo.Alerts(now)
+	ap.Rules = append([]templates.AlertRuleRow(nil), ap.Rules...)
+	ap.Rules[0].ID, ap.Rules[0].Name, ap.Rules[0].Summary = "x'y</script><i>", evil, evil
+	ap.Recent = append([]templates.AlertLogRow(nil), ap.Recent...)
+	ap.Recent[0].Title, ap.Recent[0].Body, ap.Recent[0].Err = evil, evil, evil
+	ap.NtfyHost, ap.LoadError = evil, evil
+	ap.Test = templates.ImportOutcome{Message: evil}
+	alerts := render(t, templates.AlertsFull(ap))
+
+	af := demo.AlertForm(demo.AlertBTCAbove, now)
+	af.EditID = "x'y</script><i>"
+	for k := range af.Values {
+		af.Values[k] = evil
+	}
+	af.Values["type"] = "price"
+	af.WalletOptions = append([]templates.WalletOption(nil), af.WalletOptions...)
+	af.WalletOptions[0].Label, af.WalletOptions[0].ID = evil, evil
+	af.AssetOptions = append([]templates.AssetOption(nil), af.AssetOptions...)
+	af.AssetOptions[0].Key, af.AssetOptions[0].Name = evil, evil
+	af.PortfolioOptions = append([]templates.PortfolioNav(nil), af.PortfolioOptions...)
+	af.PortfolioOptions[0].Name = evil
+	af.Errors = map[string]string{"": evil, "asset": evil}
+	form := render(t, templates.AlertFormFull(af))
+
+	rp := demo.Reports(now)
+	rp.Rows = append([]templates.PnLRow(nil), rp.Rows...)
+	rp.Rows[0].AssetKey, rp.Rows[0].Symbol, rp.Rows[0].Name = "x'y</script><i>", evil, evil
+	rp.Rows[4].AssetKey = "a'b\\"
+	rp.Manual = []templates.ManualBasisRow{{Asset: "x'y</script><i>", Amount: 1, CostUSD: 2, Note: evil}}
+	rp.AssetOptions = []templates.AssetOption{{Key: evil, Symbol: evil, Name: evil}}
+	rp.BasisErr = evil
+	rp.Import = templates.ImportOutcome{Message: evil}
+	reports := render(t, templates.ReportsFull(rp))
+
+	for name, o := range map[string]string{"alerts": alerts, "alert form": form, "reports": reports} {
+		for _, bad := range []string{"<img", "<i>", "</script><i>", "onerror=alert(1)>"} {
+			if strings.Contains(o, bad) {
+				t.Errorf("%s: unescaped %q in output", name, bad)
+			}
+		}
+		if strings.Count(o, "<script") != 1 {
+			t.Errorf("%s: script injected", name)
+		}
+	}
+	aun, fun, run := html.UnescapeString(alerts), html.UnescapeString(form), html.UnescapeString(reports)
+	for _, want := range []string{
+		`confirm('Delete the alert \u003cimg src=x onerror=alert(1)\u003e\'\"\u0026?') && @post('/alerts/x%27y%3C%2Fscript%3E%3Ci%3E/delete')`,
+		`href="/alerts/x%27y%3C%2Fscript%3E%3Ci%3E/edit"`,
+	} {
+		if !strings.Contains(aun, want) {
+			t.Errorf("alerts is missing %q:\n%s", want, grep(aun, "/delete"))
+		}
+	}
+	if !strings.Contains(fun, `data-on:submit="@post('/alerts/x%27y%3C%2Fscript%3E%3Ci%3E', {contentType: 'form'})"`) {
+		t.Errorf("alert form action not escaped:\n%s", grep(fun, "data-on:submit"))
+	}
+	for _, want := range []string{
+		`confirm('Remove the manual cost for x\'y\u003c/script\u003e\u003ci\u003e?') && @post('/reports/basis/x%27y%3C%2Fscript%3E%3Ci%3E/delete')`,
+		`document.getElementById('f-asset').value = 'a\'b\\'`,
+	} {
+		if !strings.Contains(run, want) {
+			t.Errorf("reports is missing %q:\n%s", want, grep(run, "f-asset"))
+		}
 	}
 }

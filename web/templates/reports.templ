@@ -1,0 +1,386 @@
+package templates
+
+import "strconv"
+
+// ReportsFull is the whole Reports page: profit and loss, cost basis, imports and exports.
+templ ReportsFull(p ReportsPage) {
+	@Layout(p.Shell, reportsBody(p))
+}
+
+templ reportsBody(p ReportsPage) {
+	<div class="reports">
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Vault</span>
+				<h1 class="h-title">Reports</h1>
+				<p class="lede">Profit and loss, cost basis and exports</p>
+			</div>
+			<div class="page-head__actions">
+				@HideButton()
+			</div>
+		</header>
+		@reportTiles(p)
+		@PnLTable(p)
+		<div class="rep-grid">
+			<div class="rep-col">
+				@CostBasisPanel(p)
+				@realizedCard(p)
+			</div>
+			<div class="rep-col">
+				@CSVImportPanel(p)
+				@exportsCard()
+			</div>
+		</div>
+		<p class="foot-note">Average cost across all wallets. Not tax advice.</p>
+	</div>
+}
+
+// reportTiles are Cost basis, Value and Unrealized P/L, with how much of the value has a
+// known cost.
+templ reportTiles(p ReportsPage) {
+	<div class="stat-grid">
+		<div class="stat">
+			<span class="label">Cost basis</span>
+			if p.anyBasis() {
+				<span class="stat__value">
+					@FigFiat(p.TotalBasis)
+				</span>
+			} else {
+				<span class="stat__value stat__value--none">—</span>
+			}
+			<span class="stat__sub">{ CoverageText(p.Coverage) }</span>
+			<div class="cover" aria-hidden="true">
+				<span class="cover__fill" style={ coverStyle(p.Coverage) }></span>
+			</div>
+		</div>
+		<div class="stat">
+			<span class="label">Value</span>
+			<span class="stat__value">
+				@FigFiat(p.TotalValue)
+			</span>
+			<span class="stat__sub">All holdings, at today's prices</span>
+		</div>
+		<div class="stat">
+			<span class="label">Unrealized P/L</span>
+			if p.anyBasis() {
+				{{ dir := Direction(p.TotalUnrealized) }}
+				<span class={ "stat__value", "chg--" + dir }>
+					{ Arrow(dir) + " " }
+					@FigText(ChangeAbs(p.TotalUnrealized), "$ ••••")
+				</span>
+				{{ pct, okPct := p.unrealizedPct() }}
+				if okPct {
+					<span class={ "stat__sub", "chg--" + dir }>{ SignedPct(pct) }</span>
+				}
+			} else {
+				<span class="stat__value stat__value--none">—</span>
+				<span class="stat__sub">Needs a cost basis</span>
+			}
+		</div>
+	</div>
+}
+
+// PnLTable is the profit and loss of every holding. Its root is #pnl, so saving or
+// removing a manual cost patches just this.
+templ PnLTable(p ReportsPage) {
+	<section id="pnl" class="card holdings pnl" aria-labelledby="pnl-h">
+		<div class="holdings__head">
+			<h2 id="pnl-h" class="h-sec">Profit and loss</h2>
+			<span class="meta">average cost, all wallets</span>
+		</div>
+		if len(p.Rows) == 0 {
+			<p class="empty-note">Nothing is held yet. Profit and loss appears once Vault has balances to compare with what you paid.</p>
+		} else {
+			<div class="table-scroll">
+				<table class="tbl tbl--pnl">
+					<thead>
+						<tr>
+							<th class="col-asset" scope="col">Asset</th>
+							<th class="col-amt num" scope="col">Amount</th>
+							<th class="col-avg num" scope="col">Avg cost</th>
+							<th class="col-basis num" scope="col">Cost basis</th>
+							<th class="col-val num" scope="col">Value</th>
+							<th class="col-pl num" scope="col">Unrealized</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, r := range p.Rows {
+							@pnlRow(r)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ pnlRow(r PnLRow) {
+	<tr>
+		<td class="col-asset">
+			<div class="asset">
+				@Disc(r.Symbol)
+				<div class="asset__id">
+					<span class="asset__name">
+						{ pnlName(r) }
+						if r.Overridden {
+							<span class="badge">manual</span>
+						}
+					</span>
+					if r.UnknownUnits > 0 {
+						<span class="asset__sub asset__sub--warn">{ unknownUnitsText(r) }</span>
+					} else {
+						<span class="asset__sub">{ r.Symbol }</span>
+					}
+				</div>
+			</div>
+		</td>
+		<td class="col-amt num">
+			@FigCoin(r.Amount, r.Symbol)
+		</td>
+		<td class="col-avg num">
+			if r.HasBasis {
+				@FigText(PriceFiat(r.AvgCost), "$ ••••")
+			} else {
+				<span class="muted">—</span>
+			}
+		</td>
+		<td class="col-basis num">
+			if r.HasBasis {
+				@FigFiat(r.Basis)
+			} else {
+				<span class="muted">—</span>
+			}
+		</td>
+		<td class="col-val num">
+			if r.Value > 0 {
+				@FigFiat(r.Value)
+			} else {
+				<span class="muted">—</span>
+			}
+		</td>
+		<td class="col-pl num">
+			if r.HasBasis {
+				{{ dir := Direction(r.Unrealized) }}
+				<span class="pl">
+					<span class={ "chg", "chg--" + dir }>
+						{ Arrow(dir) + " " }
+						@FigText(ChangeAbs(r.Unrealized), "$ ••••")
+					</span>
+					<span class={ "chg", "pl__pct", "chg--" + dir }>{ SignedPct(r.UnrealizedPct) }</span>
+				</span>
+			} else {
+				<span class="pl">
+					<span class="chg chg--none" aria-label="No profit or loss available">—</span>
+					@setCostLink(r)
+				</span>
+			}
+		</td>
+	</tr>
+}
+
+// setCostLink jumps to the manual cost form with the asset (and the amount without a known
+// cost) filled in.
+templ setCostLink(r PnLRow) {
+	{{ amount := r.Amount }}
+	if r.UnknownUnits > 0 {
+		{{ amount = r.UnknownUnits }}
+	}
+	<a
+		class="link pl__set"
+		href="#basis-form"
+		aria-label={ "Set the cost of " + pnlName(r) }
+		data-on:click__prevent={ setCostClick(r.AssetKey, amount) }
+	>Set cost</a>
+}
+
+// realizedCard lists the realized profit or loss of each calendar year.
+templ realizedCard(p ReportsPage) {
+	<section class="card realized" aria-labelledby="realized-h">
+		<div class="realized__head">
+			<h2 id="realized-h" class="h-card">Realized P/L</h2>
+			<span class="meta">by year</span>
+		</div>
+		if len(p.Realized) == 0 {
+			<p class="empty-note">No sales on record yet. Realized P/L appears once Vault sees you sell, trade or swap.</p>
+		} else {
+			<ul class="year-list">
+				for _, y := range p.Realized {
+					{{ dir := Direction(y.USD) }}
+					<li class="year-row">
+						<span class="year-row__year">{ strconv.Itoa(y.Year) }</span>
+						<span class={ "chg", "chg--" + dir }>
+							{ Arrow(dir) + " " }
+							@FigText(ChangeAbs(y.USD), "$ ••••")
+						</span>
+					</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+// CostBasisPanel lists the costs entered by hand and has the form to add one. Its root is
+// #basis-panel; saving or removing an entry replaces it, which also clears the form.
+templ CostBasisPanel(p ReportsPage) {
+	<section id="basis-panel" class="card basis-panel" aria-labelledby="basis-h">
+		<div class="basis-panel__intro">
+			<h2 id="basis-h" class="h-card">Manual cost basis</h2>
+			<p class="muted-text">Tell Vault what you paid when it can't work it out, for example for coins you moved in from somewhere else.</p>
+		</div>
+		if p.BasisErr != "" {
+			<div role="alert">
+				@Notice("loss", "alert") {
+					{ p.BasisErr }
+				}
+			</div>
+		}
+		if len(p.Manual) > 0 {
+			<ul class="basis-list">
+				for _, m := range p.Manual {
+					<li class="basis-row">
+						@Disc(m.Asset)
+						<div class="basis-row__text">
+							<span class="basis-row__title">{ m.Asset }</span>
+							<span class="basis-row__sub">
+								@FigCoin(m.Amount, m.Asset)
+								<span>{ " for " }</span>
+								@FigFiat(m.CostUSD)
+							</span>
+							if m.Note != "" {
+								<span class="basis-row__note">{ m.Note }</span>
+							}
+						</div>
+						<button
+							type="button"
+							class="btn btn--danger btn--icon"
+							aria-label={ "Remove the manual cost for " + m.Asset }
+							data-on:click={ basisDeleteClick(m.Asset) }
+						>
+							@Icon("trash", 16)
+						</button>
+					</li>
+				}
+			</ul>
+		}
+		<form
+			id="basis-form"
+			class="form basis-form"
+			method="post"
+			action="/reports/basis"
+			data-indicator="savingBasis"
+			data-on:submit={ basisSubmit }
+		>
+			@textField(fieldSpec{Name: "asset", Label: "Asset", Placeholder: "BTC", Mono: true, Required: true, List: "basis-assets"})
+			<datalist id="basis-assets">
+				for _, o := range p.AssetOptions {
+					<option value={ o.Key }>{ o.Name }</option>
+				}
+			</datalist>
+			@textField(fieldSpec{Name: "amount", Label: "Amount", Placeholder: "0.5", Mono: true, Required: true, InputMode: "decimal"})
+			@textField(fieldSpec{
+				Name: "cost", Label: "Total cost (USD)", Placeholder: "15000", Mono: true, Required: true, InputMode: "decimal",
+				Help: "Sets the total you paid for this amount; overrides the computed cost for this asset.",
+			})
+			@textField(fieldSpec{Name: "note", Label: "Note (optional)", Placeholder: "e.g. bought on Bitstamp in 2021", MaxLen: 120})
+			<button
+				type="submit"
+				class="btn btn--secondary btn--block"
+				data-attr:disabled="$savingBasis"
+				data-class="{'is-busy': $savingBasis}"
+			>Save cost</button>
+		</form>
+	</section>
+}
+
+// CSVImportPanel imports an exchange's CSV export into the activity history. Its root is
+// #csv-import; the outcome shows under the form in #csv-result.
+templ CSVImportPanel(p ReportsPage) {
+	<section id="csv-import" class="card csv-import" aria-labelledby="csv-h">
+		<div class="csv-import__intro">
+			<h2 id="csv-h" class="h-card">Import from a CSV</h2>
+			<p class="muted-text">Bring in older history from an exchange export, so cost basis can use trades Vault can't fetch.</p>
+		</div>
+		<form
+			id="csv-form"
+			class="form"
+			method="post"
+			action="/reports/import"
+			enctype="multipart/form-data"
+			data-indicator="importingCsv"
+			data-on:submit={ csvSubmit }
+		>
+			<fieldset class="pf-section">
+				<legend class="field__label pf-legend">Which export</legend>
+				<div class="choices">
+					@modeChoice("source", "f-csv-coinbase", "coinbase", "Coinbase transaction history CSV", "", true, false)
+					@modeChoice("source", "f-csv-kraken", "kraken", "Kraken ledgers CSV", "", false, false)
+				</div>
+			</fieldset>
+			<div class="field">
+				<label class="field__label" for="f-csv-file">CSV file</label>
+				<input
+					class="input input--file"
+					id="f-csv-file"
+					name="file"
+					type="file"
+					accept=".csv,text/csv"
+					required
+					aria-describedby="f-csv-file-help"
+				/>
+				<p id="f-csv-file-help" class="field__help">Coinbase: Profile, Statements, then generate the Transaction history report as CSV. Kraken: History, Export, then choose Ledgers.</p>
+			</div>
+			<button
+				type="submit"
+				class="btn btn--secondary btn--block"
+				data-attr:disabled="$importingCsv"
+				data-class="{'is-busy': $importingCsv}"
+			>Import CSV</button>
+		</form>
+		@CSVResultView(p.Import)
+	</section>
+}
+
+// CSVResultView is the outcome of a CSV import. Its root is #csv-result; the zero value
+// renders an empty container.
+templ CSVResultView(r ImportOutcome) {
+	<div id="csv-result" class="import-result" aria-live="polite">
+		@outcomeNotice(r)
+	</div>
+}
+
+// outcomeNotice is a success or failure callout for an outcome; the zero value renders
+// nothing.
+templ outcomeNotice(r ImportOutcome) {
+	if r.Message != "" {
+		if r.OK {
+			@Notice("gain", "check") {
+				{ r.Message }
+			}
+		} else {
+			@Notice("loss", "x") {
+				{ r.Message }
+			}
+		}
+	}
+}
+
+// exportsCard has the plain download links of the CSV exports.
+templ exportsCard() {
+	<section class="card exports" aria-labelledby="exports-h">
+		<h2 id="exports-h" class="h-card">Exports</h2>
+		<ul class="export-list">
+			for _, e := range exportLinks {
+				<li class="export-row">
+					<div class="export-row__text">
+						<span class="export-row__title">{ e.Title }</span>
+						<span class="export-row__sub">{ e.Text }</span>
+					</div>
+					<a class="btn btn--secondary btn--sm" href={ templ.URL(e.Href) } download aria-label={ e.Label }>
+						@Icon("download", 16)
+						CSV
+					</a>
+				</li>
+			}
+		</ul>
+	</section>
+}

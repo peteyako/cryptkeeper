@@ -191,8 +191,8 @@ func TestSourceErrorIsolationAndLastError(t *testing.T) {
 		switch n {
 		case 0:
 			return core.ActivityResult{Txs: []core.Tx{mk("flaky", "1", t0, "BTC", 1)}, State: []byte("good"), BackfillDone: true}, nil
-		case 1:
-			return core.ActivityResult{State: []byte("bad")}, errors.New("rate limited")
+		case 1: // no State: nothing fetched, so nothing to keep
+			return core.ActivityResult{}, errors.New("rate limited")
 		}
 		if string(req.State) != "good" {
 			return core.ActivityResult{}, fmt.Errorf("state after failure = %q", req.State)
@@ -695,5 +695,43 @@ func TestSyncOnceWithoutSources(t *testing.T) {
 	s := &Syncer{Store: newStore(t), Log: quiet}
 	if err := s.SyncOnce(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPartialProgressIsKeptWhenASourceFailsMidway(t *testing.T) {
+	st := newStore(t)
+	part := core.Tx{ID: "w:1", SourceID: "w", ExternalID: "1", Time: time.Now(), Kind: core.TxReceive, Status: core.TxConfirmed,
+		Legs: []core.Leg{{AssetKey: "BTC", Symbol: "BTC", Amount: 1}}}
+	src := fakeFn(func(n int, req core.ActivityRequest) (core.ActivityResult, error) {
+		if n == 0 {
+			return core.ActivityResult{Txs: []core.Tx{part}, State: []byte(`{"page":2}`)}, errors.New("page 2 timed out")
+		}
+		if string(req.State) != `{"page":2}` {
+			t.Errorf("next call must resume from the partial state, got %q", req.State)
+		}
+		return core.ActivityResult{State: []byte(`{"page":3}`), BackfillDone: true}, nil
+	})
+	sy := &Syncer{Store: st, Log: quiet, Sources: func() []Entry { return []Entry{{ID: "w", Label: "W", Src: src}} }}
+	sy.SyncOnce(context.Background())
+	if _, ok, _ := st.Get(context.Background(), "w:1"); !ok {
+		t.Fatal("transactions fetched before the failure must be stored")
+	}
+	stat, _ := st.Statuses(context.Background())
+	if stat["w"].LastError == "" || stat["w"].BackfillDone {
+		t.Fatalf("error must be recorded and backfill not marked done: %+v", stat["w"])
+	}
+	sy.SyncOnce(context.Background())
+	if stat, _ := st.Statuses(context.Background()); stat["w"].LastError != "" || !stat["w"].BackfillDone {
+		t.Fatalf("a later successful call clears the error: %+v", stat["w"])
+	}
+
+	// An error without a State carries no trustworthy progress: nothing is stored.
+	bad := fakeFn(func(int, core.ActivityRequest) (core.ActivityResult, error) {
+		return core.ActivityResult{Txs: []core.Tx{{ID: "x:1", SourceID: "x", ExternalID: "1", Time: time.Now()}}}, errors.New("boom")
+	})
+	sy.Sources = func() []Entry { return []Entry{{ID: "x", Label: "X", Src: bad}} }
+	sy.SyncOnce(context.Background())
+	if _, ok, _ := st.Get(context.Background(), "x:1"); ok {
+		t.Fatal("result without State must be dropped")
 	}
 }

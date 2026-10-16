@@ -119,6 +119,7 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		Sync:          s.syncInfo(all, ready),
 		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
 		NetWorthShare: pv.share,
+		PnL:           s.pnlCells(r.Context(), snap.Assets),
 		Now:           now,
 	}
 	if s.History != nil {
@@ -275,6 +276,10 @@ func (s *Server) walletPage(r *http.Request, id, tab string) (templates.WalletPa
 		Shell: s.shell(r, wv.Label, "wallets", "all", ""),
 		W:     wv, Tab: tab, IsBitcoin: isBTC, Now: s.Now(),
 	}
+	if tab == "activity" {
+		s.walletActivity(r.Context(), &p)
+	}
+	s.walletCost(r.Context(), &p)
 	if entry.Source == nil {
 		return p, true
 	}
@@ -337,6 +342,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, templates.SettingsFull(templates.SettingsPage{
 		Shell: s.shell(r, "Settings", "settings", "all", ""), Wallets: wallets,
 		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
+		Sync: s.syncRows(r.Context()),
 	}))
 }
 

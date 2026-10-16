@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -15,8 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"crypto-portfolio/internal/activity"
+	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/secrets"
@@ -36,6 +40,8 @@ func (f fakeExchange) Fetch(context.Context) (core.WalletResult, error) {
 type env struct {
 	t       *testing.T
 	srv     *httptest.Server
+	act     *activity.Store
+	rules   *alerts.RuleStore
 	ps      *portfolios.Store
 	reg     *sources.Registry
 	ref     *portfolio.Refresher
@@ -87,11 +93,22 @@ func newEnv(t *testing.T, password string) *env {
 		t.Fatal(err)
 	}
 	ref := &portfolio.Refresher{Agg: &portfolio.Aggregator{Wallets: wallets, Prices: prices, DB: db, StaleMax: time.Hour}, Broker: broker, History: hist, Interval: time.Hour, MinForceInterval: time.Millisecond}
+	act := &activity.Store{DB: db}
+	cb, err := costbasis.NewManualStore(filepath.Join(dir, "costbasis.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rules, err := alerts.NewRuleStore(filepath.Join(dir, "alerts.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := &alerts.Engine{Rules: rules, DB: db}
 	cfg := config.Default()
 	cfg.Password = password
 	cfg.User = "admin"
 	h := New(Deps{
-		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Portfolios: ps, Refresher: ref, Broker: broker, History: hist, Prices: prices,
+		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Portfolios: ps, Refresher: ref,
+		Activity: act, CostBasis: cb, AlertRules: rules, Alerts: engine, Broker: broker, History: hist, Prices: prices,
 		DetectBitcoin: func(s string) (string, error) {
 			if strings.HasPrefix(s, "wsh(") {
 				return "descriptor", nil
@@ -101,7 +118,7 @@ func newEnv(t *testing.T, password string) *env {
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, ps: ps, reg: reg, ref: ref, dataDir: dir}
+	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, dataDir: dir}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {
@@ -346,5 +363,142 @@ func TestPortfolioFlow(t *testing.T) {
 		if resp, _ := e.do("GET", path, nil, nil); resp.StatusCode != 200 {
 			t.Fatalf("%s: %d", path, resp.StatusCode)
 		}
+	}
+}
+
+func usd(v float64) *float64 { return &v }
+
+func TestActivityReportsAndExports(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "cold", Type: sources.TypeManual, Label: "Cold", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
+	e.ref.Force(context.Background()) // BTC priced at $100 by the fake pricer
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var txs []core.Tx
+	for i := range 60 {
+		txs = append(txs, core.Tx{ID: core.TxID("cold", fmt.Sprint(i)), SourceID: "cold", ExternalID: fmt.Sprint(i),
+			Time: base.Add(time.Duration(i) * time.Hour), Kind: core.TxReceive, Status: core.TxConfirmed,
+			Legs: []core.Leg{{AssetKey: "BTC", Symbol: "BTC", Amount: 0.01}}})
+	}
+	if _, err := e.act.Upsert(context.Background(), txs); err != nil {
+		t.Fatal(err)
+	}
+	// Activity page: first 50, newest first, with a "load older" cursor.
+	resp, page := e.do("GET", "/activity", nil, nil)
+	if resp.StatusCode != 200 || !strings.Contains(page, `id="activity-more"`) || !strings.Contains(page, "Load older") {
+		t.Fatalf("activity page %d", resp.StatusCode)
+	}
+	// Load older appends the remaining 10 rows into #activity-rows.
+	cur := cursor(txs[10].Time)
+	_, out := e.do("GET", "/activity/list?before="+cur, nil, ds(nil))
+	if !strings.Contains(out, "selector #activity-rows") || !strings.Contains(out, "mode append") {
+		t.Fatalf("load older must append rows: %.300s", out)
+	}
+	// Filter change patches the whole list (signals in the query).
+	sig := url.QueryEscape(`{"actKind":"send"}`)
+	_, out = e.do("GET", "/activity/list?datastar="+sig, nil, ds(nil))
+	if !strings.Contains(out, "activity-list") || !strings.Contains(out, "Nothing matches") {
+		t.Fatalf("filtered list: %.300s", out)
+	}
+	// Wallet activity tab.
+	if _, page := e.do("GET", "/w/cold?tab=activity", nil, nil); !strings.Contains(page, "View all activity") {
+		t.Fatal("wallet activity tab should link to all activity when there are more than 25")
+	}
+
+	// Manual cost basis via the UI → P&L and wallet tiles.
+	body, hdr := form(url.Values{"asset": {"btc"}, "amount": {"1"}, "cost": {"$40"}, "note": {"test"}})
+	_, out = e.do("POST", "/reports/basis", body, hdr)
+	if !strings.Contains(out, "pnl") {
+		t.Fatalf("basis save: %.300s", out)
+	}
+	if _, page := e.do("GET", "/reports", nil, nil); !strings.Contains(page, "$40.00") || !strings.Contains(page, "$60.00") || !strings.Contains(page, "$100.00") {
+		t.Fatal("reports should show basis $40, unrealized $60 and total value $100 for 1 BTC at $100")
+	}
+	if _, page := e.do("GET", "/w/cold", nil, nil); !strings.Contains(page, "$40.00") {
+		t.Fatal("wallet cost basis tile")
+	}
+
+	// CSV import (Coinbase) is stored as activity under the CSV pseudo-source.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	mw.WriteField("source", "coinbase")
+	fw, _ := mw.CreateFormFile("file", "coinbase.csv")
+	fw.Write([]byte("ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes\n" +
+		"abc123,2025-01-02T10:00:00Z,Buy,ETH,1,USD,$3000.00,$3000.00,$3010.00,$10.00,Bought 1 ETH\n"))
+	mw.Close()
+	_, out = e.do("POST", "/reports/import", &buf, ds(map[string]string{"Content-Type": mw.FormDataContentType()}))
+	if !strings.Contains(out, "Imported 1 transactions") {
+		t.Fatalf("csv import: %.400s", out)
+	}
+	if got, ok, _ := e.act.Get(context.Background(), "coinbase-csv:abc123"); !ok || got.Kind != core.TxTrade {
+		t.Fatalf("imported tx %+v %v", got, ok)
+	}
+
+	// Exports.
+	for path, want := range map[string]string{
+		"/export/holdings.csv": "wallet,source_type,asset",
+		"/export/history.csv":  "timestamp",
+		"/export/pnl.csv":      "asset,amount,avg_cost",
+		"/export/activity.csv": "time,source,kind",
+	} {
+		resp, body := e.do("GET", path, nil, nil)
+		if resp.StatusCode != 200 || !strings.HasPrefix(body, want) || !strings.Contains(resp.Header.Get("Content-Disposition"), "attachment") {
+			t.Errorf("%s: %d %.80q", path, resp.StatusCode, body)
+		}
+	}
+}
+
+func TestDedupeImportedAgainstAPI(t *testing.T) {
+	txs := []core.Tx{
+		{ID: "cb:1", SourceID: "cb", ExternalID: "1"},
+		{ID: "coinbase-csv:1", SourceID: "coinbase-csv", ExternalID: "1"}, // same trade, already synced
+		{ID: "coinbase-csv:2", SourceID: "coinbase-csv", ExternalID: "2"}, // older than the API reaches
+	}
+	got := dedupeImported(txs, map[string]string{"cb": sources.TypeCoinbase})
+	if len(got) != 2 || got[1].ID != "coinbase-csv:2" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestAlertRulesFlow(t *testing.T) {
+	e := newEnv(t, "")
+	body, hdr := form(url.Values{"type": {"price"}, "asset": {"btc"}, "above": {"100,000"}, "cooldown": {"6h"}, "enabled": {"on"}})
+	_, out := e.do("POST", "/alerts", body, hdr)
+	if !strings.Contains(out, "/alerts") {
+		t.Fatalf("save: %s", out)
+	}
+	rules := e.rules.List()
+	if len(rules) != 1 || rules[0].Asset != "BTC" || rules[0].Above != 100000 {
+		t.Fatalf("stored %+v", rules)
+	}
+	// Both directions in one rule is rejected with a helpful message.
+	body, hdr = form(url.Values{"type": {"price"}, "asset": {"SOL"}, "above": {"300"}, "below": {"80"}})
+	if _, out := e.do("POST", "/alerts", body, hdr); !strings.Contains(out, "either above or below") {
+		t.Fatalf("expected direction error: %s", out)
+	}
+	if _, page := e.do("GET", "/alerts", nil, nil); !strings.Contains(page, "BTC above $100,000.00") {
+		t.Fatal("rule summary missing")
+	}
+	// Test without ntfy configured explains how to set it up.
+	if _, out := e.do("POST", "/alerts/test", nil, ds(nil)); !strings.Contains(out, "ntfy.url") {
+		t.Fatalf("test notification: %s", out)
+	}
+	e.do("POST", "/alerts/"+rules[0].ID+"/delete", nil, ds(nil))
+	if len(e.rules.List()) != 0 {
+		t.Fatal("rule not deleted")
+	}
+	for _, path := range []string{"/alerts/new", "/settings", "/reports", "/activity"} {
+		if resp, _ := e.do("GET", path, nil, nil); resp.StatusCode != 200 {
+			t.Errorf("%s: %d", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestDeletingSourceRemovesItsActivity(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "hot", Type: sources.TypeManual, Label: "Hot", Holdings: []manual.Holding{{Asset: "SOL", Amount: 1}}})
+	e.act.Upsert(context.Background(), []core.Tx{{ID: "hot:1", SourceID: "hot", ExternalID: "1", Time: time.Now(), Kind: core.TxReceive, Status: core.TxConfirmed}})
+	e.do("POST", "/sources/hot/delete", nil, ds(nil))
+	if _, ok, _ := e.act.Get(context.Background(), "hot:1"); ok {
+		t.Fatal("activity of a removed source must be deleted")
 	}
 }

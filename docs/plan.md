@@ -70,7 +70,7 @@ crypto-portfolio/
       fonts/                   # IBM Plex Sans 400/500/600 + IBM Plex Mono 400/500 woff2 (OFL), self-hosted
       datastar.js              # vendored v1.0.4
       manifest.webmanifest, icons/
-  Dockerfile, docker-compose.yml, Makefile, .gitignore, README.md
+  Dockerfile, docker-compose.yml, Taskfile.yml, .gitignore, README.md
 ```
 Tests (`*_test.go`) sit next to each package and use `httptest` fakes for every external API, plus `testdata/` fixtures.
 
@@ -386,7 +386,7 @@ portfolios:
   - Every browser API guarded by truthiness.
 
 ## Deployment
-- `make generate|dev|run|build`. `make dev` runs templ watch + proxy. Cross-compiles for linux/amd64 and arm64.
+- `task generate|dev|run|build` (go-task; was a Makefile). `task dev` runs templ watch + proxy. Cross-compiles for linux/amd64 and arm64.
 - Listens on `0.0.0.0:8787`.
 - **Docker:** `golang:1.26-alpine` (templ generate + build, `CGO_ENABLED=0`) → distroless. Mounts `config.yaml`, `.env` and `data/`. `HEALTHCHECK` runs `crypto-portfolio healthcheck`. Works with podman compose.
 - **README:**

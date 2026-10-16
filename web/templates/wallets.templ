@@ -218,7 +218,7 @@ templ WalletTab(p WalletPage) {
 		</nav>
 		switch tab {
 			case "activity":
-				@activityTab()
+				@activityTab(p)
 			case "addresses":
 				@addressesTab(p)
 			case "utxos":
@@ -229,14 +229,19 @@ templ WalletTab(p WalletPage) {
 	</section>
 }
 
-templ activityTab() {
-	<div class="empty empty--inline">
-		<span class="empty__icon">
-			@Icon("clock", 24)
-		</span>
-		<h2 class="empty__title">Coming soon</h2>
-		<p class="empty__text">Transactions for this wallet will show up here once Vault starts syncing activity.</p>
-	</div>
+// activityTab is the wallet's most recent entries, with a link to the full list when there
+// are older ones.
+templ activityTab(p WalletPage) {
+	if len(p.Activity) == 0 {
+		<p class="empty-note">No activity synced for this wallet yet.</p>
+	} else {
+		<div class="tx-list" role="list" aria-label="Activity">
+			@ActivityRows(p.Activity, p.Now)
+		</div>
+		if p.ActivityMore {
+			<a class="btn btn--ghost tx-all" href={ templ.URL(activityViewAll(p.W.ID)) }>View all activity</a>
+		}
+	}
 }
 
 templ holdingsTab(p WalletPage) {

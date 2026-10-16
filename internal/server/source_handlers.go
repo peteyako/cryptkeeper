@@ -309,6 +309,9 @@ func (s *Server) sourceSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Refresher.Kick()
+	if s.Syncer != nil {
+		s.Syncer.Kick()
+	}
 	_ = sse.Redirect("/w/" + d.ID)
 }
 
@@ -320,6 +323,12 @@ func (s *Server) sourceDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.removeFromPortfolios(id)
+	if s.Activity != nil {
+		if err := s.Activity.DeleteSource(r.Context(), id); err != nil {
+			s.Log.Warn("delete activity", "source", id, "err", err)
+		}
+		s.costs.invalidate()
+	}
 	s.Refresher.Kick()
 	_ = sse.Redirect("/")
 }

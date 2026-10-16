@@ -428,6 +428,7 @@ func OverviewFor(pf, rng string, now time.Time) (templates.OverviewPage, bool) {
 		Change:        Change(rng, now),
 		Sync:          SyncSynced(),
 		Watch:         WatchList(now),
+		PnL:           PnLCells(now),
 		Now:           now,
 	}
 	if pf != "all" {
@@ -558,6 +559,7 @@ func Wallet(id, tab string, now time.Time) (templates.WalletPage, bool) {
 		p.CostBasis = ptr(11402.50)
 		p.Unrealized = ptr(round2(w.ValueUSD - 11402.50))
 	}
+	walletActivity(&p, now)
 	return p, true
 }
 
@@ -637,6 +639,8 @@ func Settings(now time.Time) templates.SettingsPage {
 		DataDir:     "/data",
 		AuthEnabled: true,
 		Version:     "v0.1.0-dev",
+		Sync:        SyncRows(now),
+		Now:         now,
 	}
 }
 

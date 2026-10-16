@@ -84,6 +84,8 @@ type fieldSpec struct {
 	Password    bool
 	Rows        int
 	MaxLen      int // maxlength of a text input; 0 = none
+	List        string // id of a <datalist> of suggestions
+	InputMode   string // inputmode hint, e.g. "decimal"
 }
 
 func (f fieldSpec) ID() string       { return "f-" + f.Name }
@@ -378,6 +380,12 @@ templ textField(f fieldSpec) {
 			}
 			if f.MaxLen > 0 {
 				maxlength={ fmt.Sprint(f.MaxLen) }
+			}
+			if f.List != "" {
+				list={ f.List }
+			}
+			if f.InputMode != "" {
+				inputmode={ f.InputMode }
 			}
 			if f.Required {
 				required

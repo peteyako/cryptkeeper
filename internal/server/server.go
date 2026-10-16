@@ -12,7 +12,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"crypto-portfolio/internal/activity"
+	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/config"
+	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/sources"
@@ -27,6 +30,11 @@ type Deps struct {
 	Log        *slog.Logger
 	Registry   *sources.Registry
 	Portfolios *portfolios.Store
+	Activity   *activity.Store
+	Syncer     *activity.Syncer // optional: kicked after a source is added
+	CostBasis  *costbasis.ManualStore
+	AlertRules *alerts.RuleStore
+	Alerts     *alerts.Engine
 	Refresher  *portfolio.Refresher
 	Broker     *portfolio.Broker
 	History    *portfolio.History
@@ -42,6 +50,7 @@ type Deps struct {
 
 type Server struct {
 	Deps
+	costs costCache
 }
 
 // New builds the router.
@@ -95,6 +104,27 @@ func New(d Deps) http.Handler {
 		r.Post("/portfolios/restore/{name}", s.portfolioRestore)
 		r.Post("/portfolios/{id}", s.portfolioSave)
 		r.Post("/portfolios/{id}/delete", s.portfolioDelete)
+
+		r.Get("/activity", s.activityFull)
+		r.Get("/activity/list", s.activityList)
+
+		r.Get("/reports", s.reports)
+		r.Post("/reports/basis", s.basisSave)
+		r.Post("/reports/basis/{asset}/delete", s.basisDelete)
+		r.Post("/reports/import", s.csvImport)
+
+		r.Get("/export/holdings.csv", s.exportHoldings)
+		r.Get("/export/history.csv", s.exportHistory)
+		r.Get("/export/pnl.csv", s.exportPnL)
+		r.Get("/export/activity.csv", s.exportActivity)
+
+		r.Get("/alerts", s.alertsFull)
+		r.Get("/alerts/new", s.alertNew)
+		r.Get("/alerts/{id}/edit", s.alertEdit)
+		r.Post("/alerts", s.alertSave)
+		r.Post("/alerts/test", s.alertTest)
+		r.Post("/alerts/{id}", s.alertSave)
+		r.Post("/alerts/{id}/delete", s.alertDelete)
 
 		r.Get("/settings", s.settings)
 	})

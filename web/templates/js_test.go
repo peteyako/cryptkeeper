@@ -196,6 +196,19 @@ func TestExpressionsAreValidJavaScript(t *testing.T) {
 		{"asset search", assetShow, true},
 		{"enter guard", noEnterSubmit, false},
 		{"importing", "$importing", true},
+		{"activity filter", actFilterGet, false},
+		{"activity signals", actSignals(ActivityPage{SourceID: hostile, AssetKey: hostile, Kind: hostile}), true},
+		{"activity more", actMoreGet(hostile), false},
+		{"basis submit", basisSubmit, false},
+		{"csv submit", csvSubmit, false},
+		{"basis delete", basisDeleteClick(hostile), false},
+		{"set cost", setCostClick(hostile, 0.1), false},
+		{"alert test", alertTestClick, false},
+		{"alert delete", alertDeleteClick(hostile, hostile), false},
+		{"alert submit", alertSubmitClick(hostile), false},
+		{"alert signals", alertSignals(AlertFormPage{Values: map[string]string{"type": "price"}}), true},
+		{"alert show", showExpr("price", "source_down"), true},
+		{"alert hide", hideExpr("price", "source_down"), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { checkSyntax(t, node, datastarBody(tc.expr, tc.returns)) })
@@ -324,11 +337,48 @@ func TestExpressionBuilders(t *testing.T) {
 	if pfEditHref("a b") != "/portfolios/a%20b/edit" || pfExportHref("a/b") != "/portfolios/a%2Fb/export" {
 		t.Error("portfolio hrefs must path-escape the id")
 	}
-	if got := bodySignals(Shell{}); got != `{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false}` {
+	if got := bodySignals(Shell{}); got != `{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}` {
 		t.Errorf("bodySignals defaults = %s", got)
 	}
 	if got := bodySignals(Shell{Range: "bogus", PF: "x"}); !strings.Contains(got, "range: '1W'") {
 		t.Errorf("unknown range must fall back to 1W: %s", got)
+	}
+	if got := actFilterGet; got != `@get('/activity/list', {filterSignals: {include: /^act/}})` {
+		t.Errorf("actFilterGet = %s", got)
+	}
+	if got := actSignals(ActivityPage{SourceID: "cold", Kind: "send"}); got != `{actSource: 'cold', actAsset: '', actKind: 'send'}` {
+		t.Errorf("actSignals = %s", got)
+	}
+	// The cursor is URL-escaped for the query and JS-escaped for the expression.
+	if got := actMoreGet("a+b/c=&d"); got != `@get('/activity/list?before=a%2Bb%2Fc%3D%26d', {filterSignals: {include: /^act/}})` {
+		t.Errorf("actMoreGet = %s", got)
+	}
+	if got := actMoreGet("1760000000000000000"); got != `@get('/activity/list?before=1760000000000000000', {filterSignals: {include: /^act/}})` {
+		t.Errorf("actMoreGet = %s", got)
+	}
+	if got := basisDeleteClick("BTC"); got != `confirm('Remove the manual cost for BTC?') && @post('/reports/basis/BTC/delete')` {
+		t.Errorf("basisDeleteClick = %s", got)
+	}
+	if got := basisDeleteClick("spl:a b/c"); !strings.HasSuffix(got, `@post('/reports/basis/spl:a%20b%2Fc/delete')`) {
+		t.Errorf("basisDeleteClick must path-escape the asset: %s", got)
+	}
+	if got := setCostClick("BTC", 0.05); got != `document.getElementById('f-asset').value = 'BTC'; document.getElementById('f-amount').value = '0.05'; document.getElementById('f-cost').focus()` {
+		t.Errorf("setCostClick = %s", got)
+	}
+	if got := alertDeleteClick("cold-drop", "Mom's alert"); got != `confirm('Delete the alert Mom\'s alert?') && @post('/alerts/cold-drop/delete')` {
+		t.Errorf("alertDeleteClick = %s", got)
+	}
+	if got := alertSubmitClick(""); got != `@post('/alerts', {contentType: 'form'})` {
+		t.Errorf("alertSubmitClick create = %s", got)
+	}
+	if got := alertSubmitClick("a b"); got != `@post('/alerts/a%20b', {contentType: 'form'})` {
+		t.Errorf("alertSubmitClick edit = %s", got)
+	}
+	if got := alertSignals(AlertFormPage{}); got != `{ruleType: 'balance_drop'}` {
+		t.Errorf("alertSignals = %s", got)
+	}
+	if alertEditHref("a b/c") != "/alerts/a%20b%2Fc/edit" {
+		t.Errorf("alertEditHref = %s", alertEditHref("a b/c"))
 	}
 	// An attacker-controlled portfolio id cannot break out of the literal.
 	got := bodySignals(Shell{PF: `x'}; alert(1); ({`})

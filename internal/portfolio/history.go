@@ -261,3 +261,35 @@ func (h *History) PriceChanges(ctx context.Context, current map[string]float64, 
 	}
 	return out, nil
 }
+
+// ValueAt values the history row nearest to at (within tol) with that row's prices, counting
+// only (wallet, asset) pairs accepted by inc (nil = all). ok is false when no row is close.
+func (h *History) ValueAt(ctx context.Context, at time.Time, tol time.Duration, inc Include) (float64, bool, error) {
+	t := at.Unix()
+	var pj, aj string
+	err := h.DB.QueryRowContext(ctx, `SELECT prices, amounts FROM history WHERE ts BETWEEN ? AND ?
+		ORDER BY ABS(ts - ?) LIMIT 1`, t-int64(tol.Seconds()), t+int64(tol.Seconds()), t).Scan(&pj, &aj)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	var prices map[string]float64
+	var amounts map[string]map[string]float64
+	if err := json.Unmarshal([]byte(pj), &prices); err != nil {
+		return 0, false, err
+	}
+	if err := json.Unmarshal([]byte(aj), &amounts); err != nil {
+		return 0, false, err
+	}
+	v := 0.0
+	for wid, m := range amounts {
+		for k, amt := range m {
+			if inc == nil || inc(wid, k) {
+				v += amt * prices[k]
+			}
+		}
+	}
+	return v, true, nil
+}

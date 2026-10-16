@@ -9,3 +9,5 @@
 *.test
 # OS cruft
 .DS_Store
+# go-task checksum cache
+/.task/

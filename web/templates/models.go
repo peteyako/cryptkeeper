@@ -46,7 +46,10 @@ type OverviewPage struct {
 	Sync          SyncInfo
 	Watch         []WatchRow
 	NetWorthShare float64 // 0..1, shown only when PF != "all"
-	Now           time.Time
+	// PnL is the unrealized profit or loss per merged asset key. It feeds the optional
+	// P/L column of the holdings table; with no entries the toggle is not shown.
+	PnL map[string]PnLCell
+	Now time.Time
 }
 
 // WalletsPage lists every source as an account card.
@@ -67,9 +70,13 @@ type WalletPage struct {
 	Receive    string
 	ReceiveQR  templ.Component // nil if none; an SVG component supplied by the handler
 	IsBitcoin  bool
-	CostBasis  *float64 // nil until the P&L milestone: the tile shows "—" and "Set cost basis"
+	CostBasis  *float64 // nil when unknown: the tile shows "—" and "Set cost basis"
 	Unrealized *float64
-	Now        time.Time
+	// Activity is the wallet's most recent entries (up to 25) for the Activity tab, and
+	// ActivityMore says there are older ones (the tab then links to the full Activity page).
+	Activity     []ActivityRow
+	ActivityMore bool
+	Now          time.Time
 }
 
 // SourcePickPage is step 1 of the add-source flow.
@@ -99,6 +106,10 @@ type SettingsPage struct {
 	DataDir     string
 	AuthEnabled bool
 	Version     string
+	// Sync is the per-source activity sync state shown in the "Activity sync" card.
+	Sync []SyncRow
+	// Now times the relative "2m ago" texts; the zero value means time.Now().
+	Now time.Time
 }
 
 // PortfolioItem is one portfolio on the manager page.
@@ -164,4 +175,122 @@ type PortfolioFormPage struct {
 	WalletOptions   []WalletOption
 	AssetOptions    []AssetOption     // currently held assets, by value descending
 	Errors          map[string]string // field -> message; "" = form level
+}
+
+// ---- activity ---------------------------------------------------------------------------
+
+// ActivityRow is one entry of the activity feed with the labels the template cannot look up.
+type ActivityRow struct {
+	Tx          core.Tx
+	SourceLabel string
+	SourceKind  core.Kind
+	PeerLabel   string // other side of a matched transfer ("Cold storage")
+}
+
+// SyncRow is one source's activity sync state.
+type SyncRow struct {
+	ID, Label    string
+	Kind         core.Kind
+	Count        int
+	BackfillDone bool
+	LastSync     time.Time
+	LastError    string
+}
+
+// ActivityPage is the Activity screen (/activity).
+type ActivityPage struct {
+	Shell
+	Rows     []ActivityRow
+	More     string // opaque "before" cursor for the next page; "" = no more
+	SourceID string // current filters ("" = all)
+	AssetKey string
+	Kind     string
+	Sources  []WalletOption // filter options
+	Assets   []AssetOption
+	Sync     []SyncRow
+	Now      time.Time
+}
+
+// ---- reports ----------------------------------------------------------------------------
+
+// PnLRow is one asset of the profit and loss table.
+type PnLRow struct {
+	AssetKey, Symbol, Name string
+	Amount, Value          float64
+	AvgCost, Basis         float64
+	Unrealized             float64
+	UnrealizedPct          float64
+	HasBasis, Overridden   bool
+	UnknownUnits           float64 // units without a known cost
+}
+
+// YearAmount is realized profit or loss for one calendar year.
+type YearAmount struct {
+	Year int
+	USD  float64
+}
+
+// ManualBasisRow is a cost entered by hand: Amount units for CostUSD in total.
+type ManualBasisRow struct {
+	Asset           string
+	Amount, CostUSD float64
+	Note            string
+}
+
+// ReportsPage is the Reports screen (/reports).
+type ReportsPage struct {
+	Shell
+	Rows                                    []PnLRow
+	TotalBasis, TotalValue, TotalUnrealized float64
+	Coverage                                float64      // 0..1 share of value with a known cost
+	Realized                                []YearAmount // newest year first
+	Manual                                  []ManualBasisRow
+	AssetOptions                            []AssetOption
+	Import                                  ImportOutcome // CSV import result
+	BasisErr                                string        // manual cost form error
+	Now                                     time.Time
+}
+
+// PnLCell is the unrealized result of one asset, for the overview's P/L column.
+type PnLCell struct {
+	Unrealized, Pct float64
+	OK              bool
+}
+
+// ---- alerts -----------------------------------------------------------------------------
+
+// AlertRuleRow is one alert rule in the list.
+type AlertRuleRow struct {
+	ID, Name, Type, Summary string
+	Enabled                 bool
+}
+
+// AlertLogRow is one fired (or failed) notification.
+type AlertLogRow struct {
+	Time                     time.Time
+	RuleID, Title, Body, Err string
+}
+
+// AlertsPage is the Alerts screen (/alerts).
+type AlertsPage struct {
+	Shell
+	Rules     []AlertRuleRow
+	Recent    []AlertLogRow
+	NtfyHost  string // "" = ntfy is not configured
+	Redact    bool   // amounts are hidden in notifications
+	LoadError string // alerts.yaml has an invalid hand edit
+	Test      ImportOutcome
+	Now       time.Time
+}
+
+// AlertFormPage is the create / edit alert form.
+type AlertFormPage struct {
+	Shell
+	EditID           string
+	Values           map[string]string // id, name, type, asset, above, below, portfolio, pct, window, minutes, minUsd, minPct, cooldown, enabled
+	SelectedWallets  map[string]bool
+	WalletOptions    []WalletOption
+	PortfolioOptions []PortfolioNav // includes {ID: "all", Name: "All holdings"}
+	AssetOptions     []AssetOption
+	Errors           map[string]string // field -> message; "" = form level
 }

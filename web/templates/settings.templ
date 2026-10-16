@@ -99,6 +99,14 @@ templ settingsBody(p SettingsPage) {
 					</ul>
 				}
 			</section>
+			@ActivitySyncCard(p.Sync, p.Now)
+			<section class="card setting" aria-labelledby="set-pf-h">
+				<div class="setting__text">
+					<h2 id="set-pf-h" class="h-card">Portfolios</h2>
+					<p class="muted-text">Named views of your holdings, such as just your cold storage. Manage them here, and export or import them as a file.</p>
+				</div>
+				<a class="btn btn--secondary" href="/portfolios">Manage portfolios</a>
+			</section>
 			<section class="card about" aria-labelledby="set-about-h">
 				<h2 id="set-about-h" class="h-card">About this install</h2>
 				<dl class="kv">

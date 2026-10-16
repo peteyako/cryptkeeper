@@ -11,6 +11,11 @@
 // ?missing=1 (a deleted wallet), ?error=1 (a bad hand edit), ?reset=1 (undo deletes); on
 // /portfolios/new: ?invalid=1. The portfolio POSTs are stubs: a delete, import or restore
 // sticks until the server restarts or ?reset=1.
+//
+// Activity (/activity?source=&asset=&kind=, ?empty=1) pages through the demo feed eight rows
+// at a time. Reports (?empty=1) and Alerts (?empty=1, ?error=1 for a bad hand edit) keep
+// what the stub POSTs change (a manual cost, an alert rule) until the server restarts or
+// ?reset=1. /alerts/new and /alerts/{id}/edit take ?invalid=1.
 package main
 
 import (
@@ -194,12 +199,9 @@ func router() http.Handler {
 		render(w, r, templates.ErrorFull(demo.Shell("Error", "overview", "all", ""), "The server could not read your holdings: sources.yaml is locked by another process."))
 	})
 
-	// Pages that are not built yet.
-	for _, name := range []string{"activity", "reports", "alerts"} {
-		r.Get("/"+name, func(w http.ResponseWriter, r *http.Request) {
-			render(w, r, templates.ErrorFull(demo.Shell(name, name, "all", ""), "This page is not built yet."))
-		})
-	}
+	activityRoutes(r)
+	reportsRoutes(r)
+	alertsRoutes(r)
 	portfolioRoutes(r)
 	return r
 }

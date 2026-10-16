@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     ports:
       - "8787:8787"
+    environment:
+      TZ: ${TZ:-UTC}   # dates and times in the UI use this zone, e.g. America/Los_Angeles
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./.env:/app/.env:ro
