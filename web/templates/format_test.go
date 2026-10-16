@@ -447,3 +447,113 @@ func TestStatusViewAndLabels(t *testing.T) {
 		t.Errorf("SyncView: %q %q %q", g, l, tone)
 	}
 }
+
+func TestShareText(t *testing.T) {
+	for _, tc := range []struct {
+		in   float64
+		want string
+	}{
+		{0.3249, "32% of net worth"},
+		{0.325, "33% of net worth"},
+		{1, "100% of net worth"},
+		{1.4, "100% of net worth"}, // never more than the whole
+		{0.004, "<1% of net worth"},
+		{0.005, "1% of net worth"},
+		{0, "0% of net worth"},
+		{-0.2, "0% of net worth"},
+		{math.NaN(), "0% of net worth"},
+		{math.Inf(1), "0% of net worth"},
+	} {
+		if got := ShareText(tc.in); got != tc.want {
+			t.Errorf("ShareText(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestByteSizeAndBackupWhen(t *testing.T) {
+	for _, tc := range []struct {
+		in   int64
+		want string
+	}{
+		{-5, "0 B"}, {0, "0 B"}, {812, "812 B"}, {1023, "1023 B"}, {1024, "1.0 KB"},
+		{1284, "1.3 KB"}, {1024*1024 - 1, "1024.0 KB"}, {1024 * 1024, "1.0 MB"}, {3_600_000, "3.4 MB"},
+	} {
+		if got := ByteSize(tc.in); got != tc.want {
+			t.Errorf("ByteSize(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if got := BackupWhen(time.Date(2026, 10, 16, 11, 42, 5, 0, time.UTC)); got != "Oct 16, 11:42" {
+		t.Errorf("BackupWhen = %q", got)
+	}
+	if got := BackupWhen(time.Date(2026, 1, 3, 9, 5, 0, 0, time.UTC)); got != "Jan 3, 09:05" {
+		t.Errorf("BackupWhen pads the time but not the day: %q", got)
+	}
+}
+
+func TestWalletGroups(t *testing.T) {
+	opts := []WalletOption{
+		{ID: "mom", Label: "Mom", Type: "manual", Kind: core.KindManual},
+		{ID: "cold", Label: "Cold", Type: "bitcoin", Kind: core.KindHardware},
+		{ID: "cb", Label: "Coinbase", Type: "coinbase", Kind: core.KindExchange},
+		{ID: "ph", Label: "Phantom", Type: "solana", Kind: core.KindHot},
+		{ID: "kr", Label: "Kraken", Type: "kraken", Kind: core.KindExchange},
+		{ID: "hot", Label: "Sparrow", Type: "bitcoin", Kind: core.KindHot},
+		{ID: "odd", Label: "Odd", Type: "ledger-live", Kind: core.KindHardware},
+		{ID: "bin", Label: "Binance", Type: "binance", Kind: core.KindExchange},
+	}
+	got := walletGroups(opts)
+	var titles []string
+	rows := map[string][]string{}
+	for _, g := range got {
+		titles = append(titles, g.Title)
+		for _, r := range g.Rows {
+			rows[g.Title] = append(rows[g.Title], r.ID)
+			if opts[r.Index].ID != r.ID {
+				t.Errorf("row %s carries index %d, which is %s", r.ID, r.Index, opts[r.Index].ID)
+			}
+		}
+	}
+	if want := "Exchanges,Bitcoin,Solana,Manual,Other"; strings.Join(titles, ",") != want {
+		t.Errorf("group order = %v, want %s", titles, want)
+	}
+	for title, want := range map[string]string{
+		"Exchanges": "cb,kr,bin", "Bitcoin": "cold,hot", "Solana": "ph", "Manual": "mom", "Other": "odd",
+	} {
+		if g := strings.Join(rows[title], ","); g != want {
+			t.Errorf("%s = %s, want %s (option order is kept inside a group)", title, g, want)
+		}
+	}
+	if len(walletGroups(nil)) != 0 || len(walletGroups([]WalletOption{{ID: "m", Type: "manual", Kind: core.KindManual}})) != 1 {
+		t.Error("empty groups must be left out")
+	}
+}
+
+func TestPortfolioFormHelpers(t *testing.T) {
+	if got := AssetSearchKey(AssetOption{Key: "spl:EPjF", Symbol: "USDC", Name: "USD Coin"}); got != "usdc usd coin spl:epjf" {
+		t.Errorf("AssetSearchKey = %q", got)
+	}
+	p := PortfolioFormPage{
+		SelectedWallets: map[string]bool{"cold": true, "gone-b": true, "gone-a": true, "off": false},
+		WalletOptions:   []WalletOption{{ID: "cold"}, {ID: "off"}},
+	}
+	if got := strings.Join(p.missingWallets(), ","); got != "gone-a,gone-b" {
+		t.Errorf("missingWallets = %q (sorted, only ticked, only unknown)", got)
+	}
+	if got := missingText([]string{"a"}); got != "1 wallet in this portfolio no longer exists: " {
+		t.Errorf("missingText(1) = %q", got)
+	}
+	if got := missingText([]string{"a", "b"}); got != "2 wallets in this portfolio no longer exist: " {
+		t.Errorf("missingText(2) = %q", got)
+	}
+	if pfFormTitle(PortfolioFormPage{}) != "New portfolio" || pfFormTitle(PortfolioFormPage{EditID: "x", Name: " Memes "}) != "Edit Memes" || pfFormTitle(PortfolioFormPage{EditID: "x"}) != "Edit portfolio" {
+		t.Error("pfFormTitle")
+	}
+	if pfSaveLabel(PortfolioFormPage{}) != "Create portfolio" || pfSaveLabel(PortfolioFormPage{EditID: "x"}) != "Save changes" {
+		t.Error("pfSaveLabel")
+	}
+	for name, want := range map[string]string{"name": "Name", "wallets": "Wallets", "assets": "Assets", "extraAssets": "Extra assets", "watch": "Watch list"} {
+		if got := FieldLabel(name); got != want {
+			t.Errorf("FieldLabel(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

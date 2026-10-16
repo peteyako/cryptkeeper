@@ -7,7 +7,10 @@
 // /refresh, /w/{id}/tab/{tab}, /sources/test ...), answering from internal/demo.
 //
 // Useful query strings: ?range=1M on /, ?empty=1 on / and /wallets, ?tab=addresses on
-// /w/cold, ?edit=1 and ?invalid=1 on /sources/new/{type}.
+// /w/cold, ?edit=1 and ?invalid=1 on /sources/new/{type}. On /portfolios: ?empty=1,
+// ?missing=1 (a deleted wallet), ?error=1 (a bad hand edit), ?reset=1 (undo deletes); on
+// /portfolios/new: ?invalid=1. The portfolio POSTs are stubs: a delete, import or restore
+// sticks until the server restarts or ?reset=1.
 package main
 
 import (
@@ -17,6 +20,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/a-h/templ"
@@ -196,9 +200,7 @@ func router() http.Handler {
 			render(w, r, templates.ErrorFull(demo.Shell(name, name, "all", ""), "This page is not built yet."))
 		})
 	}
-	r.Get("/portfolios/new", func(w http.ResponseWriter, r *http.Request) {
-		render(w, r, templates.ErrorFull(demo.Shell("New portfolio", "overview", "all", ""), "Portfolio editing is not built yet."))
-	})
+	portfolioRoutes(r)
 	return r
 }
 
@@ -265,4 +267,160 @@ func noStore(h http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// ---- portfolios ---------------------------------------------------------------------------
+
+// pfState is what the preview remembers between portfolio requests, so a delete or an
+// import is visible in the next patch. It resets with ?reset=1.
+var pfState = struct {
+	sync.Mutex
+	deleted map[string]bool
+	changes int // each change adds a backup, as the real store does
+}{deleted: map[string]bool{}}
+
+func portfoliosPage(r *http.Request) templates.PortfoliosPage {
+	now := time.Now()
+	p := demo.Portfolios(now)
+	pfState.Lock()
+	defer pfState.Unlock()
+	q := r.URL.Query()
+	if q.Get("reset") != "" {
+		pfState.deleted, pfState.changes = map[string]bool{}, 0
+	}
+	items := p.Items[:0:0]
+	for _, it := range p.Items {
+		if !pfState.deleted[it.ID] {
+			items = append(items, it)
+		}
+	}
+	p.Items = items
+	for i := range pfState.changes {
+		row := templates.BackupRow{Name: fmt.Sprintf("new-%d.yaml", i), Time: now.Add(-time.Duration(i+1) * 20 * time.Second), Size: 1300 + int64(i)*12}
+		p.Backups = append([]templates.BackupRow{row}, p.Backups...)
+	}
+	if q.Get("empty") != "" {
+		p.Items, p.Backups = nil, nil
+	}
+	if q.Get("missing") != "" && len(p.Items) > 1 {
+		p.Items[1].Missing = []string{"old-ledger", "paper-2019"}
+	}
+	if q.Get("error") != "" {
+		p.LoadError = `line 7: field walet not found in type portfolios.Portfolio`
+	}
+	return p
+}
+
+func portfolioRoutes(r chi.Router) {
+	r.Get("/portfolios", func(w http.ResponseWriter, r *http.Request) {
+		render(w, r, templates.PortfoliosFull(portfoliosPage(r)))
+	})
+	r.Get("/portfolios/new", func(w http.ResponseWriter, r *http.Request) {
+		p := demo.PortfolioForm("", time.Now())
+		if r.URL.Query().Get("invalid") != "" {
+			p = demo.PortfolioFormInvalid(time.Now())
+		}
+		render(w, r, templates.PortfolioFormFull(p))
+	})
+	r.Get("/portfolios/{id}/edit", func(w http.ResponseWriter, r *http.Request) {
+		p := demo.PortfolioForm(chi.URLParam(r, "id"), time.Now())
+		if p.EditID == "" {
+			http.Redirect(w, r, "/portfolios", http.StatusSeeOther)
+			return
+		}
+		render(w, r, templates.PortfolioFormFull(p))
+	})
+	r.Get("/portfolios/export", func(w http.ResponseWriter, r *http.Request) {
+		exportYAML(w, "portfolios.yaml", "long-term", "trading", "majors")
+	})
+	r.Get("/portfolios/{id}/export", func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		exportYAML(w, id+".yaml", id)
+	})
+
+	r.Post("/portfolios", savePortfolio)
+	r.Post("/portfolios/{id}", savePortfolio)
+	r.Post("/portfolios/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
+		pfState.Lock()
+		pfState.deleted[chi.URLParam(r, "id")] = true
+		pfState.changes++
+		pfState.Unlock()
+		p := portfoliosPage(r)
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElementTempl(templates.PortfolioList(p))
+		_ = sse.PatchElementTempl(templates.PortfolioIO(p))
+	})
+	r.Post("/portfolios/import", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		_, hdr, err := r.FormFile("file")
+		sse := datastar.NewSSE(w, r)
+		time.Sleep(700 * time.Millisecond)
+		switch {
+		case err != nil:
+			_ = sse.PatchElementTempl(templates.ImportResultView(templates.ImportOutcome{Message: "Choose a file to import."}))
+		case strings.Contains(strings.ToLower(hdr.Filename), "bad"):
+			_ = sse.PatchElementTempl(templates.ImportResultView(templates.ImportOutcome{Message: `Couldn't read that file: line 3: field walet not found. Nothing was changed.`}))
+		default:
+			msg := "Imported: 2 added, 1 replaced, 3 unchanged."
+			if r.FormValue("mode") == "replace" {
+				msg = "Replaced the whole list with 6 portfolios."
+			}
+			pfState.Lock()
+			pfState.changes++
+			pfState.Unlock()
+			p := portfoliosPage(r)
+			p.Import = templates.ImportOutcome{OK: true, Message: msg}
+			_ = sse.PatchElementTempl(templates.PortfolioIO(p))
+			_ = sse.PatchElementTempl(templates.PortfolioList(p))
+		}
+	})
+	r.Post("/portfolios/restore/{name}", func(w http.ResponseWriter, r *http.Request) {
+		pfState.Lock()
+		pfState.changes++
+		pfState.Unlock()
+		p := portfoliosPage(r)
+		p.Import = templates.ImportOutcome{OK: true, Message: "Restored " + chi.URLParam(r, "name") + ". The previous list was backed up first."}
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElementTempl(templates.PortfolioIO(p))
+		_ = sse.PatchElementTempl(templates.PortfolioList(p))
+	})
+}
+
+// savePortfolio validates like the real handler will: a name, and at least one wallet or
+// asset when the "only selected" mode is chosen.
+func savePortfolio(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	errs := map[string]string{}
+	if strings.TrimSpace(r.PostFormValue("name")) == "" {
+		errs["name"] = "Give the portfolio a name."
+	}
+	if r.PostFormValue("walletsMode") == "selected" && len(r.PostForm["wallets"]) == 0 {
+		errs["wallets"] = "Pick at least one wallet, or choose All wallets."
+	}
+	if r.PostFormValue("assetsMode") == "selected" && len(r.PostForm["assets"]) == 0 && strings.TrimSpace(r.PostFormValue("extraAssets")) == "" {
+		errs["assets"] = "Pick at least one asset, or choose All assets."
+	}
+	sse := datastar.NewSSE(w, r)
+	time.Sleep(500 * time.Millisecond)
+	if len(errs) > 0 {
+		errs[""] = "Nothing was saved. Fix the fields below and try again."
+		_ = sse.PatchElementTempl(templates.FormErrors(errs))
+		return
+	}
+	pfState.Lock()
+	pfState.changes++
+	pfState.Unlock()
+	_ = sse.PatchElementTempl(templates.FormErrors(map[string]string{}))
+	_ = sse.Redirect("/portfolios")
+}
+
+func exportYAML(w http.ResponseWriter, filename string, ids ...string) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	var b strings.Builder
+	b.WriteString("version: 1\nportfolios:\n")
+	for _, id := range ids {
+		fmt.Fprintf(&b, "  - { id: %s, name: %s, wallets: all, assets: all }\n", id, id)
+	}
+	_, _ = w.Write([]byte(b.String()))
 }

@@ -2,7 +2,9 @@ package portfolio
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"crypto-portfolio/internal/store"
@@ -229,4 +231,33 @@ func ChangeFor(rng string, pts []Point, now time.Time) Change {
 	}
 	c.Valid = true
 	return c
+}
+
+// PriceChanges returns the percent price change over window for each asset in current,
+// comparing current prices with the history row nearest to now-window. Assets without a
+// comparable row (history younger than the window, or the asset wasn't priced then) are
+// absent. A row only counts if it lies within 10% of the window from the target time.
+func (h *History) PriceChanges(ctx context.Context, current map[string]float64, window time.Duration, now time.Time) (map[string]float64, error) {
+	target := now.Add(-window).Unix()
+	tol := int64(window.Seconds() / 10)
+	var pj string
+	err := h.DB.QueryRowContext(ctx, `SELECT prices FROM history WHERE ts BETWEEN ? AND ?
+		ORDER BY ABS(ts - ?) LIMIT 1`, target-tol, target+tol, target).Scan(&pj)
+	if errors.Is(err, sql.ErrNoRows) {
+		return map[string]float64{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var then map[string]float64
+	if err := json.Unmarshal([]byte(pj), &then); err != nil {
+		return nil, err
+	}
+	out := map[string]float64{}
+	for k, cur := range current {
+		if old, ok := then[k]; ok && old > 0 && cur > 0 {
+			out[k] = (cur - old) / old * 100
+		}
+	}
+	return out, nil
 }

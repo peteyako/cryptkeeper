@@ -1,0 +1,13 @@
+Transactions
+User,Jane Doe,5b3e1f6a-1c2d-4e3f-8a9b-0c1d2e3f4a5b
+"You can use this transaction report to inform your likely tax obligations. For US customers, Sells, Converts, Rewards Income, and Coinbase Earn transactions are taxable events. For final tax obligations, please consult your tax advisor."
+
+ID,Timestamp,Transaction Type,Asset,Quantity Transacted,Price Currency,Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+64350a3f9d1c2b0001a1b2c1,2023-04-12 14:03:22 UTC,Buy,BTC,0.02000000,USD,"$30,150.25",$603.01,$615.00,$11.99,Bought 0.02000000 BTC for $615.00 USD
+64350a3f9d1c2b0001a1b2c2,2023-04-13 09:00:00 UTC,Buy,ETH,1.00000000,EUR,"€1,850.00","€1,850.00","€1,880.00",€30.00,Bought 1.00000000 ETH for €1880.00 EUR
+64350a3f9d1c2b0001a1b2c3,2023-05-01 00:00:00 UTC,Staking Income,ETH,0.00050000,USD,"$1,900.00",$0.95,$0.95,$0.00,
+64350a3f9d1c2b0001a1b2c4,2023-06-01 12:30:00 UTC,Sell,BTC,0.01000000,USD,"$27,000.00",$270.00,$266.40,$3.60,Sold 0.01000000 BTC for $266.40 USD
+64350a3f9d1c2b0001a1b2c5,2023-06-02 12:30:00 UTC,Convert,BTC,0.00500000,USD,"$27,000.00",$135.00,$135.00,$0.00,"Converted 0.00500000 BTC to 2,048.25 ADA"
+64350a3f9d1c2b0001a1b2c6,2023-07-01 08:00:00 UTC,Withdrawal,USD,100.00,USD,$1.00,$100.00,$100.00,$0.00,Withdrew $100.00 USD to Chase Bank ****1234
+64350a3f9d1c2b0001a1b2c7,2023-07-02 08:00:00 UTC,Send,ETH,0.50000000,USD,"$1,950.00",$975.00,$975.00,$0.00,Sent 0.50000000 ETH to 0x71C7656EC7ab88b098defB751B7401B5f6d8976F
+64350a3f9d1c2b0001a1b2c8,2023-07-03 08:00:00 UTC,Receive,SOL,3.00000000,USD,$20.00,$60.00,$60.00,$0.00,Received 3.00000000 SOL from an external account

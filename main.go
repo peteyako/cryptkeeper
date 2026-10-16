@@ -1,6 +1,8 @@
 // Command crypto-portfolio is Vault: a self-hosted, read-only crypto portfolio monitor.
 //
 //	crypto-portfolio serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
+//	crypto-portfolio portfolios export [-o file.yaml] [-id ID]
+//	crypto-portfolio portfolios import file.yaml [-replace]
 //	crypto-portfolio sources export [-o file.yaml] [-secrets]
 //	crypto-portfolio sources import file.yaml [-replace]
 //	crypto-portfolio healthcheck [-addr 127.0.0.1:8787]
@@ -23,6 +25,7 @@ import (
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/httpx"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/prices"
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/server"
@@ -50,12 +53,14 @@ func main() {
 		err = serve(args)
 	case "sources":
 		err = sourcesCmd(args)
+	case "portfolios":
+		err = portfoliosCmd(args)
 	case "healthcheck":
 		err = healthcheck(args)
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (serve, sources, healthcheck, version)", cmd)
+		err = fmt.Errorf("unknown command %q (serve, portfolios, sources, healthcheck, version)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -64,13 +69,14 @@ func main() {
 }
 
 type app struct {
-	cfg      config.Config
-	dataDir  string
-	log      *slog.Logger
-	db       *store.DB
-	client   *httpx.Client
-	registry *sources.Registry
-	prices   *prices.Service
+	cfg        config.Config
+	dataDir    string
+	log        *slog.Logger
+	db         *store.DB
+	client     *httpx.Client
+	registry   *sources.Registry
+	portfolios *portfolios.Store
+	prices     *prices.Service
 }
 
 // setup loads config, opens the database and the sources registry.
@@ -113,6 +119,12 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 		return nil, fs, err
 	}
 	a.registry = reg
+	ps, err := portfolios.NewStore(filepath.Join(*dataDir, "portfolios.yaml"), filepath.Join(*dataDir, "backups"))
+	if err != nil {
+		db.Close()
+		return nil, fs, err
+	}
+	a.portfolios = ps
 	return a, fs, nil
 }
 
@@ -231,7 +243,7 @@ func serve(args []string) error {
 
 	h := server.New(server.Deps{
 		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log,
-		Registry: a.registry, Refresher: ref, Broker: broker, History: hist, Prices: a.priceFunc(),
+		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref, Broker: broker, History: hist, Prices: a.priceFunc(),
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
 	})
@@ -317,6 +329,58 @@ func sourcesCmd(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown sources command %q", sub)
+}
+
+func portfoliosCmd(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: portfolios export [-o file] [-id ID] | portfolios import FILE [-replace]")
+	}
+	sub, rest := args[0], args[1:]
+	fs := flag.NewFlagSet("portfolios "+sub, flag.ExitOnError)
+	switch sub {
+	case "export":
+		out := fs.String("o", "", "output file (default stdout)")
+		id := fs.String("id", "", "export one portfolio (default: all)")
+		a, _, err := setup(fs, rest)
+		if err != nil {
+			return err
+		}
+		defer a.db.Close()
+		raw, err := a.portfolios.Export(*id)
+		if err != nil {
+			return err
+		}
+		if *out == "" {
+			_, err = os.Stdout.Write(raw)
+			return err
+		}
+		return os.WriteFile(*out, raw, 0o600)
+	case "import":
+		replace := fs.Bool("replace", false, "replace the whole list instead of merging")
+		a, fs, err := setup(fs, rest)
+		if err != nil {
+			return err
+		}
+		defer a.db.Close()
+		if fs.NArg() != 1 {
+			return errors.New("usage: portfolios import FILE [-replace]")
+		}
+		raw, err := os.ReadFile(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		mode := portfolios.ImportMerge
+		if *replace {
+			mode = portfolios.ImportReplace
+		}
+		res, err := a.portfolios.Import(raw, mode)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fs.Arg(0), err)
+		}
+		fmt.Printf("imported: %d added, %d replaced, %d unchanged, %d removed\n", res.Added, res.Replaced, res.Unchanged, res.Removed)
+		return nil
+	}
+	return fmt.Errorf("unknown portfolios command %q", sub)
 }
 
 func healthcheck(args []string) error {

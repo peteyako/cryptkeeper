@@ -42,6 +42,9 @@ type AssetRow struct {
 	Share     float64     `json:"share"`  // 0..1 of snapshot total
 	HeldIn    []string    `json:"heldIn"` // wallet labels
 	StakedAmt float64     `json:"stakedAmount,omitempty"`
+	// Change7d is the 7-day price change in percent, from recorded history (nil until
+	// history covers a week).
+	Change7d *float64 `json:"change7d,omitempty"`
 }
 
 // WalletView is one source with its priced holdings.

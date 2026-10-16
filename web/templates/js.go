@@ -183,3 +183,57 @@ func boolStr(b bool) string {
 	}
 	return "false"
 }
+
+// ---- portfolios ---------------------------------------------------------------------------
+
+func pfEditHref(id string) string { return "/portfolios/" + url.PathEscape(id) + "/edit" }
+
+func pfExportHref(id string) string { return "/portfolios/" + url.PathEscape(id) + "/export" }
+
+// pfDeleteClick asks first, then posts the delete. The portfolio name goes through
+// JSString inside the confirm text, so a quote in a name cannot break the expression.
+func pfDeleteClick(id, name string) string {
+	return "confirm(" + JSString("Delete the portfolio "+name+"? Your wallets are not affected.") + ") && @post(" + JSString("/portfolios/"+url.PathEscape(id)+"/delete") + ")"
+}
+
+const restoreConfirm = `Restore this backup? The current list is backed up first.`
+
+func restoreClick(backup string) string {
+	return "confirm(" + JSString(restoreConfirm) + ") && @post(" + JSString("/portfolios/restore/"+url.PathEscape(backup)) + ")"
+}
+
+// importSubmit posts the import form (multipart, so the file rides along).
+const importSubmit = `@post('/portfolios/import', {contentType: 'form'})`
+
+func pfFormAction(editID string) string {
+	if editID == "" {
+		return "/portfolios"
+	}
+	return "/portfolios/" + url.PathEscape(editID)
+}
+
+func pfSubmitClick(editID string) string {
+	return "@post(" + JSString(pfFormAction(editID)) + ", {contentType: 'form'})"
+}
+
+func modeValue(all bool) string {
+	if all {
+		return "all"
+	}
+	return "selected"
+}
+
+// pfFormSignals is the data-signals object of the editor's wrapper. The wrapper is never
+// patched (only #form-errors is), so these survive a failed save.
+func pfFormSignals(p PortfolioFormPage) string {
+	return "{walletsMode: " + JSString(modeValue(p.AllWallets)) + ", assetsMode: " + JSString(modeValue(p.AllAssets)) + ", assetQ: ''}"
+}
+
+// pfModeSelected is true while the "Only selected ..." radio of a section is chosen.
+func pfModeSelected(signal string) string { return "$" + signal + " === 'selected'" }
+
+// assetShow filters the asset picker rows against the search box.
+const assetShow = `!$assetQ || el.dataset.search.includes($assetQ.toLowerCase())`
+
+// noEnterSubmit stops Enter in the asset search from submitting the whole form.
+const noEnterSubmit = `evt.key === 'Enter' && evt.preventDefault()`

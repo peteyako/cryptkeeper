@@ -334,6 +334,18 @@ body.amounts-hidden .fig-m {
   width: 100%;
 }
 
+.btn--sm {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  .btn--sm {
+    height: 44px;
+  }
+}
+
 .btn:disabled,
 .btn[disabled] {
   background: var(--surface-2);
@@ -640,6 +652,10 @@ body.amounts-hidden .fig-m {
   margin-top: 6px;
 }
 
+.notice__line + .notice__line {
+  margin-top: 4px;
+}
+
 .notice__list {
   padding-left: 18px;
 }
@@ -860,6 +876,40 @@ body.amounts-hidden .fig-m {
   letter-spacing: 0.08em;
 }
 
+.nav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nav-head .nav-label {
+  padding-bottom: 0;
+}
+
+.nav-manage {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--link);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.nav-manage:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+
+.nav-head--on .nav-manage {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
 .nav-item {
   display: flex;
   align-items: center;
@@ -937,7 +987,8 @@ body.amounts-hidden .fig-m {
 
 @media (pointer: coarse) {
   .nav-item,
-  .nav-new {
+  .nav-new,
+  .nav-manage {
     min-height: 44px;
   }
 }
@@ -946,7 +997,9 @@ body.amounts-hidden .fig-m {
 
 .dashboard,
 .wallets,
-.settings {
+.settings,
+.portfolios,
+.pf-editor {
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1016,6 +1069,14 @@ body.amounts-hidden .fig-m {
   margin-top: 0;
 }
 
+/* Portfolios: title and the hide button on one row, "New portfolio" under them. */
+.portfolios .page-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title hide"
+    "add add";
+}
+
 .dashboard .page-head__title {
   flex-direction: row;
   align-items: center;
@@ -1079,6 +1140,31 @@ body.amounts-hidden .fig-m {
 
 .pf-menu__list .nav-item {
   min-height: 44px;
+}
+
+.pf-menu__list .pf-menu__manage {
+  position: relative;
+  margin-top: 6px;
+  color: var(--link);
+}
+
+.pf-menu__list .pf-menu__manage::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--border);
+}
+
+.pf-menu__list .pf-menu__manage:hover {
+  color: var(--link-hover);
+}
+
+.pf-edit {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 /* ---- overview -------------------------------------------------------------------------- */
@@ -1585,7 +1671,8 @@ body.amounts-hidden .fig-m {
   font-weight: 500;
 }
 
-.tbl .col-chg .chg {
+.tbl .col-chg .chg,
+.tbl .col-chg7 .chg {
   font-size: 13px;
 }
 
@@ -1711,6 +1798,7 @@ body.amounts-hidden .fig-m {
 
   .tbl--holdings .col-held,
   .tbl--holdings .col-price,
+  .tbl--holdings .col-chg7,
   .tbl--holdings .asset__sub {
     display: none;
   }
@@ -2535,12 +2623,390 @@ body.amounts-hidden .fig-m {
   line-height: 16px;
 }
 
+/* ---- portfolios ------------------------------------------------------------------------ */
+
+.portfolios {
+  max-width: 1240px;
+}
+
+.pf-editor {
+  max-width: 760px;
+}
+
+.pf-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.pf-main,
+.pf-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.pf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pf-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  list-style: none;
+}
+
+.pf-load-error {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pf-item {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.pf-item__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pf-item__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pf-item__name {
+  font-size: 17px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.pf-item__value {
+  flex-shrink: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: right;
+}
+
+.pf-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: 12px 16px;
+}
+
+.pf-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pf-fact dt {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pf-fact dd {
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.pf-item__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Save and restore */
+
+.pf-io {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.pf-io__intro,
+.pf-io__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pf-io__block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.pf-io__row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+
+.pf-io__text {
+  flex: 1 1 200px;
+}
+
+.pf-io__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pf-io .empty-note {
+  padding: 0;
+}
+
+.pf-io .form,
+.pf-form {
+  flex: none;
+}
+
+.import-result:empty {
+  display: none;
+}
+
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--row);
+}
+
+.backup-row:last-child {
+  border-bottom: 0;
+}
+
+.backup-row__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.backup-row__time {
+  font: 500 13px/20px var(--font-mono);
+}
+
+/* Editor */
+
+.pf-editor__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pf-form {
+  padding: 20px;
+  gap: 22px;
+}
+
+.pf-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pf-legend {
+  padding: 0 0 6px;
+}
+
+.pf-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.pf-pick .field__help a {
+  color: var(--link);
+}
+
+.pf-assets .search {
+  width: 100%;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A radio or checkbox shown as a row. The whole row is the label, so the touch target is
+   the row (48px), not the 20px control. */
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--text-3);
+}
+
+.choice:has(.choice__input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice__input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.choice__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.choice__title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.choice__help {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.choice__meta {
+  flex-shrink: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The ETH disc is the same blue as a ticked row, so every disc gets a hairline ring. */
+.choice .disc {
+  width: 32px;
+  height: 32px;
+  font-size: 10px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.pick-box {
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+
+.pick-box--scroll {
+  max-height: 336px;
+  overflow-y: auto;
+}
+
+.choice--row {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.choice--row:last-child {
+  border-bottom: 0;
+}
+
+.choice--row:hover {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+.choice--row:has(.choice__input:checked) {
+  border-color: var(--border);
+  background: var(--accent-soft);
+}
+
+@media (min-width: 560px) {
+  .pf-item__actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .pf-item__actions .btn--danger {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 759.98px) {
+  .pf-form .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .pf-form .form-actions .btn--ghost {
+    display: inline-flex;
+  }
+}
+
 /* ---- wider screens --------------------------------------------------------------------- */
 
 @media (min-width: 760px) {
   .dashboard,
   .wallets,
-  .settings {
+  .settings,
+  .portfolios,
+  .pf-editor {
     gap: 24px;
   }
 
@@ -2611,10 +3077,31 @@ body.amounts-hidden .fig-m {
     line-height: 36px;
   }
 
+  /* The eyebrow on top, then the portfolio name with its Edit link beside it. */
   .dashboard .page-head__title {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: minmax(0, auto) auto;
+    grid-template-areas:
+      "eyebrow eyebrow"
+      "title edit";
+    justify-content: start;
+    align-items: center;
+    gap: 4px 14px;
+  }
+
+  .dashboard .page-head__title .eyebrow {
+    grid-area: eyebrow;
+  }
+
+  .dashboard .page-head__title .h-title {
+    grid-area: title;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard .page-head__title .pf-edit {
+    grid-area: edit;
+    margin-left: 0;
   }
 
   .page-head__title .eyebrow {
@@ -2720,32 +3207,36 @@ body.amounts-hidden .fig-m {
   /* Auto layout: widths below are hints, so very large figures widen their column instead
      of spilling into the next one. "Held in" is the column that gives way (it wraps). */
   .tbl--holdings {
-    min-width: 760px;
+    min-width: 840px;
     table-layout: auto;
   }
 
   .tbl--holdings .col-asset {
-    width: 24%;
+    width: 22%;
   }
 
   .tbl--holdings .col-held {
-    width: 20%;
+    width: 18%;
   }
 
   .tbl--holdings .col-price {
-    width: 13%;
+    width: 12%;
   }
 
   .tbl--holdings .col-amt {
-    width: 16%;
-  }
-
-  .tbl--holdings .col-val {
     width: 15%;
   }
 
+  .tbl--holdings .col-val {
+    width: 14%;
+  }
+
   .tbl--holdings .col-chg {
-    width: 12%;
+    width: 9%;
+  }
+
+  .tbl--holdings .col-chg7 {
+    width: 10%;
   }
 
   .tbl--wallet {
@@ -2832,6 +3323,16 @@ body.amounts-hidden .fig-m {
     flex: none;
   }
 
+  .pf-item,
+  .pf-io,
+  .pf-form {
+    padding: 24px;
+  }
+
+  .pf-form {
+    gap: 24px;
+  }
+
   .search input,
   .input {
     font-size: 14px;
@@ -2840,6 +3341,13 @@ body.amounts-hidden .fig-m {
   .input--area,
   .input--mono {
     font-size: 14px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pf-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    gap: 24px 20px;
   }
 }
 
@@ -2885,7 +3393,8 @@ body.amounts-hidden .fig-m {
   .nav-item--on,
   .bn-item--on,
   .tab--on,
-  .btn.is-pressed {
+  .btn.is-pressed,
+  .choice:has(.choice__input:checked) {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

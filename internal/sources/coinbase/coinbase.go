@@ -473,18 +473,26 @@ func (s *Source) fetchV2(ctx context.Context) ([]*account, error) {
 			})
 		}
 
-		next = ""
-		if resp.Pagination.NextURI != nil && *resp.Pagination.NextURI != "" {
-			// next_uri is a path plus query. Only that part is used, always against our own base
-			// URL, so a hostile or odd absolute URL can never receive the bearer token.
-			u, err := url.Parse(*resp.Pagination.NextURI)
-			if err != nil || !strings.HasPrefix(u.Path, "/") {
-				return nil, fmt.Errorf("unusable next_uri %q", *resp.Pagination.NextURI)
-			}
-			next = u.RequestURI()
+		var err error
+		if next, err = cleanNextURI(resp.Pagination.NextURI); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
+}
+
+// cleanNextURI turns a pagination next_uri into the path plus query to request next, or "" when
+// there is no next page. next_uri is a path plus query: only that part is used, always against our
+// own base URL, so a hostile or odd absolute URL can never receive the bearer token.
+func cleanNextURI(raw *string) (string, error) {
+	if raw == nil || *raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(*raw)
+	if err != nil || !strings.HasPrefix(u.Path, "/") {
+		return "", fmt.Errorf("unusable next_uri %q", *raw)
+	}
+	return u.RequestURI(), nil
 }
 
 // Fetch returns the account's holdings. Either API may fail alone: the other one's holdings are

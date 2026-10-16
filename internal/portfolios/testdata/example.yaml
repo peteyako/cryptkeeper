@@ -1,0 +1,8 @@
+# The format from docs/plan.md: scalar `all`, explicit lists, an omitted selector (= all),
+# and an explicit `[]` (= none, a watch-only portfolio).
+version: 1
+portfolios:
+  - { id: long-term, name: Long-term, wallets: all, assets: [BTC, SOL, "spl:J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"], watch: [ETH, LINK] }
+  - { id: kids, name: "Kids' wallets", wallets: [kids-phantom, kids-cash], assets: all }
+  - { id: memes, name: Memecoins, assets: [BONK, WIF] }
+  - { id: watch, name: Watchlist, wallets: [], watch: [ETH, AVAX] }

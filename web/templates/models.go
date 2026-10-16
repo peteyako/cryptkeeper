@@ -12,7 +12,7 @@ import (
 // Shell is what every full page needs to draw the app chrome.
 type Shell struct {
 	Title      string
-	Active     string // "overview","wallets","activity","reports","alerts","settings"
+	Active     string // "overview","wallets","activity","reports","alerts","settings","portfolios"
 	Portfolios []PortfolioNav
 	PF         string // current portfolio id or "all"
 	Range      string // "1D","1W","1M","1Y","All"
@@ -99,4 +99,69 @@ type SettingsPage struct {
 	DataDir     string
 	AuthEnabled bool
 	Version     string
+}
+
+// PortfolioItem is one portfolio on the manager page.
+type PortfolioItem struct {
+	ID, Name    string
+	ValueUSD    float64
+	Share       float64  // 0..1 of net worth
+	WalletsText string   // "All wallets" | "3 wallets" | "No wallets"
+	AssetsText  string   // "All assets" | "BTC, SOL +2" (first 3 symbols, then "+N")
+	WatchCount  int      // assets on the watch list
+	Missing     []string // explicit wallet ids that no longer exist (shown as a warning)
+}
+
+// BackupRow is one automatic backup of the portfolio list.
+type BackupRow struct {
+	Name string
+	Time time.Time
+	Size int64
+}
+
+// ImportOutcome is the result of an import (or restore), e.g. "Imported: 2 added, 1
+// replaced, 3 unchanged." A zero value renders nothing.
+type ImportOutcome struct {
+	OK      bool
+	Message string
+}
+
+// PortfoliosPage is the portfolio manager (/portfolios).
+type PortfoliosPage struct {
+	Shell
+	Items     []PortfolioItem
+	Backups   []BackupRow
+	LoadError string // non-empty when data/portfolios.yaml has an invalid hand edit
+	Now       time.Time
+	// Import is the result shown under the import form. Optional: a handler can also
+	// patch ImportResultView on its own.
+	Import ImportOutcome
+}
+
+// WalletOption is one wallet a portfolio can be limited to.
+type WalletOption struct {
+	ID, Label, Type string
+	Kind            core.Kind
+}
+
+// AssetOption is one currently held asset a portfolio can be limited to.
+type AssetOption struct {
+	Key, Symbol, Name string
+	ValueUSD          float64
+}
+
+// PortfolioFormPage is the create / edit portfolio form.
+type PortfolioFormPage struct {
+	Shell
+	EditID          string // "" when creating
+	Name            string
+	AllWallets      bool
+	SelectedWallets map[string]bool
+	AllAssets       bool
+	SelectedAssets  map[string]bool // asset keys
+	ExtraAssets     string          // asset keys not currently held, space or comma separated
+	Watch           string          // watch keys, space or comma separated
+	WalletOptions   []WalletOption
+	AssetOptions    []AssetOption     // currently held assets, by value descending
+	Errors          map[string]string // field -> message; "" = form level
 }

@@ -47,10 +47,9 @@ func (s *Server) shell(r *http.Request, title, active, pf, rng string) templates
 	if _, ok := portfolio.Ranges[rng]; !ok {
 		rng = "1W"
 	}
-	n := len(s.Registry.Defs())
 	sh := templates.Shell{
 		Title: title, Active: active, PF: pf, Range: rng, ShowLogos: s.Cfg.ShowTokenLogos,
-		Portfolios: []templates.PortfolioNav{{ID: "all", Name: "All holdings", Count: plural(n, "source")}},
+		Portfolios: s.portfolioNav(),
 	}
 	if s.Cfg.Password != "" {
 		if u, _, ok := r.BasicAuth(); ok {
@@ -102,19 +101,28 @@ func (s *Server) syncInfo(snap portfolio.Snapshot, ready bool) templates.SyncInf
 	return templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Synced " + templates.Ago(snap.UpdatedAt, s.Now())}
 }
 
-// overviewPage builds the overview model for a portfolio and range.
+// overviewPage builds the overview model for a portfolio and range. Unknown portfolio ids
+// fall back to all holdings (the full-page handler 404s them first).
 func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.OverviewPage {
-	snap, ready := s.latest()
+	all, ready := s.latest()
 	now := s.Now()
+	pv, _ := s.resolvePortfolio(v.PF, all)
+	if !pv.known {
+		v.PF = "all"
+	}
+	snap := pv.snap
+	s.applyChange7d(r.Context(), &snap)
 	p := templates.OverviewPage{
-		Shell:         s.shell(r, "Overview", "overview", v.PF, v.Range),
-		PortfolioName: "All holdings",
+		Shell:         s.shell(r, pv.name, "overview", v.PF, v.Range),
+		PortfolioName: pv.name,
 		Snap:          snap,
-		Sync:          s.syncInfo(snap, ready),
+		Sync:          s.syncInfo(all, ready),
+		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
+		NetWorthShare: pv.share,
 		Now:           now,
 	}
 	if s.History != nil {
-		pts, err := s.History.Series(r.Context(), portfolio.RangeStart(v.Range, now), nil, ptrIf(ready, &snap))
+		pts, err := s.History.Series(r.Context(), portfolio.RangeStart(v.Range, now), pv.include, ptrIf(ready, &snap))
 		if err != nil {
 			s.Log.Warn("history series", "err", err)
 		}
@@ -142,6 +150,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c templ.Componen
 func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	v := viewSignals{PF: chi.URLParam(r, "pf"), Range: r.URL.Query().Get("range")}
 	v.normalize()
+	if _, ok := s.resolvePortfolio(v.PF, portfolio.Snapshot{}); !ok {
+		w.WriteHeader(http.StatusNotFound)
+		s.render(w, r, templates.ErrorFull(s.shell(r, "Not found", "overview", "all", ""), "That portfolio doesn't exist (it may have been deleted)."))
+		return
+	}
 	s.render(w, r, templates.OverviewFull(s.overviewPage(r, v)))
 }
 

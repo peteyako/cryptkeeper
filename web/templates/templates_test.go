@@ -93,6 +93,40 @@ func allPages(t *testing.T) []page {
 	frag("errors none", templates.FormErrors(nil))
 	frag("errors some", templates.FormErrors(map[string]string{"": "Nothing was saved.", "label": "Give it a name.", "key": "Bad key."}))
 
+	mj, _ := demo.OverviewFor(demo.PFMajors, "1W", now)
+	full("overview majors", templates.OverviewFull(mj))
+
+	pp := demo.Portfolios(now)
+	full("portfolios", templates.PortfoliosFull(pp))
+	pe := pp
+	pe.Items, pe.Backups = nil, nil
+	full("portfolios empty", templates.PortfoliosFull(pe))
+	pw := pp
+	pw.Items = append([]templates.PortfolioItem(nil), pp.Items...)
+	pw.Items[1].Missing = []string{"old-ledger", "paper-2019"}
+	pw.LoadError = "line 7: field walet not found in type portfolios.Portfolio"
+	full("portfolios warnings", templates.PortfoliosFull(pw))
+	pi := pp
+	pi.Import = templates.ImportOutcome{OK: true, Message: "Imported: 2 added, 1 replaced, 3 unchanged."}
+	frag("portfolio list", templates.PortfolioList(pp))
+	frag("portfolio io", templates.PortfolioIO(pp))
+	frag("portfolio io imported", templates.PortfolioIO(pi))
+	frag("import ok", templates.ImportResultView(pi.Import))
+	frag("import failed", templates.ImportResultView(templates.ImportOutcome{Message: "Couldn't read that file: line 3."}))
+	frag("import empty", templates.ImportResultView(templates.ImportOutcome{}))
+
+	full("portfolio form new", templates.PortfolioFormFull(demo.PortfolioForm("", now)))
+	for _, id := range []string{demo.PFLongTerm, demo.PFTrading, demo.PFMajors} {
+		full("portfolio form edit "+id, templates.PortfolioFormFull(demo.PortfolioForm(id, now)))
+	}
+	full("portfolio form invalid", templates.PortfolioFormFull(demo.PortfolioFormInvalid(now)))
+	gone := demo.PortfolioForm(demo.PFLongTerm, now)
+	gone.SelectedWallets["old-ledger"] = true
+	full("portfolio form missing wallet", templates.PortfolioFormFull(gone))
+	bare := demo.PortfolioForm("", now)
+	bare.AllWallets, bare.AllAssets, bare.WalletOptions, bare.AssetOptions = false, false, nil, nil
+	full("portfolio form no options", templates.PortfolioFormFull(bare))
+
 	full("settings", templates.SettingsFull(demo.Settings(now)))
 	full("error", templates.ErrorFull(demo.Shell("Error", "overview", "all", ""), "That wallet doesn't exist."))
 	return out
@@ -140,6 +174,13 @@ func TestRequiredIDs(t *testing.T) {
 		"form add coinbase":       {"source-form", "test-result", "form-errors"},
 		"form edit bitcoin":       {"source-form", "test-result", "form-errors"},
 		"form invalid manual":     {"source-form", "test-result", "form-errors"},
+
+		"portfolios":                    {"portfolio-list", "portfolio-io", "import-form", "import-result"},
+		"portfolios empty":              {"portfolio-list", "portfolio-io", "import-form", "import-result"},
+		"portfolios warnings":           {"portfolio-list", "portfolio-io", "import-form", "import-result"},
+		"portfolio form new":            {"portfolio-form", "form-errors", "f-name"},
+		"portfolio form edit long-term": {"portfolio-form", "form-errors", "f-name"},
+		"portfolio form invalid":        {"portfolio-form", "form-errors", "f-name-err", "f-wallets-err"},
 	}
 	for name, ids := range want {
 		p := byName(t, pages, name)
@@ -150,7 +191,7 @@ func TestRequiredIDs(t *testing.T) {
 		}
 	}
 	// /stream patches #dashboard, so only pages that have one may open it.
-	for _, name := range []string{"wallets", "wallet cold holdings"} {
+	for _, name := range []string{"wallets", "wallet cold holdings", "portfolios", "portfolio form new"} {
 		lacks(t, byName(t, pages, name), `id="live"`)
 	}
 
@@ -159,6 +200,8 @@ func TestRequiredIDs(t *testing.T) {
 		"dashboard": "dashboard", "value card": "value-card", "sync chip synced": "sync-status",
 		"wallet tab cold utxos": "wallet-tab", "test ok": "test-result", "test empty": "test-result",
 		"errors none": "form-errors", "errors some": "form-errors",
+		"portfolio list": "portfolio-list", "portfolio io": "portfolio-io", "portfolio io imported": "portfolio-io",
+		"import ok": "import-result", "import failed": "import-result", "import empty": "import-result",
 	}
 	for name, id := range roots {
 		p := byName(t, pages, name)

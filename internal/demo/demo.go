@@ -35,12 +35,26 @@ const (
 const (
 	PFLongTerm = "long-term"
 	PFTrading  = "trading"
+	PFMajors   = "majors"
 )
 
-// portfolioMembers maps a portfolio id to its source ids.
+// portfolioMembers maps a portfolio id to its source ids. Long-term and Trading partition
+// the five sources; Majors takes every source but only five assets (see portfolioAssets).
 var portfolioMembers = map[string][]string{
 	PFLongTerm: {IDCold, IDPhantom, IDMom},
 	PFTrading:  {IDCoinbase, IDKraken},
+	PFMajors:   {IDCold, IDCoinbase, IDKraken, IDPhantom, IDMom},
+}
+
+// portfolioAssets limits a portfolio to some asset keys (absent means every asset).
+var portfolioAssets = map[string][]string{
+	PFMajors: {"BTC", "ETH", "SOL", "LINK", "DOT"},
+}
+
+// change7d holds the fixture 7-day price changes in percent. DOT and BONK have none, so
+// the 7d column shows its dash.
+var change7d = map[string]float64{
+	"BTC": 5.84, "ETH": -3.12, "SOL": 12.40, "USDC": 0.0, "LINK": 2.07, "JUP": -8.90,
 }
 
 var assetNames = map[string]string{
@@ -224,6 +238,9 @@ func merge(ws []portfolio.WalletView, prices map[string]core.Price) ([]portfolio
 	var total float64
 	rows := make([]portfolio.AssetRow, 0, len(order))
 	for _, k := range order {
+		if v, ok := change7d[k]; ok {
+			by[k].Change7d = ptr(v)
+		}
 		total += by[k].ValueUSD
 		rows = append(rows, *by[k])
 	}
@@ -280,11 +297,26 @@ func SnapshotFor(pf string, now time.Time) (portfolio.Snapshot, bool) {
 	if !ok {
 		return portfolio.Snapshot{}, false
 	}
+	keys := portfolioAssets[pf]
 	var ws []portfolio.WalletView
 	for _, w := range Wallets(now) {
-		if contains(ids, w.ID) {
-			ws = append(ws, w)
+		if !contains(ids, w.ID) {
+			continue
 		}
+		if keys != nil {
+			var rows []portfolio.HoldingRow
+			for _, r := range w.Rows {
+				if contains(keys, r.AssetKey) {
+					rows = append(rows, r)
+				}
+			}
+			if len(rows) == 0 {
+				continue
+			}
+			w.Rows, w.HiddenRows, w.NFTCount = rows, nil, 0
+			w.ValueUSD = sum(rows)
+		}
+		ws = append(ws, w)
 	}
 	return snapshotOf(ws, now), true
 }
@@ -352,11 +384,12 @@ func Shell(title, active, pf, rng string) templates.Shell {
 			{ID: "all", Name: "All holdings", Count: "5 sources"},
 			{ID: PFLongTerm, Name: "Long-term", Count: "3 sources"},
 			{ID: PFTrading, Name: "Trading", Count: "2 sources"},
+			{ID: PFMajors, Name: "Majors", Count: "5 sources"},
 		},
 	}
 }
 
-var portfolioNames = map[string]string{"all": "All holdings", PFLongTerm: "Long-term", PFTrading: "Trading"}
+var portfolioNames = map[string]string{"all": "All holdings", PFLongTerm: "Long-term", PFTrading: "Trading", PFMajors: "Majors"}
 
 // WatchList is the fixture "Watching" table.
 func WatchList(now time.Time) []templates.WatchRow {
@@ -616,4 +649,108 @@ func TestOK(now time.Time) templates.TestResult {
 // TestFailed is a failed connection test.
 func TestFailed() templates.TestResult {
 	return templates.TestResult{OK: false, Message: "Coinbase rejected the key (401). Check the key name and that the private key is the matching one."}
+}
+
+// ---- portfolios manager and editor ---------------------------------------------------------
+
+// assetsText is "All assets", or the first three symbols and then "+N".
+func assetsText(syms []string) string {
+	if len(syms) == 0 {
+		return "All assets"
+	}
+	if len(syms) <= 3 {
+		return strings.Join(syms, ", ")
+	}
+	return fmt.Sprintf("%s +%d", strings.Join(syms[:3], ", "), len(syms)-3)
+}
+
+// Portfolios returns the portfolio manager page: Long-term and Trading (which partition
+// the sources) and Majors (every source, five assets), plus four backups.
+func Portfolios(now time.Time) templates.PortfoliosPage {
+	net := Snapshot(now).TotalUSD
+	item := func(id, name, wallets string, syms []string, watch int) templates.PortfolioItem {
+		snap, _ := SnapshotFor(id, now)
+		return templates.PortfolioItem{
+			ID: id, Name: name, ValueUSD: snap.TotalUSD, Share: snap.TotalUSD / net,
+			WalletsText: wallets, AssetsText: assetsText(syms), WatchCount: watch,
+		}
+	}
+	return templates.PortfoliosPage{
+		Shell: Shell("Portfolios", "portfolios", "all", ""),
+		Items: []templates.PortfolioItem{
+			item(PFLongTerm, "Long-term", "3 wallets", nil, 2),
+			item(PFTrading, "Trading", "2 wallets", nil, 0),
+			item(PFMajors, "Majors", "All wallets", portfolioAssets[PFMajors], 3),
+		},
+		Backups: []templates.BackupRow{
+			{Name: "20261016-114205.yaml", Time: now.Add(-25 * time.Minute), Size: 1284},
+			{Name: "20261016-084511.yaml", Time: now.Add(-3 * time.Hour), Size: 1190},
+			{Name: "20261015-100230.yaml", Time: now.Add(-26 * time.Hour), Size: 980},
+			{Name: "20261007-190944.yaml", Time: now.Add(-9 * 24 * time.Hour), Size: 612},
+		},
+		Now: now,
+	}
+}
+
+// PortfolioForm returns the create form (editID "") or the edit form of a fixture
+// portfolio. An unknown id gives the create form.
+func PortfolioForm(editID string, now time.Time) templates.PortfolioFormPage {
+	p := templates.PortfolioFormPage{
+		Shell:           Shell("New portfolio", "portfolios", "all", ""),
+		AllWallets:      true,
+		AllAssets:       true,
+		SelectedWallets: map[string]bool{},
+		SelectedAssets:  map[string]bool{},
+		Errors:          map[string]string{},
+	}
+	for _, w := range Wallets(now) {
+		p.WalletOptions = append(p.WalletOptions, templates.WalletOption{ID: w.ID, Label: w.Label, Type: w.Type, Kind: w.Kind})
+	}
+	for _, a := range Snapshot(now).Assets {
+		name := a.Name
+		if name == "" {
+			name = a.Symbol
+		}
+		p.AssetOptions = append(p.AssetOptions, templates.AssetOption{Key: a.AssetKey, Symbol: a.Symbol, Name: name, ValueUSD: a.ValueUSD})
+	}
+	switch editID {
+	case PFLongTerm:
+		p.EditID, p.Name = PFLongTerm, "Long-term"
+		p.AllWallets = false
+		for _, id := range portfolioMembers[PFLongTerm] {
+			p.SelectedWallets[id] = true
+		}
+		p.Watch = "ETH LINK"
+	case PFTrading:
+		p.EditID, p.Name = PFTrading, "Trading"
+		p.AllWallets = false
+		for _, id := range portfolioMembers[PFTrading] {
+			p.SelectedWallets[id] = true
+		}
+	case PFMajors:
+		p.EditID, p.Name = PFMajors, "Majors"
+		p.AllAssets = false
+		for _, k := range portfolioAssets[PFMajors] {
+			p.SelectedAssets[k] = true
+		}
+		p.ExtraAssets = "AVAX spl:J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"
+		p.Watch = "DOGE ARB"
+	}
+	if p.EditID != "" {
+		p.Shell.Title = "Edit portfolio"
+	}
+	return p
+}
+
+// PortfolioFormInvalid is the create form after a failed save: no name, "Only selected
+// wallets" with nothing ticked, and the errors that go with them.
+func PortfolioFormInvalid(now time.Time) templates.PortfolioFormPage {
+	p := PortfolioForm("", now)
+	p.AllWallets = false
+	p.Errors = map[string]string{
+		"":        "Nothing was saved. Fix the fields below and try again.",
+		"name":    "Give the portfolio a name.",
+		"wallets": "Pick at least one wallet, or choose All wallets.",
+	}
+	return p
 }

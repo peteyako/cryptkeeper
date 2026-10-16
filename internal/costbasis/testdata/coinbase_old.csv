@@ -1,0 +1,21 @@
+Transactions
+User,Jane Doe,5b3e1f6a-1c2d-4e3f-8a9b-0c1d2e3f4a5b
+"You can use this transaction report to inform your likely tax obligations. For US customers, Sells, Converts, Rewards Income, and Coinbase Earn transactions are taxable events. For final tax obligations, please consult your tax advisor."
+
+Timestamp,Transaction Type,Asset,Quantity Transacted,Spot Price Currency,Spot Price at Transaction,Subtotal,Total (inclusive of fees and/or spread),Fees and/or Spread,Notes
+2021-01-04T10:15:30Z,Deposit,USD,5000.00,USD,$1.00,"$5,000.00","$5,000.00",$0.00,Deposited $5000.00 USD from Chase Bank ****1234
+2021-03-10T09:15:30Z,Buy,BTC,0.01000000,USD,"$57,000.00",$570.00,$580.00,$10.00,Bought 0.01000000 BTC for $580.00 USD
+2021-04-02T18:22:10Z,Buy,ETH,1.00000000,USD,"$1,950.50","$1,950.50","$1,990.00",$39.50,Bought 1.00000000 ETH for $1990.00 USD
+2021-05-20T00:00:05Z,Convert,ETH,0.50000000,USD,"$2,400.00","$1,200.00","$1,200.00",$0.00,Converted 0.50000000 ETH to 1200.00 USDC
+2021-06-11T12:00:00Z,Sell,BTC,0.00500000,USD,"$37,000.00",$185.00,$181.30,$3.70,Sold 0.00500000 BTC for $181.30 USD
+2021-07-01T08:00:00Z,Staking Income,ETH,0.00100000,USD,"$2,300.00",$2.30,$2.30,$0.00,
+2021-07-02T08:00:00Z,Coinbase Earn,XLM,10.00000000,USD,$0.25,$2.50,$2.50,$0.00,Received 10.00000000 XLM from Coinbase Earn
+2021-08-15T10:00:00Z,Send,BTC,0.00200000,USD,"$46,000.00",$92.00,$92.00,$0.00,Sent 0.00200000 BTC to 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+2021-09-01T10:00:00Z,Receive,ETH,0.10000000,USD,"$3,400.00",$340.00,$340.00,$0.00,Received 0.10000000 ETH from an external account
+2021-10-01T10:00:00Z,Rewards Income,USDC,1.250000,USD,$1.00,$1.25,$1.25,$0.00,
+2021-11-01T10:00:00Z,Learning Reward,CGLD,1.00000000,USD,$4.00,$4.00,$4.00,$0.00,
+2021-12-01T10:00:00Z,Inflation Reward,ALGO,2.00000000,USD,$1.50,$3.00,$3.00,$0.00,
+2022-01-05T09:00:00Z,Advanced Trade Buy,SOL,2.00000000,USD,$150.00,$300.00,$301.80,$1.80,Bought 2.00000000 SOL for $301.80 USD
+2022-02-05T09:00:00Z,Advanced Trade Sell,SOL,1.00000000,USD,$110.00,$110.00,$109.34,$0.66,Sold 1.00000000 SOL for $109.34 USD
+2022-03-01T09:00:00Z,Pro Deposit,BTC,0.00100000,USD,"$43,000.00",$43.00,$43.00,$0.00,Transfer to Coinbase Pro
+2022-03-02T09:00:00Z,Convert,BTC,0.00100000,USD,"$43,000.00",$43.00,$43.00,$0.00,"Converted 0.00100000 BTC to 1,000.50 DOGE"

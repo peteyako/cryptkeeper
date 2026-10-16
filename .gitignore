@@ -7,3 +7,5 @@
 /crypto-portfolio
 /dist/
 *.test
+# OS cruft
+.DS_Store

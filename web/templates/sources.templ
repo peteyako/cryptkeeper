@@ -83,6 +83,7 @@ type fieldSpec struct {
 	Secret      bool // never prefilled, whatever the page was given
 	Password    bool
 	Rows        int
+	MaxLen      int // maxlength of a text input; 0 = none
 }
 
 func (f fieldSpec) ID() string       { return "f-" + f.Name }
@@ -374,6 +375,9 @@ templ textField(f fieldSpec) {
 			}
 			if f.Placeholder != "" {
 				placeholder={ f.Placeholder }
+			}
+			if f.MaxLen > 0 {
+				maxlength={ fmt.Sprint(f.MaxLen) }
 			}
 			if f.Required {
 				required

@@ -106,7 +106,16 @@ templ sidebar(s Shell) {
 			}
 		</div>
 		<div class="nav-group">
-			<span class="nav-label">Portfolios</span>
+			<div class={ "nav-head", templ.KV("nav-head--on", s.Active == "portfolios") }>
+				<span class="nav-label">Portfolios</span>
+				<a
+					class="nav-manage"
+					href="/portfolios"
+					if s.Active == "portfolios" {
+						aria-current="page"
+					}
+				>Manage</a>
+			</div>
 			for _, p := range s.Portfolios {
 				@portfolioLink(s, p)
 			}

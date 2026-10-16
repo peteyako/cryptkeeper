@@ -191,9 +191,7 @@ func PriceRequests(results []core.WalletResult) []PriceReq {
 
 // assemble is pure: wallets + results + prices → Snapshot.
 func assemble(wallets []Wallet, results []core.WalletResult, status []Status, prices map[string]core.Price, hideUnpriced bool, minUSD float64, now time.Time) Snapshot {
-	snap := Snapshot{UpdatedAt: now, Prices: prices}
-	assets := map[string]*AssetRow{}
-	var order []string
+	views := make([]WalletView, 0, len(wallets))
 	for i, w := range wallets {
 		res := results[i]
 		wv := WalletView{
@@ -201,49 +199,64 @@ func assemble(wallets []Wallet, results []core.WalletResult, status []Status, pr
 			NFTCount: res.NFTCount, Warnings: res.Warnings, Meta: res.Meta,
 			Status: status[i], Err: res.Err, AsOf: res.AsOf,
 		}
-		if res.Stale {
-			snap.HasStale = true
-		}
 		for _, h := range res.Hidden {
 			wv.HiddenRows = append(wv.HiddenRows, PriceRow(h, prices))
 		}
 		for _, h := range res.Holdings {
 			row := PriceRow(h, prices)
-			if row.Price != nil && row.Price.Stale {
-				snap.HasStale = true
-			}
 			if hideUnpriced && w.Type == "solana" && isSpamCandidate(row, minUSD) {
 				wv.HiddenRows = append(wv.HiddenRows, row)
 				continue
 			}
 			wv.Rows = append(wv.Rows, row)
-			wv.ValueUSD += row.ValueUSD
-
-			ar, ok := assets[h.AssetKey]
-			if !ok {
-				ar = &AssetRow{AssetKey: h.AssetKey, Symbol: h.Symbol, Name: h.Name, Mint: h.Mint, LogoURL: h.LogoURL}
-				if p, ok := prices[h.AssetKey]; ok {
-					pc := p
-					ar.Price = &pc
-				}
-				assets[h.AssetKey] = ar
-				order = append(order, h.AssetKey)
-			}
-			if ar.Name == "" {
-				ar.Name = h.Name
-			}
-			ar.Amount += h.Amount
-			if h.Staked {
-				ar.StakedAmt += h.Amount
-			}
-			ar.ValueUSD += row.ValueUSD
-			ar.Priced = ar.Priced || row.Priced
-			if !slices.Contains(ar.HeldIn, w.Label) {
-				ar.HeldIn = append(ar.HeldIn, w.Label)
-			}
 		}
 		sort.SliceStable(wv.Rows, func(a, b int) bool { return wv.Rows[a].ValueUSD > wv.Rows[b].ValueUSD })
 		sort.SliceStable(wv.HiddenRows, func(a, b int) bool { return wv.HiddenRows[a].ValueUSD > wv.HiddenRows[b].ValueUSD })
+		views = append(views, wv)
+	}
+	return FromWallets(views, prices, now)
+}
+
+// FromWallets builds a Snapshot from wallet views whose Rows are already priced: wallet
+// values, the total, assets merged across wallets with their shares, and the stale flag.
+// The aggregator uses it for "all holdings"; portfolio filters use it on a subset of rows.
+func FromWallets(views []WalletView, prices map[string]core.Price, now time.Time) Snapshot {
+	snap := Snapshot{UpdatedAt: now, Prices: prices}
+	assets := map[string]*AssetRow{}
+	var order []string
+	for _, wv := range views {
+		if wv.Status == StatusStale {
+			snap.HasStale = true
+		}
+		wv.ValueUSD = 0
+		for _, row := range wv.Rows {
+			if row.Price != nil && row.Price.Stale {
+				snap.HasStale = true
+			}
+			wv.ValueUSD += row.ValueUSD
+			ar, ok := assets[row.AssetKey]
+			if !ok {
+				ar = &AssetRow{AssetKey: row.AssetKey, Symbol: row.Symbol, Name: row.Name, Mint: row.Mint, LogoURL: row.LogoURL}
+				if p, ok := prices[row.AssetKey]; ok {
+					pc := p
+					ar.Price = &pc
+				}
+				assets[row.AssetKey] = ar
+				order = append(order, row.AssetKey)
+			}
+			if ar.Name == "" {
+				ar.Name = row.Name
+			}
+			ar.Amount += row.Amount
+			if row.Staked {
+				ar.StakedAmt += row.Amount
+			}
+			ar.ValueUSD += row.ValueUSD
+			ar.Priced = ar.Priced || row.Priced
+			if !slices.Contains(ar.HeldIn, wv.Label) {
+				ar.HeldIn = append(ar.HeldIn, wv.Label)
+			}
+		}
 		snap.TotalUSD += wv.ValueUSD
 		snap.Wallets = append(snap.Wallets, wv)
 	}

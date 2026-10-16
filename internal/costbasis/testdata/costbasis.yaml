@@ -1,0 +1,6 @@
+version: 1
+assets:
+  - { asset: btc, amount: 0.5, costUsd: 15000, override: true, note: "pre-2020 buys" }
+  - { asset: "spl:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", amount: 100, costUsd: 100 }
+lots:
+  - { asset: eth, amount: 2, costUsd: 3000, date: 2021-05-01, note: "paper wallet" }

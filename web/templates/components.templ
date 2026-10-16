@@ -154,6 +154,17 @@ templ changeCell(p *core.Price) {
 	}
 }
 
+// changeCell7 is the 7d column: same arrow, sign and color as 24h, or a dash until the
+// recorded history covers a week.
+templ changeCell7(v *float64) {
+	if v != nil {
+		{{ text, dir := ChangePct(*v) }}
+		<span class={ "chg", "chg--" + dir }>{ text }</span>
+	} else {
+		<span class="chg chg--none" aria-label="No 7 day change available">—</span>
+	}
+}
+
 // priceCell renders a unit price; a stale one gets the tilde and the warn color.
 templ priceCell(p *core.Price, now time.Time) {
 	{{ text, stale := PriceText(p, now) }}

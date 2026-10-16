@@ -319,6 +319,7 @@ func (s *Server) sourceDelete(w http.ResponseWriter, r *http.Request) {
 		_ = sse.PatchElementTempl(templates.FormErrors(map[string]string{"": err.Error()}))
 		return
 	}
+	s.removeFromPortfolios(id)
 	s.Refresher.Kick()
 	_ = sse.Redirect("/")
 }

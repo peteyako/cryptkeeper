@@ -25,17 +25,19 @@ templ Dashboard(p OverviewPage) {
 			<div class="page-head__title">
 				<span class="eyebrow">Portfolio</span>
 				<h1 class="h-title">{ p.PortfolioName }</h1>
-				if len(p.Portfolios) > 1 {
-					<details class="pf-menu">
-						<summary class="pf-menu__btn" aria-label="Switch portfolio">
-							@Icon("chevron-down", 16)
-						</summary>
-						<div class="pf-menu__list">
-							for _, pf := range p.Portfolios {
-								@portfolioLink(p.Shell, pf)
-							}
-						</div>
-					</details>
+				<details class="pf-menu">
+					<summary class="pf-menu__btn" aria-label="Switch portfolio">
+						@Icon("chevron-down", 16)
+					</summary>
+					<div class="pf-menu__list">
+						for _, pf := range p.Portfolios {
+							@portfolioLink(p.Shell, pf)
+						}
+						<a class="nav-item pf-menu__manage" href="/portfolios">Manage portfolios</a>
+					</div>
+				</details>
+				if normPF(p.PF) != "all" {
+					<a class="btn btn--secondary btn--sm pf-edit" href={ templ.URL(pfEditHref(p.PF)) } aria-label={ "Edit " + p.PortfolioName }>Edit</a>
 				}
 			</div>
 			<div class="page-head__actions">
@@ -223,6 +225,7 @@ templ holdingsCard(p OverviewPage) {
 							<th class="col-amt num" scope="col">Holdings</th>
 							<th class="col-val num" scope="col">Value</th>
 							<th class="col-chg num" scope="col">24h</th>
+							<th class="col-chg7 num" scope="col">7d</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -253,6 +256,9 @@ templ holdingsCard(p OverviewPage) {
 								</td>
 								<td class="col-chg num">
 									@changeCell(a.Price)
+								</td>
+								<td class="col-chg7 num">
+									@changeCell7(a.Change7d)
 								</td>
 							</tr>
 						}

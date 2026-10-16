@@ -307,6 +307,16 @@ func FieldLabel(name string) string {
 		return "Address"
 	case "holdings":
 		return "Holdings"
+	case "name":
+		return "Name"
+	case "wallets":
+		return "Wallets"
+	case "assets":
+		return "Assets"
+	case "extraAssets":
+		return "Extra assets"
+	case "watch":
+		return "Watch list"
 	}
 	return name
 }
@@ -360,3 +370,154 @@ func firstN[T any](xs []T, n int) []T { return xs[:min(n, len(xs))] }
 
 // asset returns a cache-busted URL for an embedded static file.
 func asset(name string) string { return "/static/" + name + "?v=" + static.Version }
+
+// ---- portfolios ---------------------------------------------------------------------------
+
+// ShareText is a portfolio's share of net worth: "32% of net worth", "<1% of net worth".
+func ShareText(share float64) string {
+	switch {
+	case !finite(share) || share <= 0:
+		return "0% of net worth"
+	case share < 0.005:
+		return "<1% of net worth"
+	}
+	return strconv.Itoa(int(min(share, 1)*100+0.5)) + "% of net worth"
+}
+
+// ByteSize is a file size for people: "812 B", "1.2 KB", "3.4 MB".
+func ByteSize(n int64) string {
+	switch {
+	case n < 1024:
+		return strconv.FormatInt(max(n, 0), 10) + " B"
+	case n < 1024*1024:
+		return strconv.FormatFloat(float64(n)/1024, 'f', 1, 64) + " KB"
+	}
+	return strconv.FormatFloat(float64(n)/(1024*1024), 'f', 1, 64) + " MB"
+}
+
+// BackupWhen is the time of a backup: "Oct 16, 11:42".
+func BackupWhen(t time.Time) string { return t.Format("Jan 2, 15:04") }
+
+// missingText says which wallets a portfolio still lists but no longer exist.
+func missingText(ids []string) string {
+	if len(ids) == 1 {
+		return "1 wallet in this portfolio no longer exists: "
+	}
+	return Plural(len(ids), "wallet") + " in this portfolio no longer exist: "
+}
+
+// kindCaption is the small caption next to a wallet in the picker. The dot already
+// encodes the kind by shape; this says it in words.
+func kindCaption(k core.Kind) string {
+	switch k {
+	case core.KindExchange:
+		return "Exchange"
+	case core.KindHardware:
+		return "Hardware wallet"
+	case core.KindHot:
+		return "Hot wallet"
+	case core.KindManual:
+		return "Manual"
+	}
+	return ""
+}
+
+// walletRow is a wallet option with its position in the full option list, which makes
+// the input ids unique across groups.
+type walletRow struct {
+	WalletOption
+	Index int
+}
+
+type walletGroup struct {
+	Title string
+	Rows  []walletRow
+}
+
+var walletGroupOrder = []string{"Exchanges", "Bitcoin", "Solana", "Manual", "Other"}
+
+func walletGroupTitle(o WalletOption) string {
+	switch o.Type {
+	case "coinbase", "kraken":
+		return "Exchanges"
+	case "bitcoin":
+		return "Bitcoin"
+	case "solana":
+		return "Solana"
+	case "manual":
+		return "Manual"
+	}
+	switch o.Kind {
+	case core.KindExchange:
+		return "Exchanges"
+	case core.KindManual:
+		return "Manual"
+	}
+	return "Other"
+}
+
+// walletGroups sorts the wallet options into Exchanges / Bitcoin / Solana / Manual (and
+// Other for a type the UI does not know), keeping their order inside a group. Empty
+// groups are left out.
+func walletGroups(opts []WalletOption) []walletGroup {
+	by := map[string][]walletRow{}
+	for i, o := range opts {
+		t := walletGroupTitle(o)
+		by[t] = append(by[t], walletRow{WalletOption: o, Index: i})
+	}
+	var out []walletGroup
+	for _, t := range walletGroupOrder {
+		if len(by[t]) > 0 {
+			out = append(out, walletGroup{Title: t, Rows: by[t]})
+		}
+	}
+	return out
+}
+
+// AssetSearchKey is the lower-case string the asset picker's search box matches against.
+func AssetSearchKey(o AssetOption) string {
+	return strings.ToLower(o.Symbol + " " + o.Name + " " + o.Key)
+}
+
+func (p PortfolioFormPage) isEdit() bool { return p.EditID != "" }
+
+// missingWallets are wallet ids the portfolio selects that are not among the options (the
+// source was removed). Saving the form drops them, so the form says so.
+func (p PortfolioFormPage) missingWallets() []string {
+	known := make(map[string]bool, len(p.WalletOptions))
+	for _, o := range p.WalletOptions {
+		known[o.ID] = true
+	}
+	var out []string
+	for id, on := range p.SelectedWallets {
+		if on && !known[id] {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func pfFormTitle(p PortfolioFormPage) string {
+	if !p.isEdit() {
+		return "New portfolio"
+	}
+	if n := strings.TrimSpace(p.Name); n != "" {
+		return "Edit " + n
+	}
+	return "Edit portfolio"
+}
+
+func pfFormLede(p PortfolioFormPage) string {
+	if p.isEdit() {
+		return "Change what this portfolio counts. Your wallets and balances are not affected."
+	}
+	return "Group some of your holdings under a name. Pick wallets, assets, or both, and Vault shows just those."
+}
+
+func pfSaveLabel(p PortfolioFormPage) string {
+	if p.isEdit() {
+		return "Save changes"
+	}
+	return "Create portfolio"
+}

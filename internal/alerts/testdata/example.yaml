@@ -1,0 +1,8 @@
+version: 1
+rules:
+  - { id: cold-drop, type: balance_drop, wallets: [cold, vault], minPct: 0 }
+  - { id: btc-100k, type: price, asset: BTC, above: 100000 }
+  - { id: sol-low, type: price, asset: SOL, below: 80, name: SOL floor, cooldown: 1h }
+  - { id: lt-move, type: portfolio_move, portfolio: all, pct: 10, window: 24h }
+  - { id: src-down, type: source_down, minutes: 60, enabled: false }
+  - { id: big-send, type: large_activity, minUsd: 1000, cooldown: 30m }

@@ -187,6 +187,15 @@ func TestExpressionsAreValidJavaScript(t *testing.T) {
 		{"hide attr", "$hide ? 'true' : 'false'", true},
 		{"show hidden toggle", "$showHidden = !$showHidden", false},
 		{"disabled", "$testing || $saving", true},
+		{"portfolio delete", pfDeleteClick(hostile, hostile), false},
+		{"portfolio restore", restoreClick(hostile), false},
+		{"portfolio import", importSubmit, false},
+		{"portfolio submit", pfSubmitClick(hostile), false},
+		{"portfolio signals", pfFormSignals(PortfolioFormPage{AllAssets: true}), true},
+		{"portfolio mode", pfModeSelected("walletsMode"), true},
+		{"asset search", assetShow, true},
+		{"enter guard", noEnterSubmit, false},
+		{"importing", "$importing", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { checkSyntax(t, node, datastarBody(tc.expr, tc.returns)) })
@@ -290,6 +299,30 @@ func TestExpressionBuilders(t *testing.T) {
 	}
 	if got := submitClick("a b"); got != `@post('/sources/a%20b', {contentType: 'form'})` {
 		t.Errorf("submitClick edit = %s", got)
+	}
+	if got := pfDeleteClick("long-term", "Mom's coins"); got != `confirm('Delete the portfolio Mom\'s coins? Your wallets are not affected.') && @post('/portfolios/long-term/delete')` {
+		t.Errorf("pfDeleteClick = %s", got)
+	}
+	if got := pfDeleteClick("a b/c", "x"); !strings.HasSuffix(got, `@post('/portfolios/a%20b%2Fc/delete')`) {
+		t.Errorf("pfDeleteClick must path-escape the id: %s", got)
+	}
+	if got := restoreClick("20261016-114205.yaml"); got != `confirm('Restore this backup? The current list is backed up first.') && @post('/portfolios/restore/20261016-114205.yaml')` {
+		t.Errorf("restoreClick = %s", got)
+	}
+	if got := pfSubmitClick(""); got != `@post('/portfolios', {contentType: 'form'})` {
+		t.Errorf("pfSubmitClick create = %s", got)
+	}
+	if got := pfSubmitClick("a b"); got != `@post('/portfolios/a%20b', {contentType: 'form'})` {
+		t.Errorf("pfSubmitClick edit = %s", got)
+	}
+	if got := pfFormSignals(PortfolioFormPage{AllWallets: true}); got != `{walletsMode: 'all', assetsMode: 'selected', assetQ: ''}` {
+		t.Errorf("pfFormSignals = %s", got)
+	}
+	if got := pfModeSelected("assetsMode"); got != `$assetsMode === 'selected'` {
+		t.Errorf("pfModeSelected = %s", got)
+	}
+	if pfEditHref("a b") != "/portfolios/a%20b/edit" || pfExportHref("a/b") != "/portfolios/a%2Fb/export" {
+		t.Error("portfolio hrefs must path-escape the id")
 	}
 	if got := bodySignals(Shell{}); got != `{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false}` {
 		t.Errorf("bodySignals defaults = %s", got)

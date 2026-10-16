@@ -303,3 +303,29 @@ func TestSeriesStartsWhenEveryLiveWalletHasHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestPriceChanges(t *testing.T) {
+	db := openDB(t)
+	hist := &History{DB: db, Interval: time.Minute}
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	week := 7 * 24 * time.Hour
+	row := func(ts time.Time, btc float64) {
+		hist.last = time.Time{}
+		hist.Record(ctx, Snapshot{UpdatedAt: ts, Prices: map[string]core.Price{"BTC": {USD: btc}},
+			Wallets: []WalletView{{ID: "w", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("w", "BTC", 1)}}}}})
+	}
+	row(now.Add(-week-30*time.Hour), 50)  // outside tolerance (±16.8h)
+	row(now.Add(-week+2*time.Hour), 100) // nearest within tolerance
+	got, err := hist.PriceChanges(ctx, map[string]float64{"BTC": 110, "ETH": 3000}, week, now)
+	if err != nil || !near(got["BTC"], 10) {
+		t.Fatalf("got %v %v", got, err)
+	}
+	if _, ok := got["ETH"]; ok {
+		t.Fatal("asset unpriced in history must be absent")
+	}
+	none, _ := hist.PriceChanges(ctx, map[string]float64{"BTC": 110}, 365*24*time.Hour, now)
+	if len(none) != 0 {
+		t.Fatalf("no history a year back: %v", none)
+	}
+}

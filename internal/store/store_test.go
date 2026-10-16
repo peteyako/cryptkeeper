@@ -33,3 +33,27 @@ func TestOpenMigrateAndKV(t *testing.T) {
 		t.Fatal("expected missing")
 	}
 }
+
+func TestMigrationsRunOnceByName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.db")
+	AddMigration("test-extra", `CREATE TABLE extra (x INTEGER)`)
+	defer func() { migrations = migrations[:len(migrations)-1] }()
+	for range 2 { // reopening must not re-run anything
+		db, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n)
+		if n != len(migrations) {
+			t.Fatalf("recorded %d migrations, registered %d", n, len(migrations))
+		}
+		db.Close()
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("duplicate name must panic")
+		}
+	}()
+	AddMigration("test-extra", `SELECT 1`)
+}

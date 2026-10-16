@@ -17,14 +17,18 @@ import (
 // DB wraps *sql.DB with typed helpers.
 type DB struct{ *sql.DB }
 
-// migrations are applied in order; append only, never edit a released entry.
-var migrations = []string{
-	`CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at INTEGER NOT NULL);
+// migration is one named schema change. Names are recorded in schema_migrations once
+// applied, so the order in which packages register them (Go init order) never matters for
+// correctness: each runs exactly once per database.
+type migration struct{ name, sql string }
+
+var migrations = []migration{
+	{"001-base", `CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at INTEGER NOT NULL);
 	 CREATE TABLE lastgood_price (asset TEXT PRIMARY KEY, usd REAL NOT NULL, change24h REAL, as_of INTEGER NOT NULL);
 	 CREATE TABLE lastgood_wallet (wallet_id TEXT PRIMARY KEY, json TEXT NOT NULL, as_of INTEGER NOT NULL);
 	 CREATE TABLE history (ts INTEGER PRIMARY KEY, prices TEXT NOT NULL, amounts TEXT NOT NULL);
 	 CREATE TABLE token_meta (mint TEXT PRIMARY KEY, json TEXT NOT NULL, fetched_at INTEGER NOT NULL);
-	 CREATE TABLE price_history (asset TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL, PRIMARY KEY (asset, day));`,
+	 CREATE TABLE price_history (asset TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL, PRIMARY KEY (asset, day));`},
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -42,28 +46,48 @@ func Open(path string) (*DB, error) {
 }
 
 func migrate(db *sql.DB) error {
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_version (v INTEGER NOT NULL)`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
 		return err
 	}
-	var v int
-	err := db.QueryRow(`SELECT v FROM schema_version`).Scan(&v)
-	if errors.Is(err, sql.ErrNoRows) {
-		if _, err := db.Exec(`INSERT INTO schema_version (v) VALUES (0)`); err != nil {
+	applied := map[string]bool{}
+	rows, err := db.Query(`SELECT name FROM schema_migrations`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
 			return err
 		}
-	} else if err != nil {
+		applied[n] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return err
 	}
-	for i := v; i < len(migrations); i++ {
+	// Databases created by the first release tracked a schema_version counter; its first
+	// migration is 001-base.
+	var legacy int
+	if err := db.QueryRow(`SELECT v FROM schema_version`).Scan(&legacy); err == nil && legacy >= 1 && !applied["001-base"] {
+		if _, err := db.Exec(`INSERT INTO schema_migrations (name, applied_at) VALUES ('001-base', ?)`, time.Now().Unix()); err != nil {
+			return err
+		}
+		applied["001-base"] = true
+	}
+	for _, m := range migrations {
+		if applied[m.name] {
+			continue
+		}
 		tx, err := db.Begin()
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(migrations[i]); err != nil {
+		if _, err := tx.Exec(m.sql); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("migration %d: %w", i+1, err)
+			return fmt.Errorf("migration %s: %w", m.name, err)
 		}
-		if _, err := tx.Exec(`UPDATE schema_version SET v = ?`, i+1); err != nil {
+		if _, err := tx.Exec(`INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)`, m.name, time.Now().Unix()); err != nil {
 			tx.Rollback()
 			return err
 		}
@@ -74,9 +98,16 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// AddMigration lets later packages register schema changes at init time. Order of
-// registration must be stable (package init order is deterministic within a binary).
-func AddMigration(sql string) { migrations = append(migrations, sql) }
+// AddMigration registers a named schema change from a package init(). Names must be
+// unique and never reused; never edit a released migration — add a new one.
+func AddMigration(name, sql string) {
+	for _, m := range migrations {
+		if m.name == name {
+			panic("store: duplicate migration " + name)
+		}
+	}
+	migrations = append(migrations, migration{name, sql})
+}
 
 // GetJSON loads a JSON value from the kv table into out. Returns false if absent.
 func (d *DB) GetJSON(ctx context.Context, key string, out any) (bool, error) {

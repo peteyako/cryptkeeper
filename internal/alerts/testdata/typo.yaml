@@ -1,0 +1,6 @@
+version: 1
+rules:
+  - id: btc-100k
+    type: price
+    asset: BTC
+    abov: 100000

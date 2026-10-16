@@ -1,0 +1,5 @@
+version: 1
+portfolios:
+  - id: kids
+    name: Kids
+    walets: [kids-phantom]

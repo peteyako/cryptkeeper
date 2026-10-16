@@ -14,21 +14,23 @@ import (
 
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/web/static"
 )
 
 // Deps are the server's collaborators, wired in main.
 type Deps struct {
-	Cfg       config.Config
-	DataDir   string
-	Version   string
-	Log       *slog.Logger
-	Registry  *sources.Registry
-	Refresher *portfolio.Refresher
-	Broker    *portfolio.Broker
-	History   *portfolio.History
-	Prices    portfolio.PriceFunc
+	Cfg        config.Config
+	DataDir    string
+	Version    string
+	Log        *slog.Logger
+	Registry   *sources.Registry
+	Portfolios *portfolios.Store
+	Refresher  *portfolio.Refresher
+	Broker     *portfolio.Broker
+	History    *portfolio.History
+	Prices     portfolio.PriceFunc
 
 	// Bitcoin helpers, injected so the server doesn't depend on the bitcoin package.
 	DetectBitcoin          func(input string) (kind string, err error)
@@ -82,6 +84,17 @@ func New(d Deps) http.Handler {
 		r.Post("/sources", s.sourceSave)
 		r.Post("/sources/{id}", s.sourceSave)
 		r.Post("/sources/{id}/delete", s.sourceDelete)
+
+		r.Get("/portfolios", s.portfoliosManager)
+		r.Get("/portfolios/new", s.portfolioNew)
+		r.Get("/portfolios/export", s.portfolioExport)
+		r.Get("/portfolios/{id}/edit", s.portfolioEdit)
+		r.Get("/portfolios/{id}/export", s.portfolioExport)
+		r.Post("/portfolios", s.portfolioSave)
+		r.Post("/portfolios/import", s.portfolioImport)
+		r.Post("/portfolios/restore/{name}", s.portfolioRestore)
+		r.Post("/portfolios/{id}", s.portfolioSave)
+		r.Post("/portfolios/{id}/delete", s.portfolioDelete)
 
 		r.Get("/settings", s.settings)
 	})

@@ -82,6 +82,16 @@ type tokenSet struct {
 	byMint   map[string]*mintBalance
 	accounts int // token accounts returned by the RPC, including empty ones
 	skipped  int // accounts ignored because their balance could not be read
+	// addrs are the token account addresses in RPC order (Token program first), with a flag for
+	// accounts that hold nothing; Activity watches them because incoming transfers to a token
+	// account never appear in the owner's own signature list.
+	addrs []tokenAcctRef
+}
+
+// tokenAcctRef is one of the owner's token accounts.
+type tokenAcctRef struct {
+	Pubkey string
+	Empty  bool
 }
 
 // tokenAccounts lists the owner's token accounts under both token programs and sums them per
@@ -113,6 +123,7 @@ func (s *Source) tokenAccounts(ctx context.Context) (*tokenSet, error) {
 				ts.skipped++
 				continue
 			}
+			ts.addrs = append(ts.addrs, tokenAcctRef{Pubkey: v.Pubkey, Empty: amt.Sign() == 0})
 			mb := ts.byMint[info.Mint]
 			if mb == nil {
 				mb = &mintBalance{Mint: info.Mint, Amount: new(big.Int), Decimals: info.TokenAmount.Decimals}

@@ -1,0 +1,9 @@
+version: 1
+rules:
+  - id: ok
+    type: source_down
+    minutes: 30
+  - id: lt-move
+    type: portfolio_move
+    pct: 10
+    window: 7days
