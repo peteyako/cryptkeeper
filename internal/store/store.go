@@ -122,6 +122,12 @@ func (d *DB) GetJSON(ctx context.Context, key string, out any) (bool, error) {
 	return true, json.Unmarshal([]byte(raw), out)
 }
 
+// DeleteKV removes a key from the kv table; an absent key is not an error.
+func (d *DB) DeleteKV(ctx context.Context, key string) error {
+	_, err := d.ExecContext(ctx, `DELETE FROM kv WHERE k = ?`, key)
+	return err
+}
+
 // PutJSON stores a JSON value in the kv table.
 func (d *DB) PutJSON(ctx context.Context, key string, v any) error {
 	raw, err := json.Marshal(v)

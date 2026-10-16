@@ -100,6 +100,7 @@ templ settingsBody(p SettingsPage) {
 				}
 			</section>
 			@SettingsDisplay(p)
+			@SettingsPrices(p)
 			@BackupIO(p)
 			@ActivitySyncCard(p.Sync, p.Now)
 			@SyncStream(syncInit)
@@ -173,6 +174,45 @@ templ SettingsDisplay(p SettingsPage) {
 					<span class="choice__title">Show token logos</span>
 				</span>
 			</label>
+		</form>
+	</section>
+}
+
+// SettingsPrices holds the CoinGecko demo key used for historical prices of Solana tokens.
+templ SettingsPrices(p SettingsPage) {
+	<section id="settings-prices" class="card setting" aria-labelledby="set-prices-h">
+		<div class="setting__text">
+			<h2 id="set-prices-h" class="h-card">Historical prices</h2>
+			<p class="muted-text">
+				CoinGecko key:
+				if p.PriceKeyFromEnv {
+					set by COINGECKO_API_KEY
+				} else if p.PriceKey != "" {
+					<span class="mono">{ p.PriceKey }</span>
+				} else {
+					not set
+				}
+			</p>
+		</div>
+		<form id="prices-form" class="form" method="post" action="/settings/prices" data-on:submit={ pricesSubmit }>
+			<div class="field">
+				<label class="field__label" for="f-coingecko-key">CoinGecko demo key</label>
+				<input
+					class="input input--mono"
+					id="f-coingecko-key"
+					name="coingeckoKey"
+					type="password"
+					autocomplete="off"
+					spellcheck="false"
+					disabled?={ p.PriceKeyFromEnv }
+					aria-describedby="f-coingecko-key-help"
+				/>
+				<p id="f-coingecko-key-help" class="field__help">Free demo key from coingecko.com/en/developers. Used for historical prices of Solana tokens Coinbase doesn't list (last 365 days).</p>
+			</div>
+			<div class="btn-row">
+				<button type="submit" class="btn btn--secondary" disabled?={ p.PriceKeyFromEnv }>Save</button>
+				<button type="button" class="btn btn--ghost" data-on:click={ pricesClear } disabled?={ p.PriceKeyFromEnv }>Clear</button>
+			</div>
 		</form>
 	</section>
 }

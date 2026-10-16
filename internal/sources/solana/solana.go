@@ -148,9 +148,10 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 	}
 
 	var stakeLamports *big.Int
-	stakeCount, stakeOK := 0, false
+	var stakeKeys []string
+	stakeOK := false
 	if s.cfg.IncludeStake {
-		stakeLamports, stakeCount, err = s.stakeAccounts(ctx)
+		stakeLamports, stakeKeys, err = s.stakeAccounts(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return res, ctx.Err()
@@ -224,7 +225,7 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 
 	stakeMeta := "unavailable"
 	if stakeOK {
-		stakeMeta = strconv.Itoa(stakeCount)
+		stakeMeta = strconv.Itoa(len(stakeKeys))
 	}
 	res.Meta = []core.KV{
 		{K: "Address", V: shortKey(s.cfg.Address)},

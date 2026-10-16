@@ -105,6 +105,7 @@ type Year struct {
 	Income      []Income   `yaml:"income,omitempty"`
 	GiftsLost   []Disposal `yaml:"giftsLost,omitempty"`
 	ClosingLots []Lot      `yaml:"closingLots,omitempty"`
+	ClosingParked []Parked `yaml:"closingParked,omitempty"` // balances inside the user's own positions at year end (locked JUP, perps collateral)
 }
 func Summarize(disposals []Disposal, income []Income) Summary // Fees = Σ gain of Note "Fee" rows; Income = Σ ValueUSD
 func NewYearStore(dir, backupDir string) (*YearStore, error)  // dir = <data>/tax
@@ -196,6 +197,7 @@ Expected: FAIL.
 - Test: `internal/tax/rollback_test.go`
 
 **Interfaces:**
+- Produces: `func RollBackParked(positions map[string]map[string]float64, txs []core.Tx, cutover time.Time) []Parked`. `positions` holds the current amount inside positions per source and asset (snapshot rows with `Position != ""`). For each tx with `!Time.Before(cutover)` that is a position move (`Kind == core.TxPosition`, or tagged `position` in `Settings.Tags`; the caller passes the tag set as a `func(txID string) bool`), add its signed legs: parked at the cutover = parked now + Σ signed legs. Negative results become 0. The result is sorted.
 - Produces: `func RollBack(current map[string]map[string]float64, txs []core.Tx, cutover time.Time) map[string]map[string]float64`. The maps are source ID → asset key → amount.
   - For each tx with `!Time.Before(cutover)`, subtract its effect from its `SourceID`:
     - failed tx: the fee only
@@ -211,6 +213,7 @@ func TestRollBackSubtractsLaterActivity(t *testing.T) // current sol/SOL 10; 202
 func TestRollBackIgnoresStakeAndPosition(t *testing.T) // stake SOL −5 and position JUP −1000 after the cutover → unchanged
 func TestRollBackFailedFeeOnly(t *testing.T)          // failed swap legs ignored, fee −0.000005 added back
 func TestRollBackBeforeCutoverIgnored(t *testing.T)   // tx on 2025-12-31 → unchanged
+func TestRollBackParked(t *testing.T)                 // positions sol/JUP 1500 now; 2026-03 position deposit JUP −500 → parked at cutover [{sol JUP 1000}]
 ```
 
 - [ ] **Step 2: Run to verify they fail**
@@ -293,6 +296,7 @@ type OpeningInput struct {
 	AssetMap   map[string]string             // Koinly "SYM (Name)" → asset key | ""
 	Balances   map[string]map[string]float64 // RollBack result: source ID → asset key → qty at cutover
 	ExtraBasis map[string]float64            // asset key → USD for CryptKeep-excess units
+	Parked     []tax.Parked                  // RollBackParked result
 }
 type ReconRow struct {
 	KoinlyAsset, AssetKey                string
@@ -301,7 +305,7 @@ type ReconRow struct {
 	Dated, Various                       float64 // units in dated 2025 lots / in "before 2025" lots
 	Lots                                 []tax.Lot
 }
-type Opening struct { Rows []ReconRow; Lots []tax.Lot; Problems []string }
+type Opening struct { Rows []ReconRow; Lots []tax.Lot; Parked []tax.Parked; Problems []string } // Parked = OpeningInput.Parked passed through, for the closed year's ClosingParked
 func BuildOpening(in OpeningInput) Opening
 ```
 
@@ -373,7 +377,7 @@ func Coverage(r Result, rows []portfolio.AssetRow) float64 // value-weighted sha
 
 - Produces (`internal/server/tax.go`):
   - `func (s *Server) taxResult(ctx context.Context) (tax.Result, bool)`, cached for 1 minute like `costResult`, with `func (s *Server) invalidateTax()`.
-  - It builds `tax.Input{From: tax.OpenYearStart(s.TaxYears.LastClosed(), loc), Loc, Opening: lastClosed.ClosingLots, Manual: settings.ManualLots, Txs: dedupeImported(all activity), Tags: (settings.Tags → map[string]tax.Tag), Prices: settings.Prices, Spam: (HideMints ∪ snapshot HiddenRows asset keys)}`.
+  - It builds `tax.Input{From: tax.OpenYearStart(s.TaxYears.LastClosed(), loc), Loc, Opening: lastClosed.ClosingLots, OpeningParked: lastClosed.ClosingParked, Manual: settings.ManualLots, Txs: dedupeImported(all activity), Tags: (settings.Tags → map[string]tax.Tag), Prices: settings.Prices, Spam: (HideMints ∪ snapshot HiddenRows asset keys)}`.
 - Realized P&L per year on Reports = the closed years' `Summary` (Short+Long gain) merged with `RealizedByYear` of the open years.
 
 - [ ] **Step 1: Write failing tests**
@@ -419,7 +423,7 @@ Expected: FAIL.
   - `POST /reports/koinly/map`: fields `w.<koinly wallet>` = source ID | `untracked`, `a.<koinly asset>` = asset key | `""`, `x.<asset key>` = extra basis. It saves them to the draft and patches `#koinly-wizard`.
   - `POST /reports/koinly/accept`:
     - Refused when a year after the draft's year is already closed: `"2026 is already closed; reopen it first"`.
-    - Otherwise it builds `Opening`, saves `tax.Year{Year: draft.Year, Source: "koinly", ClosedAt: now, Disposals: draft.Gains, Income: draft.Income, Summary: tax.Summarize(draft.Gains, draft.Income), ClosingLots: opening.Lots}`, writes the `WalletMap` and `AssetMap` into `tax.yaml`, deletes the draft, calls `invalidateTax()`, and redirects (Datastar `@get` / location patch) to `/reports`.
+    - Otherwise it builds `Opening`, saves `tax.Year{Year: draft.Year, Source: "koinly", ClosedAt: now, Disposals: draft.Gains, Income: draft.Income, Summary: tax.Summarize(draft.Gains, draft.Income), ClosingLots: opening.Lots, ClosingParked: opening.Parked}`, writes the `WalletMap` and `AssetMap` into `tax.yaml`, deletes the draft, calls `invalidateTax()`, and redirects (Datastar `@get` / location patch) to `/reports`.
   - `POST /reports/koinly/discard`: deletes the draft.
 - **Roll-back input:**
   - `current` = the latest snapshot's `Wallets[i].Rows` summed by `AssetKey` per `WalletView.ID`.

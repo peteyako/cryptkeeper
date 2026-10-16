@@ -12,14 +12,15 @@ var knownTag = map[Tag]bool{
 	TagPosition: true, TagSpam: true, TagSale: true, TagGift: true, TagLost: true,
 }
 
-// tagOf returns the tag that applies to tx. Tags only apply to receive, send and other
-// txs without a PeerID; on any other tx they are ignored.
+// tagOf returns the tag that applies to tx. Tags only apply to receive, send, other and
+// position txs without a PeerID (on a position only a spam tag has an effect); on any other
+// tx they are ignored.
 func (e *engine) tagOf(tx core.Tx) (Tag, bool) {
 	if tx.PeerID != "" {
 		return "", false
 	}
 	switch tx.Kind {
-	case core.TxReceive, core.TxSend, core.TxOther:
+	case core.TxReceive, core.TxSend, core.TxOther, core.TxPosition:
 		t, ok := e.in.Tags[tx.ID]
 		return t, ok && knownTag[t] // an unknown tag string is treated as untagged
 	}

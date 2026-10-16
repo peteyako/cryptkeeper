@@ -48,27 +48,78 @@ func (s *Service) Historical(ctx context.Context, symbol string, day time.Time) 
 	case d.After(today):
 		return 0, false, nil
 	case d.Equal(today):
-		return s.historicalToday(ctx, sym, today, now)
+		return s.histResolveToday(ctx, sym, today, now, func(ctx context.Context) (float64, bool, bool, error) {
+			candles, err := s.fetchCandles(ctx, sym, today, today)
+			if err != nil {
+				var se *httpx.StatusError
+				if errors.As(err, &se) && se.Status == 404 {
+					return 0, false, true, nil
+				}
+				return 0, false, false, err
+			}
+			for _, c := range candles {
+				if utcDay(time.Unix(c.t, 0)).Equal(today) {
+					return c.close, true, false, nil
+				}
+			}
+			return 0, false, false, nil
+		})
 	}
+	return s.histResolve(ctx, sym, sym, d, time.Time{}, now, func(ctx context.Context) (*histWindow, error) {
+		return s.histFetch(ctx, sym, d, today, now)
+	})
+}
 
-	if usd, ok := s.histDB(ctx, sym, d); ok {
+// histResolve is the lookup shared by Historical and HistoricalMint: the price_history row
+// for asset, else (unless d is before oldest, when non-zero) the remembered misses under
+// key, else one singleflighted windowed fetch whose stored window answers d.
+func (s *Service) histResolve(ctx context.Context, key, asset string, d, oldest, now time.Time,
+	fetch func(ctx context.Context) (*histWindow, error)) (float64, bool, error) {
+	if usd, ok := s.histDB(ctx, asset, d); ok {
 		return usd, true, nil
 	}
-	if s.histKnownMissing(sym, d, now) {
+	if !oldest.IsZero() && d.Before(oldest) {
 		return 0, false, nil
 	}
-
-	v, err, _ := s.sfHist.Do(sym, func() (any, error) { return s.histFetch(ctx, sym, d, today, now) })
+	if s.histKnownMissing(key, d, now) {
+		return 0, false, nil
+	}
+	run := func() (*histWindow, error) {
+		// Another caller may have stored the day while this one waited.
+		if usd, ok := s.histDB(ctx, asset, d); ok {
+			return &histWindow{first: d, last: d, closes: map[string]float64{d.Format(dayFormat): usd}}, nil
+		}
+		return fetch(ctx)
+	}
+	v, err, _ := s.sfHist.Do(key, func() (any, error) { return run() })
 	if err != nil {
 		return 0, false, err
 	}
 	w := v.(*histWindow)
 	if !w.covers(d) { // joined another caller's fetch for a distant day
-		if w, err = s.histFetch(ctx, sym, d, today, now); err != nil {
+		if w, err = run(); err != nil {
 			return 0, false, err
 		}
 	}
-	usd, ok = w.closes[d.Format(dayFormat)]
+	usd, ok := w.closes[d.Format(dayFormat)]
+	return usd, ok, nil
+}
+
+// histResolveToday answers a still-forming day from fetch, which reports the price, whether
+// there is one, and whether the upstream does not know the asset at all (remembered as a miss
+// under key). Nothing is stored.
+func (s *Service) histResolveToday(ctx context.Context, key string, today, now time.Time,
+	fetch func(ctx context.Context) (usd float64, ok, unknown bool, err error)) (float64, bool, error) {
+	if s.histKnownMissing(key, today, now) {
+		return 0, false, nil
+	}
+	usd, ok, unknown, err := fetch(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	if unknown {
+		s.markUnknown(key, now)
+	}
 	return usd, ok, nil
 }
 
@@ -90,10 +141,6 @@ func utcDay(t time.Time) time.Time {
 }
 
 func (s *Service) histFetch(ctx context.Context, sym string, d, today, now time.Time) (*histWindow, error) {
-	// Another caller may have stored the day while this one waited.
-	if usd, ok := s.histDB(ctx, sym, d); ok {
-		return &histWindow{first: d, last: d, closes: map[string]float64{d.Format(dayFormat): usd}}, nil
-	}
 	last := d.AddDate(0, 0, histForwardDays)
 	if y := today.AddDate(0, 0, -1); last.After(y) {
 		last = y // today's candle is still forming
@@ -118,27 +165,6 @@ func (s *Service) histFetch(ctx context.Context, sym string, d, today, now time.
 	s.histStore(ctx, sym, closes)
 	s.markCovered(sym, first, last)
 	return &histWindow{first: first, last: last, closes: closes}, nil
-}
-
-func (s *Service) historicalToday(ctx context.Context, sym string, today, now time.Time) (float64, bool, error) {
-	if s.histKnownMissing(sym, today, now) {
-		return 0, false, nil
-	}
-	candles, err := s.fetchCandles(ctx, sym, today, today)
-	if err != nil {
-		var se *httpx.StatusError
-		if errors.As(err, &se) && se.Status == 404 {
-			s.markUnknown(sym, now)
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	for _, c := range candles {
-		if utcDay(time.Unix(c.t, 0)).Equal(today) {
-			return c.close, true, nil
-		}
-	}
-	return 0, false, nil
 }
 
 type candle struct {

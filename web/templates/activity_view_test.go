@@ -182,7 +182,7 @@ func TestActivityFilterOptions(t *testing.T) {
 	if p.activityFiltered() || !(ActivityPage{Kind: "send"}).activityFiltered() {
 		t.Error("activityFiltered")
 	}
-	if len(actKinds) != 9 || actKinds[0].Label != "All kinds" {
+	if len(actKinds) != 10 || actKinds[0].Label != "All kinds" {
 		t.Errorf("kinds: %+v", actKinds)
 	}
 }
@@ -282,5 +282,31 @@ func TestPeriodOptionsAndExportURL(t *testing.T) {
 	}
 	if !p.activityFiltered() || (ActivityPage{}).activityFiltered() {
 		t.Fatal("a period counts as a filter")
+	}
+}
+
+func TestPositionKindView(t *testing.T) {
+	tx := core.Tx{Kind: core.TxPosition, Legs: []core.Leg{lg("JUP", -1000)}}
+	if g, tone := TxGlyph(tx); g != "⇄" || tone != "neutral" {
+		t.Errorf("glyph %q tone %q", g, tone)
+	}
+	if got := TxTitle(ActivityRow{Tx: tx}); got != "Position" {
+		t.Errorf("title = %q", got)
+	}
+	tx.Note = "Locked JUP"
+	if got := TxTitle(ActivityRow{Tx: tx}); got != "Locked JUP" {
+		t.Errorf("title with note = %q", got)
+	}
+	found := false
+	for i, o := range actKinds {
+		if o.Value == "position" {
+			found = true
+			if o.Label != "Positions" || actKinds[i-1].Value != "stake" {
+				t.Errorf("option %+v after %+v", o, actKinds[i-1])
+			}
+		}
+	}
+	if !found {
+		t.Error("actKinds has no position")
 	}
 }

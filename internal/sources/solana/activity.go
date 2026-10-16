@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"math/big"
 	"slices"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/sources/solana/defi"
 )
 
 // Activity is incremental: every call spends at most req.Budget RPC requests and leaves cursors
@@ -43,6 +45,9 @@ import (
 // handled signatures carries that across calls. If a lagging account meets a signature already
 // evicted from that set the transaction is emitted again with the same ID, which consumers must
 // treat as an upsert.
+//
+// Staking rewards have no transaction. With IncludeStake, whatever budget the signatures leave
+// goes to a reward scan per epoch with its own cursors (rewards.go).
 
 var _ core.ActivitySource = (*Source)(nil)
 
@@ -81,6 +86,11 @@ type activityState struct {
 	Seq   uint64                 `json:"seq"`             // call counter, for round-robin
 	Accts map[string]*acctCursor `json:"accts"`
 	Seen  []string               `json:"seen,omitempty"` // recently handled signatures, oldest first
+
+	// Staking-reward cursors (see rewards.go). 0 = no epoch fetched yet.
+	RewardNewest uint64 `json:"rewardNewest,omitempty"` // newest epoch fetched
+	RewardOldest uint64 `json:"rewardOldest,omitempty"` // oldest epoch fetched
+	RewardDone   bool   `json:"rewardDone,omitempty"`   // backfill reached Since, or the RPC refused older epochs
 }
 
 type acctCursor struct {
@@ -156,6 +166,7 @@ func (s *Source) Activity(ctx context.Context, req core.ActivityRequest) (core.A
 		for _, a := range st.Accts {
 			a.Done = false
 		}
+		st.RewardDone = false
 		st.Since = since
 	}
 
@@ -203,6 +214,7 @@ func (s *Source) Activity(ctx context.Context, req core.ActivityRequest) (core.A
 		}
 		r.backfill(addr, st.Accts[addr])
 	}
+	r.txs = append(r.txs, r.rewards(ctx)...)
 	return r.finish(listed)
 }
 
@@ -219,10 +231,13 @@ type activityRun struct {
 	seen     map[string]bool // handled signatures: carried over from the state plus this call's
 	newSigs  []string        // handled this call, in order
 	txs      []core.Tx
-	steps    int // signatures handled (progress)
+	steps    int // signatures handled and reward epochs fetched (progress)
 	err      error
 	stopped  bool // transport-level failure or cancellation: nothing more can be done
 	notReady bool // a listed transaction could not be fetched yet
+
+	stakeKnown bool // the stake accounts were listed this call
+	hasStake   bool // ... and there is at least one
 }
 
 func (r *activityRun) canSpend() bool { return !r.stopped && r.left > r.floor }
@@ -489,7 +504,7 @@ func (r *activityRun) finish(listed bool) (core.ActivityResult, error) {
 	if over := len(r.st.Seen) - maxSeenSigs; over > 0 {
 		r.st.Seen = slices.Clone(r.st.Seen[over:])
 	}
-	done := listed && !r.notReady
+	done := listed && !r.notReady && !r.rewardsPending()
 	for _, a := range r.st.Accts {
 		if !a.Done || len(a.Gaps) > 0 {
 			done = false
@@ -713,7 +728,8 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 		return cmp.Or(cmp.Compare(boolInt(a.Amount > 0), boolInt(b.Amount > 0)), cmp.Compare(a.AssetKey, b.AssetKey), cmp.Compare(a.Mint, b.Mint))
 	})
 
-	kind := activityKind(legs, usesProgram(tx, StakeProgramID))
+	position := usesProgram(tx, defi.JupLockedVoterProgram) || usesProgram(tx, defi.JupLockerProgram) || usesProgram(tx, defi.JupPerpsProgram)
+	kind := activityKind(legs, usesProgram(tx, StakeProgramID), position)
 	t := core.Tx{
 		ID:          core.TxID(s.ID(), e.Signature),
 		SourceID:    s.ID(),
@@ -737,16 +753,29 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 	return t, true
 }
 
-// activityKind classifies by the owner's legs. Opposite signs mean the owner traded one asset for
-// another whoever the counterparty is; otherwise a stake-program instruction makes it a stake
-// move; otherwise the direction of the money.
-func activityKind(legs []core.Leg, stake bool) core.TxKind {
+// rentDust is the SOL amount below which a leg is account rent or dust, not a real movement;
+// it is ignored when judging whether a position-program tx is one-directional.
+const rentDust = 0.05
+
+// activityKind classifies by the owner's legs. For a tx through a position program (lock, perps)
+// that moves value one way only, ignoring rent-sized SOL legs, it is a position move. Otherwise
+// opposite signs mean the owner traded one asset for another whoever the counterparty is; then a
+// stake-program instruction makes it a stake move; otherwise the direction of the money.
+func activityKind(legs []core.Leg, stake, position bool) core.TxKind {
 	pos, neg := false, false
+	posSig, negSig := false, false
 	for _, l := range legs {
 		pos = pos || l.Amount > 0
 		neg = neg || l.Amount < 0
+		if l.AssetKey == "SOL" && math.Abs(l.Amount) < rentDust {
+			continue
+		}
+		posSig = posSig || l.Amount > 0
+		negSig = negSig || l.Amount < 0
 	}
 	switch {
+	case position && !(posSig && negSig):
+		return core.TxPosition
 	case pos && neg:
 		return core.TxSwap
 	case stake:

@@ -38,6 +38,7 @@ const (
 	DefaultCoinbaseExchangeURL = "https://api.exchange.coinbase.com"
 	DefaultKrakenURL           = "https://api.kraken.com"
 	DefaultJupiterPriceURL     = "https://lite-api.jup.ag/price/v3"
+	DefaultCoinGeckoURL        = "https://api.coingecko.com/api/v3"
 	DefaultTTL                 = 60 * time.Second
 	DefaultStaleMax            = 24 * time.Hour
 
@@ -58,13 +59,16 @@ type Want struct {
 
 // Options configures a Service. Zero values select the defaults.
 type Options struct {
-	CoinbaseURL         string        // default https://api.coinbase.com
-	CoinbaseExchangeURL string        // default https://api.exchange.coinbase.com
-	KrakenURL           string        // default https://api.kraken.com
-	JupiterPriceURL     string        // default https://lite-api.jup.ag/price/v3
-	TTL                 time.Duration // in-memory cache TTL, default 60s
-	StaleMax            time.Duration // last-good usable up to this age, default 24h
-	Now                 func() time.Time
+	CoinbaseURL         string // default https://api.coinbase.com
+	CoinbaseExchangeURL string // default https://api.exchange.coinbase.com
+	KrakenURL           string // default https://api.kraken.com
+	JupiterPriceURL     string // default https://lite-api.jup.ag/price/v3
+	CoinGeckoURL        string // default https://api.coingecko.com/api/v3
+	// CoinGeckoKey returns the CoinGecko demo API key, or "" for none. Called per request.
+	CoinGeckoKey func() string
+	TTL          time.Duration // in-memory cache TTL, default 60s
+	StaleMax     time.Duration // last-good usable up to this age, default 24h
+	Now          func() time.Time
 	// Logger receives per-source failures at debug level. Defaults to slog.Default().
 	Logger *slog.Logger
 }
@@ -110,6 +114,7 @@ func New(c *httpx.Client, db *store.DB, opts Options) *Service {
 	o.CoinbaseExchangeURL = urlOrDefault(o.CoinbaseExchangeURL, DefaultCoinbaseExchangeURL)
 	o.KrakenURL = urlOrDefault(o.KrakenURL, DefaultKrakenURL)
 	o.JupiterPriceURL = urlOrDefault(o.JupiterPriceURL, DefaultJupiterPriceURL)
+	o.CoinGeckoURL = urlOrDefault(o.CoinGeckoURL, DefaultCoinGeckoURL)
 	if o.TTL <= 0 {
 		o.TTL = DefaultTTL
 	}

@@ -60,8 +60,21 @@ type fakeChain struct {
 	metaAccts  map[string][]byte         // metaplex PDA -> raw account data
 	stake      []fakeStakeAcct
 	stakeFail  string // "", "rpc" (JSON-RPC error object) or "http" (HTTP 403)
-	jupiter    map[string]map[string]any
-	jupStatus  int // non-zero: Jupiter answers with this HTTP status
+	// Staking rewards: getEpochInfo answers epoch (epoch k starts at slot k*fakeSlotsPerEpoch);
+	// getInflationReward answers from rewards (epoch -> stake pubkey -> lamports) with
+	// effectiveSlot = rewardSlot(epoch); getBlockTime answers from slotTimes (slot -> unix time),
+	// -32007 for a slot in skipped and -32004 for a slot it does not know.
+	epoch     uint64
+	rewards   map[uint64]map[string]uint64
+	slotTimes map[uint64]int64
+	skipped   map[uint64]bool
+	// rewardErrBelow makes getInflationReward answer rewardErrCode for epochs below it;
+	// rewardErrAt makes it answer the given code for single epochs.
+	rewardErrBelow uint64
+	rewardErrCode  int
+	rewardErrAt    map[uint64]int
+	jupiter        map[string]map[string]any
+	jupStatus      int // non-zero: Jupiter answers with this HTTP status
 	// failMethods makes a method answer with a JSON-RPC error carrying this message.
 	failMethods map[string]string
 	// failInfo makes every getAccountInfo answer with a JSON-RPC error.
@@ -74,6 +87,74 @@ type fakeChain struct {
 	infoReqs    []string // "address|encoding"
 	inflight    int
 	maxInflight int
+	rewardReqs  map[uint64]int // getInflationReward requests per epoch
+	rewardKeys  [][]string     // the addresses of each getInflationReward request
+}
+
+// fakeSlotsPerEpoch is the mainnet epoch length; a reward for epoch e is credited in the first
+// slot of epoch e+1.
+const fakeSlotsPerEpoch = 432_000
+
+func rewardSlot(epoch uint64) uint64 { return (epoch + 1) * fakeSlotsPerEpoch }
+
+// setReward records a staking reward of lamports for the stake account in epoch, credited at
+// unix time at.
+func (f *fakeChain) setReward(epoch uint64, stake string, lamports uint64, at int64) {
+	f.setRewardTime(epoch, at)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rewards == nil {
+		f.rewards = map[uint64]map[string]uint64{}
+	}
+	if f.rewards[epoch] == nil {
+		f.rewards[epoch] = map[string]uint64{}
+	}
+	f.rewards[epoch][stake] = lamports
+}
+
+// setRewardTime gives the slot where epoch's rewards are credited (the first slot of the next
+// epoch) the block time at, whether or not anyone has a reward in epoch.
+func (f *fakeChain) setRewardTime(epoch uint64, at int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.slotTimes == nil {
+		f.slotTimes = map[uint64]int64{}
+	}
+	f.slotTimes[rewardSlot(epoch)] = at
+}
+
+// setRewardErr makes getInflationReward for epoch answer the JSON-RPC error code (0 clears it).
+func (f *fakeChain) setRewardErr(epoch uint64, code int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rewardErrAt == nil {
+		f.rewardErrAt = map[uint64]int{}
+	}
+	if code == 0 {
+		delete(f.rewardErrAt, epoch)
+		return
+	}
+	f.rewardErrAt[epoch] = code
+}
+
+// skipSlot makes getBlockTime answer "slot was skipped" for slot.
+func (f *fakeChain) skipSlot(slot uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.skipped == nil {
+		f.skipped = map[uint64]bool{}
+	}
+	f.skipped[slot] = true
+}
+
+func (f *fakeChain) rewardRequests() (perEpoch map[uint64]int, keys [][]string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	perEpoch = map[uint64]int{}
+	for e, n := range f.rewardReqs {
+		perEpoch[e] = n
+	}
+	return perEpoch, append([][]string(nil), f.rewardKeys...)
 }
 
 func newFakeChain(t *testing.T) *fakeChain {
@@ -85,6 +166,7 @@ func newFakeChain(t *testing.T) *fakeChain {
 		jupiter:     map[string]map[string]any{},
 		failMethods: map[string]string{},
 		calls:       map[string]int{},
+		rewardReqs:  map[uint64]int{},
 	}
 }
 
@@ -385,6 +467,74 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		rpcReply(w, res)
+
+	case "getEpochInfo":
+		f.mu.Lock()
+		epoch := f.epoch
+		f.mu.Unlock()
+		rpcReply(w, map[string]any{
+			"absoluteSlot": epoch*fakeSlotsPerEpoch + 1000, "blockHeight": epoch * 400_000, "epoch": epoch,
+			"slotIndex": 1000, "slotsInEpoch": fakeSlotsPerEpoch, "transactionCount": 1,
+		})
+
+	case "getInflationReward":
+		var keys []string
+		if len(req.Params) > 0 {
+			json.Unmarshal(req.Params[0], &keys)
+		}
+		var cfg struct {
+			Epoch *uint64 `json:"epoch"`
+		}
+		if len(req.Params) > 1 {
+			json.Unmarshal(req.Params[1], &cfg)
+		}
+		if cfg.Epoch == nil {
+			f.t.Errorf("getInflationReward without an epoch: %s", req.Params)
+			rpcErrorReply(w, -32602, "missing epoch")
+			return
+		}
+		e := *cfg.Epoch
+		f.mu.Lock()
+		f.rewardReqs[e]++
+		f.rewardKeys = append(f.rewardKeys, keys)
+		errCode, failing := f.rewardErrCode, e < f.rewardErrBelow
+		if c, ok := f.rewardErrAt[e]; ok {
+			errCode, failing = c, true
+		}
+		out := make([]any, len(keys))
+		for i, k := range keys {
+			if amt, ok := f.rewards[e][k]; ok {
+				out[i] = map[string]any{
+					"epoch": e, "effectiveSlot": rewardSlot(e), "amount": amt,
+					"postBalance": 1_000_000_000 + amt, "commission": 7,
+				}
+			}
+		}
+		f.mu.Unlock()
+		if failing {
+			rpcErrorReply(w, errCode, fmt.Sprintf("Block not available for slot %d", rewardSlot(e)))
+			return
+		}
+		rpcReply(w, out)
+
+	case "getBlockTime":
+		var slot uint64
+		if len(req.Params) > 0 {
+			json.Unmarshal(req.Params[0], &slot)
+		}
+		f.mu.Lock()
+		at, ok := f.slotTimes[slot]
+		skipped := f.skipped[slot]
+		f.mu.Unlock()
+		if skipped {
+			rpcErrorReply(w, -32007, fmt.Sprintf("Slot %d was skipped, or missing due to ledger jump to recent snapshot", slot))
+			return
+		}
+		if !ok {
+			rpcErrorReply(w, -32004, fmt.Sprintf("Block not available for slot %d", slot))
+			return
+		}
+		rpcReply(w, at)
 
 	default:
 		rpcErrorReply(w, -32601, "Method not found")

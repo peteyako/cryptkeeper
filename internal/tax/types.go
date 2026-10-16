@@ -81,6 +81,14 @@ type Income struct {
 	TxID   string `yaml:"txId" json:"txId"`
 }
 
+// Parked is an amount of an asset a wallet holds inside a position (locked, posted as
+// collateral): out of its lots but not disposed.
+type Parked struct {
+	Wallet string  `yaml:"wallet"`
+	Asset  string  `yaml:"asset"`
+	Amount float64 `yaml:"amount"`
+}
+
 // IssueKind names a problem the engine could not resolve on its own.
 type IssueKind string
 

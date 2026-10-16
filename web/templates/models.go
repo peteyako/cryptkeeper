@@ -118,6 +118,10 @@ type SettingsPage struct {
 	BackupImport ImportOutcome
 	// EncryptedExports: CRYPTKEEP_SECRET_KEY is set, so exports are encrypted as a whole.
 	EncryptedExports bool
+	// PriceKey is the saved CoinGecko key, masked ("••••abcd"); empty when none is saved.
+	PriceKey string
+	// PriceKeyFromEnv: COINGECKO_API_KEY is set, so the Settings form is disabled.
+	PriceKeyFromEnv bool
 }
 
 // PortfolioItem is one portfolio on the manager page.

@@ -31,6 +31,8 @@ type Config struct {
 	Password  string `yaml:"-"` // PORTFOLIO_PASSWORD
 	User      string `yaml:"-"` // PORTFOLIO_USER
 	NtfyToken string `yaml:"-"` // NTFY_TOKEN
+	// CoinGeckoKey is the CoinGecko demo API key (COINGECKO_API_KEY); it wins over the one saved in Settings.
+	CoinGeckoKey string `yaml:"-"`
 }
 
 type Bitcoin struct {
@@ -131,6 +133,7 @@ func Load(path string) (Config, error) {
 		cfg.User = "admin"
 	}
 	cfg.NtfyToken = os.Getenv("NTFY_TOKEN")
+	cfg.CoinGeckoKey = os.Getenv("COINGECKO_API_KEY")
 	return cfg, nil
 }
 

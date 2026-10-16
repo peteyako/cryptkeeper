@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -37,6 +38,12 @@ type Valuer interface {
 	Historical(ctx context.Context, symbol string, day time.Time) (usd float64, ok bool, err error)
 }
 
+// MintValuer is an optional extension of Valuer: it prices a Solana SPL token by mint
+// address. The syncer uses it for legs the symbol lookup cannot price.
+type MintValuer interface {
+	HistoricalMint(ctx context.Context, mint string, day time.Time) (usd float64, ok bool, err error)
+}
+
 // Syncer pulls activity from every source on a schedule, persists it, values the legs and
 // links transfers between the user's sources. Fields must be set before Run/SyncOnce.
 type Syncer struct {
@@ -55,6 +62,8 @@ type Syncer struct {
 	OnNew func(txs []core.Tx)
 
 	timeout time.Duration // test hook: overrides activityTimeout
+
+	revalued atomic.Int64 // txs upserted by the last revalue pass (tests)
 
 	once sync.Once
 	kick chan struct{}
@@ -242,7 +251,81 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 		})
 		s.callOnNew(fresh)
 	}
+	if err := s.revalue(ctx, since, vals); err != nil {
+		// The sources synced fine; a failed backfill of missing values retries next pass.
+		s.log().Warn("activity revalue failed", "err", err)
+	}
 	return nil
+}
+
+// fiatSymbols are currencies the price source does not value as assets (USD itself is pegged).
+var fiatSymbols = map[string]bool{"EUR": true, "GBP": true, "CAD": true, "JPY": true, "AUD": true, "CHF": true}
+
+// needsValue reports whether l has no USD value but could be priced.
+func needsValue(l *core.Leg) bool {
+	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" {
+		return false
+	}
+	if _, spl := core.IsSPLKey(l.AssetKey); spl {
+		return l.Mint != ""
+	}
+	return !fiatSymbols[strings.ToUpper(l.AssetKey)]
+}
+
+// revalue fills legs stored without a USD value (history from before mint pricing, or from
+// a price outage) and upserts only the txs that gained one. Legs that stay unpriceable are
+// left alone, so a pass with nothing to gain writes nothing.
+func (s *Syncer) revalue(ctx context.Context, since time.Time, vals *valueCache) error {
+	s.revalued.Store(0)
+	if s.Valuer == nil {
+		return nil
+	}
+	recent, err := s.Store.since(ctx, since)
+	if err != nil {
+		return err
+	}
+	var changed []core.Tx
+	for _, t := range recent {
+		missing := t.Fee != nil && needsValue(t.Fee)
+		for i := range t.Legs {
+			missing = missing || needsValue(&t.Legs[i])
+		}
+		if !missing {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		valCtx, stop := context.WithTimeout(ctx, s.callTimeout())
+		before := countValued(t)
+		vals.value(valCtx, &t)
+		stop()
+		if countValued(t) > before {
+			changed = append(changed, t)
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	if _, err := s.Store.Upsert(ctx, changed); err != nil {
+		return err
+	}
+	s.revalued.Store(int64(len(changed)))
+	s.log().Info("activity revalued", "txs", len(changed))
+	return nil
+}
+
+func countValued(t core.Tx) int {
+	n := 0
+	for _, l := range t.Legs {
+		if l.USD != nil {
+			n++
+		}
+	}
+	if t.Fee != nil && t.Fee.USD != nil {
+		n++
+	}
+	return n
 }
 
 func (s *Syncer) callOnNew(txs []core.Tx) {
@@ -409,20 +492,58 @@ func (c *valueCache) fill(ctx context.Context, l *core.Leg, day time.Time) {
 	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" {
 		return
 	}
-	if _, spl := core.IsSPLKey(l.AssetKey); spl {
-		return
-	}
-	var usd float64
-	if sym := strings.ToUpper(l.AssetKey); core.Pegged[sym] {
-		usd = l.Amount
-	} else {
-		price, ok := c.price(ctx, l.AssetKey, day)
-		if !ok {
+	var (
+		price float64
+		ok    bool
+	)
+	if _, spl := core.IsSPLKey(l.AssetKey); !spl {
+		if core.Pegged[strings.ToUpper(l.AssetKey)] {
+			usd := l.Amount
+			l.USD = &usd
 			return
 		}
-		usd = l.Amount * price
+		price, ok = c.price(ctx, l.AssetKey, day)
 	}
+	if !ok && l.Mint != "" {
+		price, ok = c.mintPrice(ctx, l.Mint, day)
+	}
+	if !ok {
+		return
+	}
+	usd := l.Amount * price
 	l.USD = &usd
+}
+
+// mintPrice returns the cached price for (mint, day) from the valuer's MintValuer side, if any.
+// Mint addresses are case-sensitive, so the key is not upper-cased.
+func (c *valueCache) mintPrice(ctx context.Context, mint string, day time.Time) (float64, bool) {
+	mv, isMint := c.valuer.(MintValuer)
+	if !isMint {
+		return 0, false
+	}
+	key := valueKey{"mint:" + mint, day}
+	c.mu.Lock()
+	r := c.m[key]
+	if r == nil {
+		r = &valueResult{}
+		c.m[key] = r
+	}
+	c.mu.Unlock()
+	r.once.Do(func() {
+		defer func() {
+			if p := recover(); p != nil {
+				c.log.Warn("activity mint valuer panic", "mint", mint, "panic", p)
+				r.ok = false
+			}
+		}()
+		usd, ok, err := mv.HistoricalMint(ctx, mint, day)
+		if err != nil {
+			c.log.Debug("activity mint valuation failed", "mint", mint, "day", day.Format("2006-01-02"), "err", err)
+			return
+		}
+		r.usd, r.ok = usd, ok
+	})
+	return r.usd, r.ok
 }
 
 // price returns the cached closing price for (symbol, day), asking the Valuer on first use.

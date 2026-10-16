@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/starfederation/datastar-go/datastar"
 
 	"crypto-portfolio/internal/backup"
+	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/web/templates"
 )
 
@@ -55,6 +57,7 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 		Shell: s.shell(r, "Settings", "settings", "all", ""), Wallets: wallets,
 		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
 		Sync: s.syncRows(r.Context()), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports(),
+		PriceKeyFromEnv: s.Cfg.CoinGeckoKey != "", PriceKey: s.maskedPriceKey(r.Context()),
 	}
 }
 
@@ -77,6 +80,46 @@ func (s *Server) settingsLogos(w http.ResponseWriter, r *http.Request) {
 	}
 	sse := datastar.NewSSE(w, r)
 	_ = sse.PatchElementTempl(templates.SettingsDisplay(s.settingsPage(r)))
+}
+
+// PricesKeyKV is the kv key holding the box-sealed CoinGecko key saved from Settings.
+const PricesKeyKV = "prices.coingeckoKey"
+
+// maskedPriceKey returns the saved CoinGecko key masked, or "" when none is saved or readable.
+func (s *Server) maskedPriceKey(ctx context.Context) string {
+	if s.DB == nil || s.Box == nil {
+		return ""
+	}
+	var sealed string
+	if ok, err := s.DB.GetJSON(ctx, PricesKeyKV, &sealed); err != nil || !ok {
+		return ""
+	}
+	plain, err := s.Box.Open(sealed)
+	if err != nil {
+		s.Log.Warn("open coingecko key", "err", err)
+		return ""
+	}
+	return secrets.Mask(plain)
+}
+
+// settingsPrices saves (sealed) or clears the CoinGecko demo key.
+func (s *Server) settingsPrices(w http.ResponseWriter, r *http.Request) {
+	_ = parseBody(r)
+	if s.DB != nil && s.Box != nil && s.Cfg.CoinGeckoKey == "" {
+		if r.URL.Query().Get("clear") == "1" || r.PostFormValue("clear") == "1" {
+			if err := s.DB.DeleteKV(r.Context(), PricesKeyKV); err != nil {
+				s.Log.Warn("clear coingecko key", "err", err)
+			}
+		} else if key := strings.TrimSpace(r.PostFormValue("coingeckoKey")); key != "" {
+			if sealed, err := s.Box.Seal(key); err != nil {
+				s.Log.Warn("seal coingecko key", "err", err)
+			} else if err := s.DB.PutJSON(r.Context(), PricesKeyKV, sealed); err != nil {
+				s.Log.Warn("save coingecko key", "err", err)
+			}
+		}
+	}
+	sse := datastar.NewSSE(w, r)
+	_ = sse.PatchElementTempl(templates.SettingsPrices(s.settingsPage(r)))
 }
 
 func (s *Server) backupStores() backup.Stores {

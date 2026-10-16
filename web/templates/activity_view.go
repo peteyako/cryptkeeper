@@ -25,6 +25,8 @@ func TxGlyph(t core.Tx) (glyph, tone string) {
 		return "★", "gain"
 	case core.TxFee:
 		return Minus, "neutral"
+	case core.TxPosition:
+		return "⇄", "neutral"
 	}
 	return "•", "neutral"
 }
@@ -151,6 +153,10 @@ func TxTitle(r ActivityRow) string {
 		return joinWords("Unstaked", legSymbols(in))
 	case core.TxFee:
 		return joinWords("Fee", legSymbols(t.Legs))
+	case core.TxPosition:
+		if strings.TrimSpace(t.Note) == "" {
+			return "Position"
+		}
 	}
 	if n := strings.TrimSpace(t.Note); n != "" {
 		return n
@@ -327,7 +333,7 @@ func actExportURL(p ActivityPage) string {
 var actKinds = []selectOpt{
 	{"", "All kinds"}, {string(core.TxReceive), "Received"}, {string(core.TxSend), "Sent"},
 	{string(core.TxTransfer), "Transfers"}, {string(core.TxTrade), "Trades"}, {string(core.TxSwap), "Swaps"},
-	{string(core.TxReward), "Rewards"}, {string(core.TxStake), "Staking"}, {string(core.TxFee), "Fees"},
+	{string(core.TxReward), "Rewards"}, {string(core.TxStake), "Staking"}, {string(core.TxPosition), "Positions"}, {string(core.TxFee), "Fees"},
 }
 
 func (p ActivityPage) sourceOpts() []selectOpt {

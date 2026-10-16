@@ -133,6 +133,7 @@ func New(d Deps) http.Handler {
 
 		r.Get("/settings", s.settings)
 		r.Post("/settings/logos", s.settingsLogos)
+		r.Post("/settings/prices", s.settingsPrices)
 		r.Get("/backup/export", s.backupExport)
 		r.Post("/backup/import", s.backupImport)
 	})

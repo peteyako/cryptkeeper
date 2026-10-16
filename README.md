@@ -213,6 +213,7 @@ the token issuers' servers. Dates and times are shown in the server's time zone;
 `TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (default 5), `staleMaxHours`
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.
+A free CoinGecko demo key (`COINGECKO_API_KEY`, or the **Settings → Historical prices** card, stored encrypted) prices Solana tokens Coinbase doesn't list, for the last 365 days.
 
 ## Development
 

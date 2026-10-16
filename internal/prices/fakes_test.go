@@ -43,6 +43,11 @@ type fakes struct {
 	jup     map[string]jupFake            // by mint
 	history map[string]map[string]float64 // Exchange candles: symbol -> "YYYY-MM-DD" -> close
 
+	cg        map[string]map[string]float64 // CoinGecko: mint -> "YYYY-MM-DD" -> USD at 00:00 UTC
+	cgStatus  map[string]int                // mint -> forced HTTP status (e.g. 404)
+	cgHeaders []http.Header                 // headers of every CoinGecko request
+	cgKey     string                        // key the test service returns
+
 	delisted map[string]bool // Exchange products reporting status "delisted"; others 404 (unknown)
 	bad      map[string]bool // spot symbols answering 200 with garbage
 	down     atomic.Bool     // every endpoint answers 500
@@ -71,6 +76,8 @@ func newFakes(t *testing.T) *fakes {
 		kraken:   map[string]krakenFake{},
 		jup:      map[string]jupFake{},
 		history:  map[string]map[string]float64{},
+		cg:       map[string]map[string]float64{},
+		cgStatus: map[string]int{},
 		bad:      map[string]bool{},
 		delisted: map[string]bool{},
 	}
@@ -82,6 +89,7 @@ func newFakes(t *testing.T) *fakes {
 	mux.HandleFunc("GET /ex/products/{pair}/candles", f.handleCandles)
 	mux.HandleFunc("GET /kr/0/public/Ticker", f.handleKraken)
 	mux.HandleFunc("GET /jup/price/v3", f.handleJupiter)
+	mux.HandleFunc("GET /cg/coins/solana/contract/{mint}/market_chart/range", f.handleCoinGecko)
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -361,6 +369,8 @@ func (e *env) newService() *prices.Service {
 		CoinbaseExchangeURL: e.fk.srv.URL + "/ex",
 		KrakenURL:           e.fk.srv.URL + "/kr",
 		JupiterPriceURL:     e.fk.srv.URL + "/jup/price/v3",
+		CoinGeckoURL:        e.fk.srv.URL + "/cg",
+		CoinGeckoKey:        func() string { return e.fk.cgKey },
 		TTL:                 60 * time.Second,
 		StaleMax:            24 * time.Hour,
 		Now:                 e.clock.Now,
@@ -444,4 +454,36 @@ func (f *fakes) handleProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]any{"id": sym + "-USD", "status": "delisted", "trading_disabled": true})
+}
+
+// handleCoinGecko serves {"prices": [[ms, usd], ...]} with one point per stored day at
+// 00:00 UTC inside [from, to].
+func (f *fakes) handleCoinGecko(w http.ResponseWriter, r *http.Request) {
+	done, ok := f.begin(w, "coingecko")
+	defer done()
+	if !ok {
+		return
+	}
+	mint := r.PathValue("mint")
+	f.mu.Lock()
+	f.cgHeaders = append(f.cgHeaders, r.Header.Clone())
+	status := f.cgStatus[mint]
+	series := f.cg[mint]
+	f.mu.Unlock()
+	if status != 0 {
+		http.Error(w, `{"error":"coin not found"}`, status)
+		return
+	}
+	from, _ := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
+	to, _ := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64)
+	pts := [][2]float64{}
+	for day, usd := range series {
+		d, err := time.Parse("2006-01-02", day)
+		if err != nil || d.Unix() < from || d.Unix() > to {
+			continue
+		}
+		pts = append(pts, [2]float64{float64(d.UnixMilli()), usd})
+	}
+	sort.Slice(pts, func(i, j int) bool { return pts[i][0] < pts[j][0] })
+	_ = json.NewEncoder(w).Encode(map[string]any{"prices": pts})
 }

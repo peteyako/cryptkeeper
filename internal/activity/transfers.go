@@ -176,7 +176,7 @@ func MatchTransfers(txs []core.Tx) []core.Tx {
 // transferCapable reports whether a tx of this kind can be one half of a transfer.
 func transferCapable(k core.TxKind) bool {
 	switch k {
-	case core.TxTrade, core.TxSwap, core.TxReward, core.TxStake, core.TxFee:
+	case core.TxTrade, core.TxSwap, core.TxReward, core.TxStake, core.TxFee, core.TxPosition:
 		return false
 	}
 	return true

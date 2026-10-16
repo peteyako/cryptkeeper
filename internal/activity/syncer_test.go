@@ -772,3 +772,99 @@ func TestSubscribeSignalsStartAndFinish(t *testing.T) {
 	default:
 	}
 }
+
+// ---- mint valuation and revalue ----
+
+type fakeMintValuer struct {
+	fakeValuer
+	mintCalls []string
+	mintPrice func(mint string, day time.Time) (float64, bool, error)
+}
+
+func (v *fakeMintValuer) HistoricalMint(_ context.Context, mint string, day time.Time) (float64, bool, error) {
+	v.mu.Lock()
+	v.mintCalls = append(v.mintCalls, mint+"@"+day.Format(time.RFC3339))
+	v.mu.Unlock()
+	return v.mintPrice(mint, day)
+}
+
+func (v *fakeMintValuer) mintCalled() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]string(nil), v.mintCalls...)
+}
+
+func TestValuerFallsBackToMint(t *testing.T) {
+	day := t0.UTC().Truncate(24 * time.Hour)
+	v := &fakeMintValuer{mintPrice: func(m string, d time.Time) (float64, bool, error) {
+		if m == "M" && d.Equal(day) {
+			return 0.5, true, nil
+		}
+		return 0, false, nil
+	}}
+	v.price = func(string, time.Time) (float64, bool, error) {
+		t.Fatal("symbol valuer called for spl key")
+		return 0, false, nil
+	}
+	tx := mk("src", "1", t0, "spl:M", -10)
+	tx.Legs[0].Mint = "M"
+	tx.Fee = &core.Leg{AssetKey: "spl:M", Mint: "M", Amount: -2}
+	s := newSyncer(t, entry("src", doneWith(tx)))
+	s.Valuer = v
+	syncOnce(t, s)
+	legs, fee := usdOf(t, s.Store, "src:1")
+	wantUSD(t, "leg", legs[0], -5)
+	wantUSD(t, "fee", fee, -1)
+	if got := v.mintCalled(); len(got) != 1 {
+		t.Fatalf("mint lookups should be cached per pass: %v", got)
+	}
+}
+
+func TestValuerSymbolFirst(t *testing.T) {
+	v := &fakeMintValuer{mintPrice: func(string, time.Time) (float64, bool, error) {
+		t.Fatal("mint valuer called although the symbol priced the leg")
+		return 0, false, nil
+	}}
+	v.price = func(sym string, _ time.Time) (float64, bool, error) { return 0.8, sym == "JUP", nil }
+	tx := mk("src", "1", t0, "JUP", 10)
+	tx.Legs[0].Mint = "JUPmint"
+	s := newSyncer(t, entry("src", doneWith(tx)))
+	s.Valuer = v
+	syncOnce(t, s)
+	legs, _ := usdOf(t, s.Store, "src:1")
+	wantUSD(t, "leg", legs[0], 8)
+}
+
+func TestRevalueFillsOnlyMissing(t *testing.T) {
+	ten := 10.0
+	v := &fakeMintValuer{mintPrice: func(m string, _ time.Time) (float64, bool, error) { return 0.5, m == "M", nil }}
+	v.price = func(string, time.Time) (float64, bool, error) { return 0, false, nil }
+	old := mk("src", "old", t0, "A", 1)
+	old.Legs = []core.Leg{
+		{AssetKey: "A", Symbol: "A", Amount: 1, USD: &ten},
+		{AssetKey: "spl:M", Mint: "M", Amount: 4},
+		{AssetKey: "spl:X", Mint: "X", Amount: 4}, // stays unpriceable
+		{AssetKey: "EUR", Symbol: "EUR", Amount: 4},
+	}
+	clean := mk("src", "clean", t0, "A", 1)
+	clean.Legs[0].USD = &ten
+	s := newSyncer(t, entry("src", doneWith()))
+	s.Valuer = v
+	if _, err := s.Store.Upsert(context.Background(), []core.Tx{old, clean}); err != nil {
+		t.Fatal(err)
+	}
+	syncOnce(t, s)
+	legs, _ := usdOf(t, s.Store, "src:old")
+	wantUSD(t, "A kept", legs[0], 10)
+	wantUSD(t, "M filled", legs[1], 2)
+	if legs[2] != nil || legs[3] != nil {
+		t.Fatalf("unpriceable legs got a value: %v", legs)
+	}
+	if n := s.revalued.Load(); n != 1 {
+		t.Fatalf("revalue upserted %d txs, want 1", n)
+	}
+	syncOnce(t, s) // nothing more can be filled: no upserts
+	if n := s.revalued.Load(); n != 0 {
+		t.Fatalf("second revalue upserted %d txs, want 0", n)
+	}
+}

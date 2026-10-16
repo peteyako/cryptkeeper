@@ -54,8 +54,7 @@
   - `Input.To time.Time`: txs, manual lots and write-offs at or after `To` are ignored. A zero value means no end.
   - `Input.WriteOffs []WriteOff`.
   - `const TagPositionGain Tag = "position-gain"`.
-  - `type Parked struct { Wallet, Asset string; Amount float64 }`.
-  - `Result.Parked []Parked`: non-zero entries, sorted by wallet then asset.
+  - `tax.Parked`, `Input.OpeningParked` and `Result.Parked` already exist (M2 Task 1).
   - `IssueWriteOffExceedsParked`.
 
 - [ ] **Step 1: Write failing tests**
@@ -163,7 +162,7 @@ func TestTagInClosedYearRefused(t *testing.T)    // tx dated in the closed year 
 - **Routes:**
   - `POST /reports/tax/close`: field `year`, plus `confirm=1` on the second step. The first step replies with a confirmation card: "Close <Y>? <N> review items are still open. Closed years can't be edited.", with Confirm and Cancel.
   - `POST /reports/tax/reopen`: field `year`, with the same two-step confirmation.
-- **Close** computes `tax.Compute` with `To` = Jan 1 `Y+1` (tax timezone), then saves `tax.Year{Year: Y, Source: "cryptkeep", ClosedAt: now, Summary: tax.Summarize(...), Disposals, Income, GiftsLost, ClosingLots: result.Lots, OpenIssues: len(issues in Y)}`. Disposals and income are filtered to year `Y` (all are in `Y`, given `From`/`To`).
+- **Close** computes `tax.Compute` with `To` = Jan 1 `Y+1` (tax timezone), then saves `tax.Year{Year: Y, Source: "cryptkeep", ClosedAt: now, Summary: tax.Summarize(...), Disposals, Income, GiftsLost, ClosingLots: result.Lots, ClosingParked: result.Parked, OpenIssues: len(issues in Y)}`. Disposals and income are filtered to year `Y` (all are in `Y`, given `From`/`To`).
 - **Refusals:** `"<Y> hasn't ended yet"`, `"close <open year> first"` (when `Y` isn't the open year), and `"only <latest> can be reopened"`.
 
 - [ ] **Step 1: Write failing tests**

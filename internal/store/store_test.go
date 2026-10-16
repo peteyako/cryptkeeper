@@ -57,3 +57,25 @@ func TestMigrationsRunOnceByName(t *testing.T) {
 	}()
 	AddMigration("test-extra", `SELECT 1`)
 }
+
+func TestDeleteKV(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if err := db.PutJSON(ctx, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteKV(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if ok, _ := db.GetJSON(ctx, "a", &n); ok {
+		t.Fatal("key should be gone")
+	}
+	if err := db.DeleteKV(ctx, "missing"); err != nil {
+		t.Fatal("deleting an absent key is not an error")
+	}
+}

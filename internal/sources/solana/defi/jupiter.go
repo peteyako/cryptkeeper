@@ -26,6 +26,7 @@ import (
 const (
 	JupLockedVoterProgram = "voTpe3tHQ7AjQHMapgSue2HJFAh2cGsdokqN3XqmVSj"
 	JupLocker             = "CVMdMd79no569tjc5Sq7kzz8isbfCcFyBS5TLGsrZ5dN"
+	JupLockerProgram      = JupLocker
 	jupDecimals           = 6
 )
 

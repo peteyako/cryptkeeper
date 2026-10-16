@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // TZ works in the distroless image (no system zoneinfo)
@@ -152,7 +153,7 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 		return nil, fs, err
 	}
 	a := &app{cfg: cfg, dataDir: *dataDir, log: log, db: db, box: box, client: httpx.New()}
-	a.prices = prices.New(a.client, db, prices.Options{TTL: time.Minute, StaleMax: cfg.StaleMax()})
+	a.prices = prices.New(a.client, db, prices.Options{TTL: time.Minute, StaleMax: cfg.StaleMax(), CoinGeckoKey: coinGeckoKey(cfg.CoinGeckoKey, db, box)})
 	meta := solana.NewSQLiteMetaCache(db, 24*time.Hour)
 	reg, err := sources.NewRegistry(filepath.Join(*dataDir, "sources.yaml"), filepath.Join(*dataDir, "backups"), box, a.factory(meta))
 	if err != nil {
@@ -658,4 +659,33 @@ func healthcheck(args []string) error {
 		return fmt.Errorf("unhealthy: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// coinGeckoKey returns the CoinGecko demo key: the environment's when set, else the one saved
+// in Settings (sealed in the kv table). The Settings handler can't reach this closure, so the
+// stored value is cached for a minute.
+func coinGeckoKey(env string, db *store.DB, box *secrets.Box) func() string {
+	var (
+		mu      sync.Mutex
+		cached  string
+		fetched time.Time
+	)
+	return func() string {
+		if env != "" {
+			return env
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if !fetched.IsZero() && time.Since(fetched) < time.Minute {
+			return cached
+		}
+		cached, fetched = "", time.Now()
+		var sealed string
+		if ok, err := db.GetJSON(context.Background(), server.PricesKeyKV, &sealed); err == nil && ok {
+			if plain, err := box.Open(sealed); err == nil {
+				cached = plain
+			}
+		}
+		return cached
+	}
 }

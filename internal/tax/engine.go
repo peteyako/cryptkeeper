@@ -26,14 +26,17 @@ var fiat = map[string]bool{"USD": true, "EUR": true, "GBP": true, "CAD": true, "
 
 // Input is everything Compute needs for the open tax year.
 type Input struct {
-	From    time.Time          // start of the first open tax year; earlier txs are ignored
-	Loc     *time.Location     // tax timezone; nil = UTC
-	Opening []Lot              // closing lots of the last closed year
-	Manual  []Lot              // manual acquisitions, applied at Acquired (zero → From)
-	Txs     []core.Tx          // activity of every wallet, in any order
-	Tags    map[string]Tag     // by Tx.ID
-	Prices  map[string]float64 // PriceKey / FeePriceKey → USD
-	Spam    map[string]bool    // asset keys ignored entirely
+	From    time.Time      // start of the first open tax year; earlier txs are ignored
+	Loc     *time.Location // tax timezone; nil = UTC
+	Opening []Lot          // closing lots of the last closed year
+	// OpeningParked is what the wallets held in positions at From, so a withdrawal of it is
+	// not income.
+	OpeningParked []Parked
+	Manual        []Lot              // manual acquisitions, applied at Acquired (zero → From)
+	Txs           []core.Tx          // activity of every wallet, in any order
+	Tags          map[string]Tag     // by Tx.ID
+	Prices        map[string]float64 // PriceKey / FeePriceKey → USD
+	Spam          map[string]bool    // asset keys ignored entirely
 }
 
 // Result is the open year's lots, realized gains, income and review issues.
@@ -43,6 +46,7 @@ type Result struct {
 	Income    []Income
 	GiftsLost []Disposal
 	Issues    []Issue
+	Parked    []Parked // non-zero balances held in positions at the end, by Wallet, Asset
 }
 
 // Compute replays the open year over one FIFO queue per (wallet, asset), where the wallet
@@ -74,6 +78,7 @@ type Result struct {
 //     value, each negative leg a disposal at its value. A reward's positive leg also books
 //     Income of Type "reward"; the others raise IssueUnmatchedReceive / IssueUnmatchedSend
 //     per leg (a reward raises none). Dust legs are ignored.
+//   - position: see position; the kind decides, whatever the tag (spam aside).
 //   - stake, and transfer without a PeerID: no lot changes.
 //   - A known Tags entry on a receive, send or other tx without a PeerID replaces the
 //     movement rule (see tagged; a position tag goes to position); an unknown tag string is
@@ -89,6 +94,9 @@ func Compute(in Input) Result {
 	e := newEngine(in)
 	for _, l := range in.Opening {
 		e.addLot(l)
+	}
+	for _, p := range in.OpeningParked {
+		e.park(p.Wallet, p.Asset, p.Amount)
 	}
 	txs := txsFrom(in.Txs, in.From)
 	e.index(txs)
@@ -168,6 +176,9 @@ func (e *engine) byKind(tx core.Tx, legs []*valued) {
 	case core.TxStake, core.TxTransfer:
 		// Staking, or a self-send inside one wallet (a transfer without a PeerID): no lot
 		// changes, only the fee.
+	case core.TxPosition:
+		// The kind is authoritative: any tag but spam (handled by apply) is ignored.
+		e.position(tx, legs)
 	default: // receive, send, reward, other and any unknown kind
 		if tag, ok := e.tagOf(tx); ok {
 			if tag == TagPosition {
@@ -378,6 +389,14 @@ func (e *engine) result() Result {
 		byAsset := e.lots[wallet]
 		for _, asset := range slices.Sorted(maps.Keys(byAsset)) {
 			r.Lots = append(r.Lots, byAsset[asset].lots...)
+		}
+	}
+	for _, wallet := range slices.Sorted(maps.Keys(e.parked)) {
+		byAsset := e.parked[wallet]
+		for _, asset := range slices.Sorted(maps.Keys(byAsset)) {
+			if byAsset[asset] > dust {
+				r.Parked = append(r.Parked, Parked{Wallet: wallet, Asset: asset, Amount: byAsset[asset]})
+			}
 		}
 	}
 	slices.SortStableFunc(r.Disposals, func(a, b Disposal) int {

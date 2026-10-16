@@ -52,7 +52,11 @@ func (e *engine) park(wallet, asset string, amount float64) {
 func (e *engine) unpark(wallet, asset string, amount float64) float64 {
 	got := math.Min(amount, e.parked[wallet][asset])
 	if got > 0 {
-		e.parked[wallet][asset] -= got
+		left := e.parked[wallet][asset] - got
+		if left <= dust {
+			left = 0 // float residue is not a balance
+		}
+		e.parked[wallet][asset] = left
 	}
 	return got
 }

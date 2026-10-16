@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/sources/solana/defi"
 )
 
 // --- fake ledger -------------------------------------------------------------------------
@@ -59,6 +60,12 @@ func (l *fakeLedger) set(f func()) {
 
 func newLedger(t *testing.T, owner string) (*fakeLedger, *Source) {
 	t.Helper()
+	return newLedgerWith(t, owner, nil)
+}
+
+// newLedgerWith is newLedger with a hook to adjust the source's config.
+func newLedgerWith(t *testing.T, owner string, mutate func(*Config)) (*fakeLedger, *Source) {
+	t.Helper()
 	chain := newFakeChain(t)
 	chain.owner = owner
 	l := &fakeLedger{
@@ -69,11 +76,15 @@ func newLedger(t *testing.T, owner string) (*fakeLedger, *Source) {
 	}
 	l.srv = httptest.NewServer(l)
 	t.Cleanup(l.srv.Close)
-	s, err := New(Config{
+	cfg := Config{
 		ID: "phantom", Label: "Phantom", Address: owner,
 		RPCURL:           l.srv.URL + "/?api-key=" + testRPCKey,
 		JupiterTokensURL: l.srv.URL + "/jup",
-	}, fastClient(l.srv), NewMemoryMetaCache())
+	}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	s, err := New(cfg, fastClient(l.srv), NewMemoryMetaCache())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1671,5 +1682,83 @@ func TestActivityMergesGapsBeyondLimit(t *testing.T) {
 	}
 	if a.Newest != sigs[2] {
 		t.Errorf("Newest = %s, want %s", a.Newest, sigs[2])
+	}
+}
+
+// addProgramTx records a tx running one instruction of programID with the owner's SOL delta
+// (lamports) and token balance changes (mint -> pre/post raw amounts, 6 decimals).
+func (l *fakeLedger) addProgramTx(programID string, lamports int64, toks map[string][2]string) {
+	keys := []string{testOwner, programID}
+	var tb []tokBal
+	for mint, pp := range toks {
+		ata := testMint("ata/" + mint)
+		keys = append(keys, ata, mint)
+		tb = append(tb, tokBal{acct: ata, owner: testOwner, mint: mint, program: TokenProgramID, pre: pp[0], post: pp[1], dec: 6})
+	}
+	l.add(txSpec{
+		at: 1_700_000_000, fee: 5000, keys: keys,
+		delta: map[string]int64{testOwner: lamports},
+		toks:  tb,
+		ixs:   []map[string]any{ixRaw(programID)},
+	})
+}
+
+func legByMint(tx core.Tx, mint string) (float64, bool) {
+	for _, l := range tx.Legs {
+		if l.Mint == mint {
+			return l.Amount, true
+		}
+	}
+	return 0, false
+}
+
+func classifyProgramTx(t *testing.T, programID string, lamports int64, toks map[string][2]string) core.Tx {
+	t.Helper()
+	l, s := newLedger(t, testOwner)
+	l.addProgramTx(programID, lamports, toks)
+	res, _ := l.run(t, s, nil, time.Time{}, 0)
+	return mustOne(t, res.Txs)
+}
+
+func TestClassifyJupLock(t *testing.T) {
+	jup := testMint("jup")
+	tx := classifyProgramTx(t, defi.JupLockedVoterProgram, -2_000_000, map[string][2]string{jup: {"5000000000", "4000000000"}})
+	if tx.Kind != core.TxPosition {
+		t.Fatalf("kind = %s", tx.Kind)
+	}
+	if a, ok := legByMint(tx, jup); !ok || a != -1000 {
+		t.Errorf("JUP leg = %v (%v)", a, ok)
+	}
+	if sol := legMap(tx)["SOL"]; sol != -0.002 {
+		t.Errorf("SOL leg = %v, want -0.002; legs %+v", sol, tx.Legs)
+	}
+}
+
+func TestClassifyPerpsCloseIsPosition(t *testing.T) {
+	tx := classifyProgramTx(t, defi.JupPerpsProgram, 3_000_000, map[string][2]string{usdcMint: {"1000000", "251000000"}})
+	if tx.Kind != core.TxPosition {
+		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+	}
+}
+
+func TestClassifyPerpsJLPBuyIsSwap(t *testing.T) {
+	tx := classifyProgramTx(t, defi.JupPerpsProgram, -1_000_000_000, map[string][2]string{testMint("jlp"): {"0", "40000000"}})
+	if tx.Kind != core.TxSwap {
+		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+	}
+}
+
+func TestClassifySwapNotPosition(t *testing.T) {
+	tx := classifyProgramTx(t, defi.OrcaWhirlpoolProgram, -1_000_000_000, map[string][2]string{usdcMint: {"0", "150000000"}})
+	if tx.Kind != core.TxSwap {
+		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+	}
+}
+
+func TestClassifyLockerUnlock(t *testing.T) {
+	jup := testMint("jup")
+	tx := classifyProgramTx(t, defi.JupLockerProgram, 0, map[string][2]string{jup: {"0", "500000000"}})
+	if tx.Kind != core.TxPosition {
+		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
 	}
 }

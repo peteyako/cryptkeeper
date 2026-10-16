@@ -17,6 +17,7 @@ const (
 	TxReward   TxKind = "reward"   // staking/earn/interest income
 	TxStake    TxKind = "stake"    // stake/unstake moves
 	TxFee      TxKind = "fee"
+	TxPosition TxKind = "position" // moved into or out of one of the user's own positions (locked JUP, perps collateral)
 	TxOther    TxKind = "other"
 )
 

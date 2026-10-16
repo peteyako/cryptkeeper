@@ -275,3 +275,13 @@ func TestMatchTransfersIdempotentAndPure(t *testing.T) {
 		t.Fatalf("second run changed %v", ids(out2))
 	}
 }
+
+func TestPositionNeverMatchedAsTransfer(t *testing.T) {
+	a := mk("a", "p1", t0, "USDC", -100)
+	a.Kind = core.TxPosition
+	b := mk("b", "p2", t0, "USDC", 100)
+	b.Kind = core.TxPosition
+	if out := MatchTransfers([]core.Tx{a, b}); len(out) != 0 {
+		t.Fatalf("position matched as transfer: %v", ids(out))
+	}
+}

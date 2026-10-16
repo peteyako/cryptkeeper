@@ -204,7 +204,7 @@ func (e *engine) apply(tx core.Tx) {
 	}
 	year := tx.Time.UTC().Year()
 	switch tx.Kind {
-	case core.TxTransfer, core.TxStake:
+	case core.TxTransfer, core.TxStake, core.TxPosition:
 		return
 	case core.TxTrade, core.TxSwap:
 		e.trade(tx, year)

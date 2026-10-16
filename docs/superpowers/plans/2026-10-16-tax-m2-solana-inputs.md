@@ -60,6 +60,7 @@
 - The activity view shows glyph `⇄`, tone `neutral`, title `"Position"` (or `t.Note` when set), and a filter option `{Value: "position", Label: "Positions"}` after "Staking".
 - The average-cost engine treats `TxPosition` like `TxStake`: ignored, because it is replaced in M3.
 - `tax.Compute` routes `Kind == core.TxPosition` (with no tag override) to the existing `position` method, exactly as `TagPosition` does.
+- Parked balances carry across years. In `internal/tax/types.go` add `type Parked struct { Wallet string `yaml:"wallet"`; Asset string `yaml:"asset"`; Amount float64 `yaml:"amount"` }`. Add `Input.OpeningParked []Parked`, which seeds the engine's parked map before any tx. Add `Result.Parked []Parked`: the non-zero parked balances at the end, sorted by wallet then asset. The reason: JUP locked before the cutover must not be taxed as income when it is unlocked.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -69,7 +70,8 @@ func TestPositionNeverMatchedAsTransfer(t *testing.T) // a position send of USDC
 // web/templates/activity_view_test.go
 func TestPositionKindView(t *testing.T) // TxGlyph(position tx) == ("⇄","neutral"); title == "Position"; with Note "Locked JUP" → title "Locked JUP"; actKinds contains Value "position"
 // internal/tax/position_test.go
-func TestPositionKindRoutes(t *testing.T) // Kind core.TxPosition, JUP −1000, no tag → JUP lot unchanged, no disposal, parked 1000
+func TestPositionKindRoutes(t *testing.T) // Kind core.TxPosition, JUP −1000, no tag → JUP lot unchanged, no disposal, Result.Parked == [{sol JUP 1000}]
+func TestOpeningParkedAbsorbsWithdrawal(t *testing.T) // OpeningParked [{sol JUP 1000}]; position receive +1000 → no Income, no IssuePositionExcess, Result.Parked empty
 ```
 
 - [ ] **Step 2: Run to verify they fail**

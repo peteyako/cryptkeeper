@@ -48,6 +48,8 @@ type env struct {
 	ref     *portfolio.Refresher
 	syncer  *activity.Syncer // tests set its Sources
 	dataDir string
+	db      *store.DB
+	box     *secrets.Box
 }
 
 func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
@@ -127,7 +129,7 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	}
 	srv := httptest.NewServer(New(d))
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir}
+	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir, db: db, box: box}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {
@@ -811,5 +813,53 @@ func TestActivityPeriodFilter(t *testing.T) {
 	_, csv := e.do("GET", "/export/activity.csv?range=y"+lastYear, nil, nil)
 	if !strings.Contains(csv, "hash-lastyear") || strings.Contains(csv, "hash-old") || strings.Contains(csv, "hash-thismonth") {
 		t.Fatalf("export should honour the period:\n%s", csv)
+	}
+}
+
+func (e *env) priceKey() (string, bool) {
+	e.t.Helper()
+	var sealed string
+	ok, err := e.db.GetJSON(context.Background(), "prices.coingeckoKey", &sealed)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return sealed, ok
+}
+
+func TestSettingsPricesSaveSealed(t *testing.T) {
+	e := newEnv(t, "")
+	body, hdr := form(url.Values{"coingeckoKey": {"abc123"}})
+	_, out := e.do("POST", "/settings/prices", body, hdr)
+	sealed, ok := e.priceKey()
+	if !ok || !secrets.IsSealed(sealed) {
+		t.Fatalf("key must be stored sealed: %q ok=%v", sealed, ok)
+	}
+	if plain, err := e.box.Open(sealed); err != nil || plain != "abc123" {
+		t.Fatalf("open: %q %v", plain, err)
+	}
+	if !strings.Contains(out, "settings-prices") || !strings.Contains(out, "••••c123") || strings.Contains(out, "abc123") {
+		t.Fatalf("patch: %.600s", out)
+	}
+}
+
+func TestSettingsPricesClear(t *testing.T) {
+	e := newEnv(t, "")
+	body, hdr := form(url.Values{"coingeckoKey": {"abc123"}})
+	e.do("POST", "/settings/prices", body, hdr)
+	body, hdr = form(url.Values{"clear": {"1"}})
+	_, out := e.do("POST", "/settings/prices", body, hdr)
+	if _, ok := e.priceKey(); ok {
+		t.Fatal("key must be deleted")
+	}
+	if !strings.Contains(out, "not set") {
+		t.Fatalf("patch: %.600s", out)
+	}
+}
+
+func TestSettingsPricesNotSet(t *testing.T) {
+	e := newEnv(t, "")
+	_, page := e.do("GET", "/settings", nil, nil)
+	if !strings.Contains(page, `id="settings-prices"`) || !strings.Contains(page, "not set") {
+		t.Fatal("settings should show the prices card with the key not set")
 	}
 }

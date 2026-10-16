@@ -75,8 +75,8 @@ func TestPositionWithdrawExcess(t *testing.T) {
 	near(t, "issue amount", r.Issues[0].Amount, 50)
 }
 
-// A second withdrawal draws on what is left parked; a withdrawal with nothing parked is
-// all excess, and an unvalued excess is worth 0 with IssueMissingPrice.
+// A withdrawal with nothing parked is all excess, and an unvalued excess is worth 0 with
+// IssueMissingPrice.
 func TestPositionWithdrawNoDepositUnpriced(t *testing.T) {
 	wd := mk("wd", "w", at(2026, 4, 1, 0), core.TxReceive, lg(jup, 10, nil))
 	r := tagged(Input{}, wd, TagPosition)
@@ -136,5 +136,44 @@ func TestTagGiftLostShortfall(t *testing.T) {
 		if len(r.Issues) != 1 || r.Issues[0].Kind != IssueMissingBasis {
 			t.Errorf("%s: issues = %+v, want missing-basis", tag, r.Issues)
 		}
+	}
+}
+
+func TestPositionKindRoutes(t *testing.T) {
+	tx := mk("lock", "sol", at(2026, 3, 1, 0), core.TxPosition, lg(jup, -1000, usd(-800)))
+	r := Compute(Input{From: from2026, Opening: []Lot{lot("sol", jup, 1000, 500, at(2025, 1, 1, 0))}, Txs: []core.Tx{tx}})
+	l := lotsIn(r, "sol", jup)
+	if len(l) != 1 || len(r.Disposals) != 0 {
+		t.Fatalf("lots = %+v disposals = %+v", l, r.Disposals)
+	}
+	near(t, "lot", l[0].Amount, 1000)
+	if len(r.Parked) != 1 || r.Parked[0] != (Parked{Wallet: "sol", Asset: jup, Amount: 1000}) {
+		t.Errorf("parked = %+v", r.Parked)
+	}
+}
+
+func TestPositionKindSpamTagWins(t *testing.T) {
+	tx := mk("lock", "sol", at(2026, 3, 1, 0), core.TxPosition, lg(jup, -1000, usd(-800)))
+	r := tagged(Input{}, tx, TagSpam)
+	if len(r.Parked) != 0 {
+		t.Errorf("parked = %+v", r.Parked)
+	}
+}
+
+func TestOpeningParkedAbsorbsWithdrawal(t *testing.T) {
+	tx := mk("unlock", "sol", at(2026, 3, 1, 0), core.TxPosition, lg(jup, 1000, usd(900)))
+	r := Compute(Input{From: from2026, OpeningParked: []Parked{{Wallet: "sol", Asset: jup, Amount: 1000}}, Txs: []core.Tx{tx}})
+	if len(r.Income) != 0 || len(r.Issues) != 0 || len(r.Parked) != 0 {
+		t.Errorf("income = %+v issues = %+v parked = %+v", r.Income, r.Issues, r.Parked)
+	}
+}
+
+func TestParkedDropsResidueAndSorts(t *testing.T) {
+	in := Input{From: from2026, OpeningParked: []Parked{{"b", "X", 0.3}, {"a", "Y", 1}, {"a", "X", 2}}}
+	in.Txs = []core.Tx{mk("u", "b", at(2026, 3, 1, 0), core.TxPosition, lg("X", 0.1, usd(1)), lg("X", 0.1, usd(1)), lg("X", 0.1, usd(1)))}
+	r := Compute(in)
+	want := []Parked{{"a", "X", 2}, {"a", "Y", 1}}
+	if len(r.Parked) != 2 || r.Parked[0] != want[0] || r.Parked[1] != want[1] {
+		t.Errorf("parked = %+v, want %+v", r.Parked, want)
 	}
 }
