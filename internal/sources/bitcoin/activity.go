@@ -302,6 +302,7 @@ func (r *activityRun) newActivity() {
 func (r *activityRun) refresh(a addrTxs, c *addrCursor) {
 	anchor := c.Newest
 	top, last := c.Top, c.Next // non-empty when resuming an interrupted pass
+	resumed := last != ""
 	for {
 		if !r.take() {
 			return
@@ -351,6 +352,12 @@ func (r *activityRun) refresh(a addrTxs, c *addrCursor) {
 			continue
 		}
 		c.Top, c.Next, c.TxCount = "", "", a.txs
+		if resumed {
+			// The first page was read in an earlier call, so txs may have landed above it
+			// since, and a.txs counts them. Look at the newest page once more.
+			c.TxCount = -1
+			r.refresh(a, c)
+		}
 		return
 	}
 }

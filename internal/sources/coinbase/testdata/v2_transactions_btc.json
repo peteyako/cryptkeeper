@@ -1,0 +1,148 @@
+{
+  "pagination": {
+    "ending_before": null,
+    "starting_after": null,
+    "limit": 100,
+    "order": "desc",
+    "previous_uri": null,
+    "next_uri": null
+  },
+  "data": [
+    {
+      "id": "tx-buy",
+      "type": "buy",
+      "status": "completed",
+      "amount": {"amount": "0.50000000", "currency": "BTC"},
+      "native_amount": {"amount": "20000.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-26T13:42:00Z",
+      "updated_at": "2025-03-26T13:45:00Z",
+      "resource": "transaction",
+      "resource_path": "/v2/accounts/acc-btc/transactions/tx-buy",
+      "details": {"title": "Bought bitcoin", "subtitle": "using Capital One Bank"}
+    },
+    {
+      "id": "tx-sell",
+      "type": "sell",
+      "status": "completed",
+      "amount": {"amount": "-0.10000000", "currency": "BTC"},
+      "native_amount": {"amount": "-4100.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-25T10:00:00Z",
+      "resource": "transaction",
+      "details": {"title": "Sold bitcoin", "subtitle": "to USD Wallet"}
+    },
+    {
+      "id": "tx-fill",
+      "type": "advanced_trade_fill",
+      "status": "completed",
+      "amount": {"amount": "0.01000000", "currency": "BTC"},
+      "native_amount": {"amount": "410.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-24T10:00:00Z",
+      "advanced_trade_fill": {"fill_price": "41000.00", "product_id": "BTC-USD", "order_id": "o-1", "commission": "2.46", "order_side": "BUY"}
+    },
+    {
+      "id": "tx-send",
+      "type": "send",
+      "status": "completed",
+      "amount": {"amount": "-0.00133000", "currency": "BTC"},
+      "native_amount": {"amount": "-54.53", "currency": "USD"},
+      "description": "Rent",
+      "created_at": "2025-03-23T08:30:00-07:00",
+      "network": {
+        "status": "confirmed",
+        "name": "bitcoin",
+        "hash": "9d3f3a77aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566",
+        "transaction_url": "https://blockchain.info/tx/9d3f3a77aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566",
+        "transaction_fee": {"amount": "0.00033000", "currency": "BTC"},
+        "transaction_amount": {"amount": "0.00100000", "currency": "BTC"}
+      },
+      "to": {"resource": "bitcoin_address", "address": "bc1qexampledestinationaddress0000000000", "currency": "BTC"}
+    },
+    {
+      "id": "tx-receive",
+      "type": "receive",
+      "status": "completed",
+      "amount": {"amount": "0.30000000", "currency": "BTC"},
+      "native_amount": {"amount": "12300.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-22T08:30:00Z",
+      "network": {
+        "status": "confirmed",
+        "hash": "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899",
+        "transaction_url": "https://blockchain.info/tx/aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
+      },
+      "from": {"resource": "bitcoin_network", "currency": "BTC"}
+    },
+    {
+      "id": "tx-send-in",
+      "type": "send",
+      "status": "completed",
+      "amount": {"amount": "0.20000000", "currency": "BTC"},
+      "native_amount": {"amount": "8200.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-21T08:30:00Z",
+      "network": {"status": "off_blockchain", "name": "bitcoin"},
+      "from": {"id": "u-alice", "resource": "user", "resource_path": "/v2/users/u-alice", "name": "Alice"}
+    },
+    {
+      "id": "tx-reward",
+      "type": "staking_reward",
+      "status": "completed",
+      "amount": {"amount": "0.00010000", "currency": "BTC"},
+      "native_amount": {"amount": "4.10", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-20T00:00:00Z"
+    },
+    {
+      "id": "tx-earn",
+      "type": "earn_payout",
+      "status": "completed",
+      "amount": {"amount": "0.00002000", "currency": "BTC"},
+      "native_amount": {"amount": "0.82", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-19T00:00:00Z"
+    },
+    {
+      "id": "tx-xfer",
+      "type": "transfer",
+      "status": "completed",
+      "amount": {"amount": "-0.05000000", "currency": "BTC"},
+      "native_amount": {"amount": "-2050.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-18T00:00:00Z",
+      "to": {"id": "acc-vault", "resource": "account", "resource_path": "/v2/accounts/acc-vault"}
+    },
+    {
+      "id": "tx-pending",
+      "type": "send",
+      "status": "pending",
+      "amount": {"amount": "-0.00200000", "currency": "BTC"},
+      "native_amount": {"amount": "-82.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-17T00:00:00Z",
+      "network": {"status": "pending", "name": "bitcoin"},
+      "to": {"resource": "bitcoin_address", "address": "bc1qpending"}
+    },
+    {
+      "id": "tx-failed",
+      "type": "send",
+      "status": "failed",
+      "amount": {"amount": "-0.00300000", "currency": "BTC"},
+      "native_amount": {"amount": "-123.00", "currency": "USD"},
+      "description": null,
+      "created_at": "2025-03-16T00:00:00Z",
+      "to": {"resource": "email", "email": "friend@example.com"}
+    },
+    {
+      "id": "tx-unknown",
+      "type": "subscription_rebate",
+      "status": "completed",
+      "amount": {"amount": "0.00001000", "currency": "BTC"},
+      "native_amount": {"amount": "0.41", "currency": "USD"},
+      "description": "Coinbase One rebate",
+      "created_at": "2025-03-15T00:00:00Z"
+    }
+  ]
+}
