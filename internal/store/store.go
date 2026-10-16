@@ -1,4 +1,4 @@
-// Package store is the SQLite database (data/vault.db) for machine-written state:
+// Package store is the SQLite database (data/cryptkeep.db) for machine-written state:
 // last-good caches, history, token metadata, activity, price history and alert state.
 // Human-editable state (sources, portfolios, alert rules) stays in YAML files.
 package store

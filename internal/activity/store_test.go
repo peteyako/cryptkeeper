@@ -17,7 +17,7 @@ var t0 = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "vault.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeep.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +380,7 @@ func TestDeleteSourceAndStatuses(t *testing.T) {
 }
 
 func TestPersistsAcrossReopen(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vault.db")
+	path := filepath.Join(t.TempDir(), "cryptkeep.db")
 	db, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)

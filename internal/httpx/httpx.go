@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const userAgent = "vault-portfolio/1.0"
+const userAgent = "cryptkeep/1.0"
 
 // Client wraps http.Client with retry behaviour.
 type Client struct {

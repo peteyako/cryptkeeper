@@ -16,7 +16,7 @@ templ portfoliosBody(p PortfoliosPage) {
 	<div class="portfolios">
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">Vault</span>
+				<span class="eyebrow">CryptKeep</span>
 				<h1 class="h-title">Portfolios</h1>
 			</div>
 			<div class="page-head__actions">
@@ -45,7 +45,7 @@ templ PortfolioList(p PortfoliosPage) {
 		if p.LoadError != "" {
 			<div role="alert">
 				@Notice("warn", "alert") {
-					<p class="notice__line"><strong>Vault can't read portfolios.yaml.</strong> The list below may be incomplete.</p>
+					<p class="notice__line"><strong>CryptKeep can't read portfolios.yaml.</strong> The list below may be incomplete.</p>
 					<p class="notice__line pf-load-error">{ p.LoadError }</p>
 					<p class="notice__line">Fix the file, or restore a backup.</p>
 				}
@@ -133,12 +133,15 @@ templ PortfolioIO(p PortfoliosPage) {
 	<section id="portfolio-io" class="card pf-io" aria-labelledby="pf-io-h">
 		<div class="pf-io__intro">
 			<h2 id="pf-io-h" class="h-card">{ "Save & restore" }</h2>
-			<p class="muted-text">Your portfolios live in one small YAML file. Export a copy to keep somewhere safe, or import one from another Vault.</p>
+			<p class="muted-text">Your portfolios live in one small YAML file. Export a copy to keep somewhere safe, or import one from another CryptKeep.</p>
 		</div>
 		<div class="pf-io__block pf-io__row">
 			<div class="pf-io__text">
 				<h3 class="h-card">Export</h3>
 				<p class="muted-text">Every portfolio in one file. To export a single one, use its Export button.</p>
+				if p.EncryptedExports {
+					<p class="muted-text">Exports are encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>.</p>
+				}
 			</div>
 			<a class="btn btn--secondary" href="/portfolios/export" download>
 				@Icon("download", 16)
@@ -167,7 +170,7 @@ templ PortfolioIO(p PortfoliosPage) {
 						required
 						aria-describedby="f-import-file-help"
 					/>
-					<p id="f-import-file-help" class="field__help">A YAML file exported from Vault. It is checked before anything changes.</p>
+					<p id="f-import-file-help" class="field__help">A YAML file exported from CryptKeep. It is checked before anything changes.</p>
 				</div>
 				<fieldset class="pf-section">
 					<legend class="field__label pf-legend">How to import</legend>

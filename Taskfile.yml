@@ -1,4 +1,4 @@
-# Vault tasks — run with go-task (https://taskfile.dev): `task --list`
+# CryptKeep tasks — run with go-task (https://taskfile.dev): `task --list`
 version: "3"
 
 vars:
@@ -14,7 +14,7 @@ tasks:
       - go tool templ generate
 
   run:
-    desc: Run Vault locally (http://localhost:8787)
+    desc: Run CryptKeep locally (http://localhost:8787)
     deps: [generate]
     cmds:
       - go run . serve -config config.yaml
@@ -74,4 +74,4 @@ tasks:
   docker:
     desc: Build the container image (docker or podman)
     cmds:
-      - '{{if eq OS "darwin"}}podman{{else}}docker{{end}} build -t vault-portfolio .'
+      - '{{if eq OS "darwin"}}podman{{else}}docker{{end}} build -t cryptkeep .'

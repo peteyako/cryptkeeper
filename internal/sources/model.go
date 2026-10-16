@@ -80,7 +80,7 @@ var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 func (d *Def) Validate() error {
 	for _, v := range []string{d.Key, d.Descriptor, d.Address} {
 		if LooksLikeSeed(strings.ToLower(strings.TrimSpace(v))) {
-			return fmt.Errorf("%s: that looks like a seed phrase or private key; Vault only needs public keys, so it is never stored", d.ID)
+			return fmt.Errorf("%s: that looks like a seed phrase or private key; CryptKeep only needs public keys, so it is never stored", d.ID)
 		}
 	}
 	if !idRe.MatchString(d.ID) {

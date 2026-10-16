@@ -557,3 +557,24 @@ func TestPortfolioFormHelpers(t *testing.T) {
 		}
 	}
 }
+
+func TestHeldChange(t *testing.T) {
+	tests := []struct {
+		value, pct float64
+		want       string
+		ok         bool
+	}{
+		{110, 10, "+$10.00", true},      // worth 100 before a 10% rise
+		{90, -10, "−$10.00", true},      // worth 100 before a 10% fall
+		{1896.80, 0.02, "+$0.38", true}, // the USDC row from the bug report
+		{0, 5, "$0.00", true},
+		{100, -100, "", false}, // a total loss has no "before" ratio to apply
+		{100, math.NaN(), "", false},
+	}
+	for _, tt := range tests {
+		got, ok := HeldChange(tt.value, tt.pct)
+		if ok != tt.ok || (ok && ChangeAbs(got) != tt.want) {
+			t.Errorf("HeldChange(%v, %v) = %v (%s), %v; want %s, %v", tt.value, tt.pct, got, ChangeAbs(got), ok, tt.want, tt.ok)
+		}
+	}
+}

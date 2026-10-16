@@ -170,7 +170,7 @@ func (r *Registry) openLocked(d Def) (Def, error) {
 		}
 		plain, err := r.box.Open(*p)
 		if err != nil {
-			return d, fmt.Errorf("%s: %w (was data/secret.key or VAULT_SECRET_KEY changed?)", d.ID, err)
+			return d, fmt.Errorf("%s: %w (was data/secret.key or CRYPTKEEP_SECRET_KEY changed?)", d.ID, err)
 		}
 		*p = plain
 	}

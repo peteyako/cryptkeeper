@@ -16,7 +16,7 @@ templ settingsBody(p SettingsPage) {
 	<div class="settings">
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">Vault</span>
+				<span class="eyebrow">CryptKeep</span>
 				<h1 class="h-title">Settings</h1>
 			</div>
 			<div class="page-head__actions">
@@ -48,7 +48,7 @@ templ settingsBody(p SettingsPage) {
 			<section class="card setting" aria-labelledby="set-privacy-h">
 				<div class="setting__text">
 					<h2 id="set-privacy-h" class="h-card">Privacy</h2>
-					<p class="muted-text">Hide balances by default. Every fiat and coin amount is masked, and the eye button in the header toggles it. Vault remembers the last choice on this device.</p>
+					<p class="muted-text">Hide balances by default. Every fiat and coin amount is masked, and the eye button in the header toggles it. CryptKeep remembers the last choice on this device.</p>
 				</div>
 				<div class="seg" role="group" aria-label="Balances">
 					<button
@@ -102,6 +102,7 @@ templ settingsBody(p SettingsPage) {
 			@SettingsDisplay(p)
 			@BackupIO(p)
 			@ActivitySyncCard(p.Sync, p.Now)
+			@SyncStream(syncInit)
 			<section class="card setting" aria-labelledby="set-pf-h">
 				<div class="setting__text">
 					<h2 id="set-pf-h" class="h-card">Portfolios</h2>
@@ -114,7 +115,7 @@ templ settingsBody(p SettingsPage) {
 				<dl class="kv">
 					<div class="kv__row">
 						<dt>Mode</dt>
-						<dd>Read-only. Vault never moves funds.</dd>
+						<dd>Read-only. CryptKeep never moves funds.</dd>
 					</div>
 					<div class="kv__row">
 						<dt>Data directory</dt>
@@ -126,7 +127,7 @@ templ settingsBody(p SettingsPage) {
 							if p.AuthEnabled {
 								Password required
 							} else {
-								Off. Anyone who can reach this address can open Vault.
+								Off. Anyone who can reach this address can open CryptKeep.
 							}
 						</dd>
 					</div>
@@ -182,19 +183,33 @@ templ BackupIO(p SettingsPage) {
 	<section id="backup-io" class="card pf-io" aria-labelledby="set-backup-h">
 		<div class="pf-io__intro">
 			<h2 id="set-backup-h" class="h-card">{ "Backup & restore" }</h2>
-			<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules and manual cost basis. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a Vault with the same secret key. Balances and activity aren't included; Vault fetches them again.</p>
+			if p.EncryptedExports {
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis and exchange API secrets. The whole file is encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>, so it only restores into a CryptKeep with the same key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+			} else {
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules and manual cost basis. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a CryptKeep with the same secret key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+			}
 		</div>
 		<div class="pf-io__block pf-io__row">
 			<div class="pf-io__text">
 				<h3 class="h-card">Export</h3>
-				<p class="muted-text">Without secrets you re-enter exchange keys after restoring.</p>
+				if p.EncryptedExports {
+					<p class="muted-text">Keep a copy of the key somewhere other than this server. Without it the file can't be restored.</p>
+				} else {
+					<p class="muted-text">Without secrets you re-enter exchange keys after restoring.</p>
+				}
 			</div>
 			<div class="btn-row">
 				<a class="btn btn--secondary" href="/backup/export" download>
 					@Icon("download", 16)
-					Export
+					if p.EncryptedExports {
+						Export encrypted
+					} else {
+						Export
+					}
 				</a>
-				<a class="btn btn--ghost" href="/backup/export?secrets=1" download>With encrypted secrets</a>
+				if !p.EncryptedExports {
+					<a class="btn btn--ghost" href="/backup/export?secrets=1" download>With encrypted secrets</a>
+				}
 			</div>
 		</div>
 		<div class="pf-io__block">
@@ -219,7 +234,7 @@ templ BackupIO(p SettingsPage) {
 						required
 						aria-describedby="f-backup-file-help"
 					/>
-					<p id="f-backup-file-help" class="field__help">A Vault backup, or a sources or portfolios export. Everything is checked before anything changes, and each file is backed up first.</p>
+					<p id="f-backup-file-help" class="field__help">A CryptKeep backup, or a sources or portfolios export. Everything is checked before anything changes, and each file is backed up first.</p>
 				</div>
 				<fieldset class="pf-section">
 					<legend class="field__label pf-legend">How to restore</legend>

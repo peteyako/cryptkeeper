@@ -331,14 +331,15 @@ func assetOptions(now time.Time) []templates.AssetOption {
 }
 
 // SyncRows is the per-source activity sync state: Coinbase and Cold storage are up to
-// date, Kraken is still backfilling and failing (rate limited), Phantom is backfilling.
+// date, Kraken is still backfilling and failing (rate limited), Phantom is syncing now.
 func SyncRows(now time.Time) []templates.SyncRow {
+	const every = 15 * time.Minute
 	return []templates.SyncRow{
-		{ID: IDCold, Label: "Cold storage", Kind: core.KindHardware, Count: 38, BackfillDone: true, LastSync: now.Add(-2 * time.Minute)},
-		{ID: IDCoinbase, Label: "Coinbase", Kind: core.KindExchange, Count: 1204, BackfillDone: true, LastSync: now.Add(-2 * time.Minute)},
-		{ID: IDKraken, Label: "Kraken", Kind: core.KindExchange, Count: 212, BackfillDone: false, LastSync: now.Add(-3 * time.Hour),
-			LastError: "Rate limited by Kraken (EAPI:Rate limit exceeded). Vault retries on the next sync."},
-		{ID: IDPhantom, Label: "Phantom", Kind: core.KindHot, Count: 96, BackfillDone: false, LastSync: now.Add(-2 * time.Minute)},
+		{ID: IDCold, Label: "Cold storage", Type: "bitcoin", Kind: core.KindHardware, Count: 38, BackfillDone: true, LastSync: now.Add(-2 * time.Minute), Every: every},
+		{ID: IDCoinbase, Label: "Coinbase", Type: "coinbase", Kind: core.KindExchange, Count: 1204, BackfillDone: true, LastSync: now.Add(-2 * time.Minute), Every: every},
+		{ID: IDKraken, Label: "Kraken", Type: "kraken", Kind: core.KindExchange, Count: 212, BackfillDone: false, LastSync: now.Add(-3 * time.Hour),
+			LastError: "kraken: rate limited: EAPI:Rate limit exceeded", Every: every},
+		{ID: IDPhantom, Label: "Phantom", Type: "solana", Kind: core.KindHot, Count: 96, BackfillDone: false, Syncing: true, LastSync: now.Add(-2 * time.Minute), Every: every},
 	}
 }
 

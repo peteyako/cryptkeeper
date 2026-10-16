@@ -237,10 +237,10 @@ console.log(JSON.stringify({ theme: document.documentElement.dataset.theme ?? nu
 func TestBodyEffectBehaviour(t *testing.T) {
 	node := needNode(t)
 	okStore := `{ data: {}, setItem(k, v) { this.data[k] = v } }`
-	if got := runEffect(t, node, `{hide: true, theme: 'dark'}`, okStore); got != `{"theme":"dark","store":{"vault.hide":"1","vault.theme":"dark"}}` {
+	if got := runEffect(t, node, `{hide: true, theme: 'dark'}`, okStore); got != `{"theme":"dark","store":{"cryptkeep.hide":"1","cryptkeep.theme":"dark"}}` {
 		t.Errorf("dark: %s", got)
 	}
-	if got := runEffect(t, node, `{hide: false, theme: 'system'}`, `{ data: {}, setItem(k, v) { this.data[k] = v; } }`); got != `{"theme":null,"store":{"vault.hide":"0","vault.theme":"system"}}` {
+	if got := runEffect(t, node, `{hide: false, theme: 'system'}`, `{ data: {}, setItem(k, v) { this.data[k] = v; } }`); got != `{"theme":null,"store":{"cryptkeep.hide":"0","cryptkeep.theme":"system"}}` {
 		t.Errorf("system must clear data-theme: %s", got)
 	}
 	// Storage that throws (private window) must not stop the theme from being applied.
@@ -268,7 +268,7 @@ console.log(JSON.stringify($));
 		}
 		return strings.TrimSpace(string(out))
 	}
-	if got := run(`{ getItem(k) { return { 'vault.hide': '1', 'vault.theme': 'dark' }[k] ?? null } }`); got != `{"hide":true,"theme":"dark"}` {
+	if got := run(`{ getItem(k) { return { 'cryptkeep.hide': '1', 'cryptkeep.theme': 'dark' }[k] ?? null } }`); got != `{"hide":true,"theme":"dark"}` {
 		t.Errorf("restore: %s", got)
 	}
 	if got := run(`{ getItem() { return null } }`); got != `{"hide":false,"theme":"system"}` {

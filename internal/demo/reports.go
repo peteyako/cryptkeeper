@@ -7,7 +7,7 @@ import (
 	"crypto-portfolio/web/templates"
 )
 
-// costSpec is what the fixtures say Vault knows about the cost of one asset: the total paid
+// costSpec is what the fixtures say CryptKeep knows about the cost of one asset: the total paid
 // for its known units, how many units have no known cost, and whether a manual entry
 // overrides the computed cost.
 type costSpec struct {

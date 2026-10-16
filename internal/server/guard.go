@@ -53,7 +53,7 @@ func (s *Server) basicAuth(next http.Handler) http.Handler {
 		gotUser := sha256.Sum256([]byte(u))
 		gotPass := sha256.Sum256([]byte(p))
 		if !ok || subtle.ConstantTimeCompare(gotUser[:], wantUser[:])&subtle.ConstantTimeCompare(gotPass[:], wantPass[:]) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Vault", charset="UTF-8"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="CryptKeep", charset="UTF-8"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}

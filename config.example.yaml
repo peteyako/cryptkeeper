@@ -1,4 +1,4 @@
-# Vault server settings. Sources (exchanges, wallets) are added in the web UI and stored
+# CryptKeep server settings. Sources (exchanges, wallets) are added in the web UI and stored
 # in data/sources.yaml — they don't go here.
 
 refreshMinutes: 5        # balances and prices

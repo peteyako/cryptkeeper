@@ -1,4 +1,4 @@
-# Vault
+# CryptKeep
 
 A self-hosted, **read-only** crypto portfolio monitor. One page for everything you hold:
 Coinbase, Kraken, Bitcoin cold storage (xpub, descriptors, multisig) and Solana wallets
@@ -7,9 +7,9 @@ hiccups, and a design that puts numbers first.
 
 - Single Go binary, no database server: state lives in `data/` (YAML you can edit plus a SQLite file).
 - Server-rendered with [templ](https://templ.guide) and [Datastar](https://data-star.dev): live updates over SSE, almost no JavaScript.
-- Read-only by design. Vault only ever holds **public** keys, addresses and **view-only** API keys. It cannot move funds.
+- Read-only by design. CryptKeep only ever holds **public** keys, addresses and **view-only** API keys. It cannot move funds.
 
-> Never paste a seed phrase or private key into Vault. It will refuse obvious mistakes, but the rule is yours to keep.
+> Never paste a seed phrase or private key into CryptKeep. It will refuse obvious mistakes, but the rule is yours to keep.
 
 ## Quick start
 
@@ -40,7 +40,7 @@ Use **Test connection** before saving.
 
 ### Coinbase
 1. Go to the [Coinbase Developer Platform](https://portal.cdp.coinbase.com/) → API keys → Create API key.
-2. Choose the **ECDSA** signature algorithm (Coinbase's v2 accounts API, which Vault uses for vaults and staked balances, documents ECDSA keys only).
+2. Choose the **ECDSA** signature algorithm (Coinbase's v2 accounts API, which CryptKeep uses for vaults and staked balances, documents ECDSA keys only).
 3. Permissions: **View** only. No trade, no transfer.
 4. Paste the key name (`organizations/…/apiKeys/…`) and the private key (PEM).
 
@@ -63,13 +63,13 @@ Where to find them:
 - **Unchained / Caravan**: download the wallet configuration JSON.
 - **Nunchuk**: Wallet → ⋯ → Export wallet → descriptor / BSMS file.
 
-Vault derives receive and change addresses with a gap limit of 20 (configurable).
+CryptKeep derives receive and change addresses with a gap limit of 20 (configurable).
 
 **Privacy:** balances are looked up on `mempool.space` by default, which lets that server see
 your addresses together. Point `bitcoin.esploraUrl` at your own mempool/electrs node to avoid it.
 
 ### Solana
-Paste the wallet's public address. Vault reads SOL, every SPL token (classic and Token-2022),
+Paste the wallet's public address. CryptKeep reads SOL, every SPL token (classic and Token-2022),
 native stake accounts, and counts NFTs without valuing them.
 
 Tokens that aren't on Jupiter's verified list, have no price, or are worth less than `minUsd`
@@ -89,7 +89,7 @@ JUP and Jupiter perps are read automatically (`solana.defi` in config) and shown
 underlying tokens, grouped by position. Uncollected LP fees aren't included.
 
 ### Manual holdings
-Coins held anywhere Vault can't read, one per line: `BTC 0.25 owed by Sam`. Use
+Coins held anywhere CryptKeep can't read, one per line: `BTC 0.25 owed by Sam`. Use
 `spl:<mint>` for Solana tokens.
 
 ## Portfolios
@@ -151,7 +151,7 @@ and add it to `config.yaml`:
 
 ```yaml
 ntfy:
-  url: https://ntfy.sh/vault-<long-random-string>
+  url: https://ntfy.sh/cryptkeep-<long-random-string>
   redactAmounts: true   # notifications say "BTC balance dropped 12%", never amounts
 ```
 
@@ -163,7 +163,7 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 ## Secrets and your data directory
 
 - Exchange secrets are encrypted at rest (AES-256-GCM) in `data/sources.yaml`.
-- The key is `VAULT_SECRET_KEY` (see `.env.example`) or, if unset, `data/secret.key`, generated on first run.
+- The key is `CRYPTKEEP_SECRET_KEY` (see `.env.example`) or, if unset, `data/secret.key`, generated on first run.
   **Back it up**: without it, stored exchange keys can't be decrypted and must be re-entered.
 - Encryption at rest protects a leaked `sources.yaml` or backup. It does not protect against someone who can also read `data/secret.key`.
 - Every change to a YAML file keeps a timestamped copy in `data/backups/` (newest 30).
@@ -174,20 +174,28 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 **Settings → Backup & restore** exports everything you set up in one YAML file — sources,
 portfolios, alert rules and manual cost basis — and restores it (merge, or replace the
 sections the file contains). Exchange secrets are left out unless you choose "with encrypted
-secrets"; those stay AES-256-GCM sealed and only restore into a Vault with the same key
-(`VAULT_SECRET_KEY` or `data/secret.key`). Balances and activity aren't included: Vault fetches
+secrets"; those stay AES-256-GCM sealed and only restore into a CryptKeep with the same key
+(`CRYPTKEEP_SECRET_KEY` or `data/secret.key`). Balances and activity aren't included: CryptKeep fetches
 them again. Restore also accepts an older sources or portfolios export.
 
+**Encrypted exports.** When `CRYPTKEEP_SECRET_KEY` is set, every YAML export (the Settings
+backup, the portfolios export and the `backup`, `sources` and `portfolios export` commands) is
+encrypted as a whole with that key, exchange secrets included. The file shows only a short
+header (`cryptkeep: encrypted`), and import decrypts it with the same key; a different key is
+refused. Keep a copy of the key somewhere other than the server. Without the variable (only
+the generated `data/secret.key`, which would be lost with the disk) exports stay plain YAML.
+CSV exports are never encrypted.
+
 ```sh
-crypto-portfolio backup export -o vault-backup.yaml [-secrets]
-crypto-portfolio backup import vault-backup.yaml [-replace]
+crypto-portfolio backup export -o cryptkeep-backup.yaml [-secrets]
+crypto-portfolio backup import cryptkeep-backup.yaml [-replace]
 ```
 
 An exchange source restored without its secrets shows "needs its API key" until you edit it.
 
 ## Remote access, password, phone app
 
-Vault is meant for your LAN or Tailscale. To reach it from anywhere on your tailnet with HTTPS:
+CryptKeep is meant for your LAN or Tailscale. To reach it from anywhere on your tailnet with HTTPS:
 
 ```sh
 tailscale serve --bg 8787

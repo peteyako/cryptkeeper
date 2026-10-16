@@ -1,4 +1,4 @@
-// Command crypto-portfolio is Vault: a self-hosted, read-only crypto portfolio monitor.
+// Command crypto-portfolio is CryptKeep: a self-hosted, read-only crypto portfolio monitor.
 //
 //	crypto-portfolio serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
 //	crypto-portfolio portfolios export [-o file.yaml] [-id ID]
@@ -82,6 +82,7 @@ type app struct {
 	dataDir    string
 	log        *slog.Logger
 	db         *store.DB
+	box        *secrets.Box // the secret key: seals exchange secrets and encrypted exports
 	client     *httpx.Client
 	registry   *sources.Registry
 	portfolios *portfolios.Store
@@ -89,6 +90,31 @@ type app struct {
 	activity   *activity.Store
 	costbasis  *costbasis.ManualStore
 	alertRules *alerts.RuleStore
+}
+
+// dbName is the SQLite database in the data directory. Before the app was renamed from
+// Vault to CryptKeep it was legacyDBName.
+const (
+	dbName       = "cryptkeep.db"
+	legacyDBName = "vault.db"
+)
+
+// renameLegacyDB moves a database still under the Vault-era name, with its WAL and shared
+// memory files, to dbName so an existing install keeps its history. The main file moves
+// last: if a rename fails partway, the next start finds it under the old name and retries.
+// Once dbName exists nothing is touched.
+func renameLegacyDB(dataDir string) error {
+	dst := filepath.Join(dataDir, dbName)
+	if _, err := os.Stat(dst); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	src := filepath.Join(dataDir, legacyDBName)
+	for _, suffix := range []string{"-wal", "-shm", ""} {
+		if err := os.Rename(src+suffix, dst+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("moving %s to %s: %w", legacyDBName+suffix, dbName+suffix, err)
+		}
+	}
+	return nil
 }
 
 // setup loads config, opens the database and the sources registry.
@@ -118,11 +144,14 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 	if err != nil {
 		return nil, fs, err
 	}
-	db, err := store.Open(filepath.Join(*dataDir, "vault.db"))
+	if err := renameLegacyDB(*dataDir); err != nil {
+		return nil, fs, err
+	}
+	db, err := store.Open(filepath.Join(*dataDir, dbName))
 	if err != nil {
 		return nil, fs, err
 	}
-	a := &app{cfg: cfg, dataDir: *dataDir, log: log, db: db, client: httpx.New()}
+	a := &app{cfg: cfg, dataDir: *dataDir, log: log, db: db, box: box, client: httpx.New()}
 	a.prices = prices.New(a.client, db, prices.Options{TTL: time.Minute, StaleMax: cfg.StaleMax()})
 	meta := solana.NewSQLiteMetaCache(db, 24*time.Hour)
 	reg, err := sources.NewRegistry(filepath.Join(*dataDir, "sources.yaml"), filepath.Join(*dataDir, "backups"), box, a.factory(meta))
@@ -374,7 +403,7 @@ func serve(args []string) error {
 	go syncer.Run(ctx)
 
 	h := server.New(server.Deps{
-		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log,
+		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log, Box: a.box,
 		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref,
 		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, DB: a.db, Broker: broker, History: hist, Prices: a.priceFunc(),
 		DetectBitcoin:          bitcoin.Detect,
@@ -383,7 +412,7 @@ func serve(args []string) error {
 	srv := &http.Server{Addr: *addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
-		a.log.Info("Vault listening", "addr", *addr, "sources", len(a.registry.Defs()), "auth", a.cfg.Password != "", "data", a.dataDir)
+		a.log.Info("CryptKeep listening", "addr", *addr, "sources", len(a.registry.Defs()), "auth", a.cfg.Password != "", "data", a.dataDir)
 		errCh <- srv.ListenAndServe()
 	}()
 	select {
@@ -409,14 +438,17 @@ func sourcesCmd(args []string) error {
 	switch sub {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
-		withSecrets := fs.Bool("secrets", false, "include sealed secrets (only re-importable with the same key)")
+		withSecrets := fs.Bool("secrets", false, "include sealed secrets (only re-importable with the same key; always on when CRYPTKEEP_SECRET_KEY is set)")
 		a, _, err := setup(fs, rest)
 		if err != nil {
 			return err
 		}
 		defer a.db.Close()
-		raw, err := a.registry.Export(*withSecrets)
+		raw, err := a.registry.Export(*withSecrets || a.cfg.EncryptExports())
 		if err != nil {
+			return err
+		}
+		if raw, err = a.sealExport(raw); err != nil {
 			return err
 		}
 		if *out == "" {
@@ -434,7 +466,7 @@ func sourcesCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: sources import FILE [-replace]")
 		}
-		raw, err := os.ReadFile(fs.Arg(0))
+		raw, err := a.readImport(fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -485,6 +517,9 @@ func portfoliosCmd(args []string) error {
 				return err
 			}
 		}
+		if raw, err = a.sealExport(raw); err != nil {
+			return err
+		}
 		if *out == "" {
 			_, err = os.Stdout.Write(raw)
 			return err
@@ -500,7 +535,7 @@ func portfoliosCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: portfolios import FILE [-replace]")
 		}
-		raw, err := os.ReadFile(fs.Arg(0))
+		raw, err := a.readImport(fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -535,14 +570,17 @@ func backupCmd(args []string) error {
 	switch sub {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
-		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key)")
+		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key; always on when CRYPTKEEP_SECRET_KEY is set)")
 		a, _, err := setup(fs, rest)
 		if err != nil {
 			return err
 		}
 		defer a.db.Close()
-		raw, err := backup.Export(a.backupStores(), *withSecrets)
+		raw, err := backup.Export(a.backupStores(), *withSecrets || a.cfg.EncryptExports())
 		if err != nil {
+			return err
+		}
+		if raw, err = a.sealExport(raw); err != nil {
 			return err
 		}
 		if *out == "" {
@@ -560,7 +598,7 @@ func backupCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: backup import FILE [-replace]")
 		}
-		raw, err := os.ReadFile(fs.Arg(0))
+		raw, err := a.readImport(fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -572,6 +610,26 @@ func backupCmd(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown backup command %q", sub)
+}
+
+// sealExport encrypts a YAML export as a whole when CRYPTKEEP_SECRET_KEY is set.
+func (a *app) sealExport(raw []byte) ([]byte, error) {
+	if !a.cfg.EncryptExports() {
+		return raw, nil
+	}
+	return a.box.SealFile(raw)
+}
+
+// readImport reads a file to import, decrypting it if it is an encrypted export.
+func (a *app) readImport(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if raw, err = a.box.OpenFile(raw); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return raw, nil
 }
 
 func (a *app) backupStores() backup.Stores {

@@ -735,3 +735,40 @@ func TestPartialProgressIsKeptWhenASourceFailsMidway(t *testing.T) {
 		t.Fatal("result without State must be dropped")
 	}
 }
+
+func TestSubscribeSignalsStartAndFinish(t *testing.T) {
+	var s *Syncer
+	sawRunning := false
+	src := fakeFn(func(n int, req core.ActivityRequest) (core.ActivityResult, error) {
+		sawRunning = s.Running()["src"]
+		return core.ActivityResult{}, errors.New("boom")
+	})
+	s = newSyncer(t, entry("src", src))
+	ch, cancel := s.Subscribe()
+	defer cancel()
+
+	syncOnce(t, s)
+	if !sawRunning {
+		t.Fatal("source must be reported as running during its sync")
+	}
+	if len(s.Running()) != 0 {
+		t.Fatalf("still running after the pass: %v", s.Running())
+	}
+	select {
+	case <-ch:
+	default:
+		t.Fatal("no signal after the pass")
+	}
+	// The finish signal comes after the outcome is saved, so a subscriber re-reading the
+	// statuses on it sees the error.
+	if st := statuses(t, s)["src"]; st.LastError != "boom" {
+		t.Fatalf("last error = %q", st.LastError)
+	}
+	cancel()
+	syncOnce(t, s)
+	select {
+	case <-ch:
+		t.Fatal("signal after cancel")
+	default:
+	}
+}

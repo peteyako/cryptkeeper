@@ -159,7 +159,7 @@ func (s *Server) assetOptions() []templates.AssetOption {
 
 func (s *Server) portfoliosPage(r *http.Request) templates.PortfoliosPage {
 	snap, _ := s.latest()
-	p := templates.PortfoliosPage{Shell: s.shell(r, "Portfolios", "portfolios", "all", ""), Now: s.Now()}
+	p := templates.PortfoliosPage{Shell: s.shell(r, "Portfolios", "portfolios", "all", ""), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports()}
 	known := make([]string, 0)
 	for _, d := range s.Registry.Defs() {
 		known = append(known, d.ID)
@@ -369,6 +369,10 @@ func (s *Server) portfolioExport(w http.ResponseWriter, r *http.Request) {
 	if id != "" {
 		name = "portfolio-" + id
 	}
+	if raw, name, err = s.sealExport(raw, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.yaml"`, name, s.Now().Format("2006-01-02")))
 	w.Header().Set("Cache-Control", "no-store")
@@ -388,7 +392,11 @@ func (s *Server) portfolioImport(w http.ResponseWriter, r *http.Request) {
 		if r.PostFormValue("mode") == string(portfolios.ImportReplace) {
 			mode = portfolios.ImportReplace
 		}
-		res, err := s.Portfolios.Import(raw, mode)
+		raw, err := s.Box.OpenFile(raw)
+		var res portfolios.ImportResult
+		if err == nil {
+			res, err = s.Portfolios.Import(raw, mode)
+		}
 		if err != nil {
 			outcome.Message = "Nothing was imported: " + err.Error()
 		} else {

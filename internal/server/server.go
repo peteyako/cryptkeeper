@@ -18,6 +18,7 @@ import (
 	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
+	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/store"
 	"crypto-portfolio/web/static"
@@ -29,6 +30,7 @@ type Deps struct {
 	DataDir    string
 	Version    string
 	Log        *slog.Logger
+	Box        *secrets.Box // the registry's key: opens encrypted imports, seals exports when Cfg.EncryptExports()
 	Registry   *sources.Registry
 	Portfolios *portfolios.Store
 	Activity   *activity.Store
@@ -109,6 +111,7 @@ func New(d Deps) http.Handler {
 
 		r.Get("/activity", s.activityFull)
 		r.Get("/activity/list", s.activityList)
+		r.Get("/activity/sync", s.activitySync)
 
 		r.Get("/reports", s.reports)
 		r.Post("/reports/basis", s.basisSave)

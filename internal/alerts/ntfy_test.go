@@ -48,10 +48,10 @@ func noRetryClient() *httpx.Client {
 
 func TestNtfySendHeadersAndBody(t *testing.T) {
 	srv, reqs := ntfyServer(t, 200, `{"id":"x"}`)
-	n := &Ntfy{URL: srv.URL + "/vault-topic", Token: "tk_secret", Client: noRetryClient()}
+	n := &Ntfy{URL: srv.URL + "/cryptkeep-topic", Token: "tk_secret", Client: noRetryClient()}
 	err := n.Send(context.Background(), Notification{
 		RuleID: "cold-drop", Title: "Balance drop", Body: "Cold storage: BTC balance dropped 12%",
-		Priority: 5, Tags: []string{"rotating_light", "warning"}, Click: "http://vault.tailnet:8787/w/cold",
+		Priority: 5, Tags: []string{"rotating_light", "warning"}, Click: "http://cryptkeep.tailnet:8787/w/cold",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestNtfySendHeadersAndBody(t *testing.T) {
 		t.Fatalf("%d requests", len(got))
 	}
 	r := got[0]
-	if r.Method != http.MethodPost || r.Path != "/vault-topic" {
+	if r.Method != http.MethodPost || r.Path != "/cryptkeep-topic" {
 		t.Fatalf("%s %s", r.Method, r.Path)
 	}
 	if r.Body != "Cold storage: BTC balance dropped 12%" {
@@ -71,7 +71,7 @@ func TestNtfySendHeadersAndBody(t *testing.T) {
 		"Title":         "Balance drop",
 		"Priority":      "5",
 		"Tags":          "rotating_light,warning",
-		"Click":         "http://vault.tailnet:8787/w/cold",
+		"Click":         "http://cryptkeep.tailnet:8787/w/cold",
 		"Authorization": "Bearer tk_secret",
 	} {
 		if v := r.Header.Get(k); v != want {

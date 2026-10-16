@@ -1,11 +1,11 @@
-# Vault: self-hosted crypto portfolio monitor (Go + templ + Datastar)
+# CryptKeep: self-hosted crypto portfolio monitor (Go + templ + Datastar)
 
 ## Context
 You hold crypto in **Coinbase** and **Kraken**, plus offline **Bitcoin** wallets (xpub/zpub, descriptors, multisig) and **Solana** wallets (SOL, SPL tokens, DeFi). You want one self-hosted, read-only web app that shows everything, groups it into portfolios, and tracks change, P&L, activity and alerts. The project directory is empty (greenfield).
 
 **Decisions made:**
 - **Stack:** Go 1.26.1 single binary, templ (a-h/templ) + Datastar (server-rendered HTML, live updates over SSE, near-zero hand-written JS).
-- **Design:** the **Vault design system** (https://claude.ai/artifact/Nh1wTG5iHF4ngUD6grk8jM), with its example screens as the layout reference. The UI uses Vault's name and branding.
+- **Design:** the **Vault design system** (https://claude.ai/artifact/Nh1wTG5iHF4ngUD6grk8jM), with its example screens as the layout reference. The UI uses CryptKeep's name and branding.
 - **Sources:** managed **in the UI** (the design's "Add source" flow). Stored in `data/sources.yaml`, with API secrets encrypted at rest.
 - **Coverage:**
   - Coinbase, including staked balances and vaults.
@@ -28,7 +28,7 @@ crypto-portfolio/
   go.mod                       # module crypto-portfolio, go 1.26; templ CLI via `tool` directive
   main.go                      # subcommands: serve (default), portfolios export|import, sources export|import, healthcheck
   config.example.yaml          # server settings only (sources live in data/sources.yaml)
-  .env.example                 # VAULT_SECRET_KEY, PORTFOLIO_PASSWORD, NTFY_TOKEN (all optional; see below)
+  .env.example                 # CRYPTKEEP_SECRET_KEY, PORTFOLIO_PASSWORD, NTFY_TOKEN (all optional; see below)
   docs/plan.md, docs/defi-sources.md
   internal/
     config/                    # config.yaml (server settings) + env
@@ -149,7 +149,7 @@ The source of truth is the canvas boards: Foundations (`Main.dc.html`), Componen
 - **Chart:** an area fill of the accent at 8% opacity plus a 2 px accent line and 3 horizontal gridlines in `--row`. Server-rendered SVG with `vector-effect: non-scaling-stroke` and `role="img"` + `aria-label`.
 
 **Screens** (layout from the boards):
-- **App shell:** at desktop, a 232 px sidebar (Vault mark; nav Overview, Wallets, Activity, Reports, Alerts, Settings; a "Portfolios" list with source counts plus a dashed "New portfolio" button). Under 760 px it becomes the bottom nav (Overview, Wallets, Activity, Settings) and the portfolio name becomes a dropdown button.
+- **App shell:** at desktop, a 232 px sidebar (CryptKeep mark; nav Overview, Wallets, Activity, Reports, Alerts, Settings; a "Portfolios" list with source counts plus a dashed "New portfolio" button). Under 760 px it becomes the bottom nav (Overview, Wallets, Activity, Settings) and the portfolio name becomes a dropdown button.
 - **Overview** (`Portfolio.dc.html`):
   - Header: "Portfolio" label + name, a sync chip, hide and refresh icon buttons, and the "Add source" primary button.
   - Total value card: display figure, change for the selected range, segmented range control, area chart.
@@ -189,7 +189,7 @@ sources:
       holdings: [ { asset: BTC, amount: 0.25 }, { asset: ETH, amount: 2, note: "…" } ] }
 ```
 **Secrets:**
-- API secrets (and the Coinbase PEM) are sealed with AES-256-GCM. The key comes from `VAULT_SECRET_KEY` (base64, 32 bytes). If that is unset, a key is generated once into `data/secret.key` (mode 0600) and the README tells you to back it up.
+- API secrets (and the Coinbase PEM) are sealed with AES-256-GCM. The key comes from `CRYPTKEEP_SECRET_KEY` (base64, 32 bytes). If that is unset, a key is generated once into `data/secret.key` (mode 0600) and the README tells you to back it up.
 - Secrets are **never rendered back** into HTML. The UI shows `kr_live_••••3f9a` (last 4), and editing requires re-entering the secret.
 - **Limits of encryption at rest:** it protects a leaked `sources.yaml` or backup. It doesn't protect against someone with the key file on the same disk, and the README says so plainly.
 
@@ -431,7 +431,7 @@ portfolios:
    - Broker unsubscribe doesn't leak (checked under `-race`).
 7. **Sources registry + UI.**
    - `sources.yaml` round-trip; secrets never rendered (the render test greps the output for the plaintext); hot reload; test-connection endpoint; seeding from `config.yaml`; sources export without secrets.
-8. **Vault UI.**
+8. **CryptKeep UI.**
    - `tokens.css` and `app.css` transcribed from the boards; Plex woff2 self-hosted; vendored Datastar v1.0.4 (check the version string, `data-effect` request cancellation, multipart form posts).
    - templ components with render tests; `format.go` number-rule tests (every row of the table above).
    - App shell, Overview, Wallet detail (Holdings / Addresses / UTXOs; QR via `rsc.io/qr`), Add-source flow, Settings (theme, logos toggle).

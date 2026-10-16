@@ -15,7 +15,7 @@ templ alertsBody(p AlertsPage) {
 	<div class="alerts">
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">Vault</span>
+				<span class="eyebrow">CryptKeep</span>
 				<h1 class="h-title">Alerts</h1>
 				<p class="lede">Get a notification when something changes</p>
 			</div>
@@ -45,7 +45,7 @@ templ ntfyCard(p AlertsPage) {
 		if p.NtfyHost == "" {
 			@Notice("warn", "alert") {
 				<p class="notice__line"><strong>Notifications aren't set up.</strong> Alerts are saved, but nothing can be sent yet.</p>
-				<p class="notice__line">Add <span class="mono">ntfy.url</span> to <span class="mono">config.yaml</span> and restart Vault.</p>
+				<p class="notice__line">Add <span class="mono">ntfy.url</span> to <span class="mono">config.yaml</span> and restart CryptKeep.</p>
 			}
 			<button type="button" class="btn btn--secondary btn--block" disabled>Send test notification</button>
 		} else {
@@ -98,7 +98,7 @@ templ AlertRules(p AlertsPage) {
 		if p.LoadError != "" {
 			<div role="alert">
 				@Notice("warn", "alert") {
-					<p class="notice__line"><strong>Vault can't read alerts.yaml.</strong> The list below may be incomplete.</p>
+					<p class="notice__line"><strong>CryptKeep can't read alerts.yaml.</strong> The list below may be incomplete.</p>
 					<p class="notice__line pf-load-error">{ p.LoadError }</p>
 					<p class="notice__line">Fix the file and reload the page.</p>
 				}
@@ -419,7 +419,7 @@ templ alertLargeFields(p AlertFormPage) {
 	</fieldset>
 }
 
-// alertCooldownField is how long Vault stays quiet after an alert fires. Balance-drop and
+// alertCooldownField is how long CryptKeep stays quiet after an alert fires. Balance-drop and
 // source-down alerts re-arm on their own, so they do not show it.
 templ alertCooldownField(p AlertFormPage) {
 	<fieldset
@@ -433,6 +433,6 @@ templ alertCooldownField(p AlertFormPage) {
 	>
 		<legend class="sr-only">Repeat notifications</legend>
 		@selectField("cooldown", "Wait before telling you again", p.cooldown(), withCurrentLabel(alertCooldownOpts, p.cooldown(), p.cooldown()+" (custom)"), p.Errors["cooldown"])
-		<p class="field__help">After an alert fires, Vault stays quiet about it for this long.</p>
+		<p class="field__help">After an alert fires, CryptKeep stays quiet about it for this long.</p>
 	</fieldset>
 }

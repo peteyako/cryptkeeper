@@ -176,7 +176,7 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 		d.Kind = core.KindManual
 	}
 	if lower := strings.ToLower(r.PostFormValue("key") + r.PostFormValue("address")); sources.LooksLikeSeed(lower) {
-		errs[""] = "That looks like a seed phrase or private key. Vault only needs public keys — never enter a seed phrase here."
+		errs[""] = "That looks like a seed phrase or private key. CryptKeep only needs public keys — never enter a seed phrase here."
 	}
 	return d, errs
 }

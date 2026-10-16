@@ -46,13 +46,14 @@ type env struct {
 	ps      *portfolios.Store
 	reg     *sources.Registry
 	ref     *portfolio.Refresher
+	syncer  *activity.Syncer // tests set its Sources
 	dataDir string
 }
 
-func newEnv(t *testing.T, password string) *env {
+func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := store.Open(filepath.Join(dir, "vault.db"))
+	db, err := store.Open(filepath.Join(dir, "cryptkeep.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,22 +108,26 @@ func newEnv(t *testing.T, password string) *env {
 		t.Fatal(err)
 	}
 	engine := &alerts.Engine{Rules: rules, DB: db}
+	syncer := &activity.Syncer{Store: act}
 	cfg := config.Default()
 	cfg.Password = password
 	cfg.User = "admin"
-	h := New(Deps{
-		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Portfolios: ps, Refresher: ref,
-		Activity: act, CostBasis: cb, AlertRules: rules, Alerts: engine, DB: db, Broker: broker, History: hist, Prices: prices,
+	d := Deps{
+		Cfg: cfg, DataDir: dir, Version: "test", Box: box, Registry: reg, Portfolios: ps, Refresher: ref,
+		Activity: act, Syncer: syncer, CostBasis: cb, AlertRules: rules, Alerts: engine, DB: db, Broker: broker, History: hist, Prices: prices,
 		DetectBitcoin: func(s string) (string, error) {
 			if strings.HasPrefix(s, "wsh(") {
 				return "descriptor", nil
 			}
 			return "zpub", nil
 		},
-	})
-	srv := httptest.NewServer(h)
+	}
+	for _, opt := range opts {
+		opt(&d)
+	}
+	srv := httptest.NewServer(New(d))
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, dataDir: dir}
+	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {
@@ -302,6 +307,106 @@ func TestStreamSendsInitialPatch(t *testing.T) {
 		}
 	}
 	t.Fatal("no patch event on the stream")
+}
+
+// fixedActivity is an activity source that always lists the same entries.
+type fixedActivity []core.Tx
+
+func (f fixedActivity) Activity(context.Context, core.ActivityRequest) (core.ActivityResult, error) {
+	return core.ActivityResult{Txs: f, State: []byte("done"), BackfillDone: true}, nil
+}
+
+// slowActivity is an activity source whose every sync runs out of time.
+type slowActivity struct{}
+
+func (slowActivity) Activity(context.Context, core.ActivityRequest) (core.ActivityResult, error) {
+	return core.ActivityResult{}, context.DeadlineExceeded
+}
+
+func TestActivitySyncStream(t *testing.T) {
+	e := newEnv(t, "")
+	if _, err := e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeSolana, Label: "Phantom", Kind: core.KindHot, Address: "So11111111111111111111111111111111111111112"}); err != nil {
+		t.Fatal(err)
+	}
+	e.syncer.Sources = func() []activity.Entry { return []activity.Entry{{ID: "sol", Label: "Phantom", Src: slowActivity{}}} }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", e.srv.URL+"/activity/sync", nil)
+	req.Header.Set("Datastar-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 1<<20), 1<<22)
+	// waitFor reads events until one carries every want.
+	waitFor := func(wants ...string) {
+		t.Helper()
+		var ev strings.Builder
+		for sc.Scan() {
+			if sc.Text() != "" {
+				ev.WriteString(sc.Text())
+				continue
+			}
+			got, all := ev.String(), true
+			for _, w := range wants {
+				all = all && strings.Contains(got, w)
+			}
+			if all {
+				return
+			}
+			ev.Reset()
+		}
+		t.Fatalf("stream ended without an event carrying %q", wants)
+	}
+
+	// The card right away, then again once a sync has run, now explaining the failure in
+	// plain language with the advice for the public Solana RPC.
+	waitFor("datastar-patch-elements", `id="activity-sync"`, "Phantom", "Not synced yet")
+	go e.syncer.SyncOnce(context.Background())
+	waitFor(`id="activity-sync"`, "Timed out: the Solana RPC was too slow to answer.", "CryptKeep tries again every 15 min.",
+		"solana.rpcUrl", "<code>context deadline exceeded</code>")
+}
+
+// TestActivitySyncStreamOffersNewEntries: on the Activity page the stream shows the "new
+// activity" prompt once the entry count passes what the page was rendered with.
+func TestActivitySyncStreamOffersNewEntries(t *testing.T) {
+	e := newEnv(t, "")
+	if _, err := e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeSolana, Label: "Phantom", Kind: core.KindHot, Address: "So11111111111111111111111111111111111111112"}); err != nil {
+		t.Fatal(err)
+	}
+	e.syncer.Sources = func() []activity.Entry {
+		return []activity.Entry{{ID: "sol", Label: "Phantom", Src: fixedActivity{core.Tx{SourceID: "sol", ExternalID: "1", Time: time.Now().Add(-time.Hour), Kind: core.TxReceive,
+			Legs: []core.Leg{{AssetKey: "SOL", Symbol: "SOL", Amount: 1}}, Status: core.TxConfirmed}}}}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", e.srv.URL+"/activity/sync?feed=0", nil)
+	req.Header.Set("Datastar-Request", "true")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 1<<20), 1<<22)
+	started := false
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.Contains(line, `id="activity-new"`) {
+			if !started || !strings.Contains(line, "New activity synced") {
+				t.Fatalf("prompt before any new entry, or empty: %s", line)
+			}
+			return
+		}
+		if strings.Contains(line, `id="activity-sync"`) && !started {
+			started = true // the first card: nothing new yet, so sync one entry
+			go e.syncer.SyncOnce(context.Background())
+		}
+	}
+	t.Fatal("no new-activity prompt after the sync added an entry")
 }
 
 func TestPortfolioFlow(t *testing.T) {
@@ -565,7 +670,7 @@ func TestBackupExportRestore(t *testing.T) {
 	// The reported scenario: delete the portfolio and its source, then restore the backup.
 	e.ps.Delete("test")
 	e.do("POST", "/sources/kids/delete", nil, ds(nil))
-	body, hdr := multipartFile(t, "file", "vault-backup.yaml", []byte(sealed), map[string]string{"mode": "merge"})
+	body, hdr := multipartFile(t, "file", "cryptkeep-backup.yaml", []byte(sealed), map[string]string{"mode": "merge"})
 	_, out := e.do("POST", "/backup/import", body, hdr)
 	if !strings.Contains(out, "backup-import-result") || !strings.Contains(out, "portfolios 1 added") {
 		t.Fatalf("restore: %.500s", out)
@@ -588,7 +693,7 @@ func TestBackupExportRestore(t *testing.T) {
 		t.Fatal("sections not in the file must be kept")
 	}
 	e.ref.Force(context.Background())
-	if _, page := e.do("GET", "/w/kraken2", nil, nil); !strings.Contains(page, "edit this source") {
+	if _, page := e.do("GET", "/w/kraken2", nil, nil); !strings.Contains(page, "Edit this source to add them.") {
 		t.Fatal("a source without secrets should ask for them")
 	}
 	// A seed phrase anywhere in a backup is refused.
@@ -637,7 +742,7 @@ func TestDatastarNavigationPatchesRegionsOnly(t *testing.T) {
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
 		t.Fatalf("content type %q", resp.Header.Get("Content-Type"))
 	}
-	for _, want := range []string{"datastar-patch-elements", `id="page-title"`, `id="sidebar"`, `id="main"`, `id="bottomnav"`, "Activity · Vault"} {
+	for _, want := range []string{"datastar-patch-elements", `id="page-title"`, `id="sidebar"`, `id="main"`, `id="bottomnav"`, "Activity · CryptKeep"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("nav patch missing %q", want)
 		}

@@ -19,10 +19,10 @@ var bottomNav = []navItem{
 }
 
 func pageTitle(t string) string {
-	if t == "" || t == "Vault" {
-		return "Vault"
+	if t == "" || t == "CryptKeep" {
+		return "CryptKeep"
 	}
-	return t + " · Vault"
+	return t + " · CryptKeep"
 }
 
 // Layout wraps a page body in the app shell: sidebar on wide screens, bottom navigation
@@ -76,7 +76,7 @@ templ fullPage(s Shell, bare bool, body templ.Component) {
 			<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
 			<meta name="mobile-web-app-capable" content="yes"/>
 			<meta name="apple-mobile-web-app-capable" content="yes"/>
-			<meta name="apple-mobile-web-app-title" content="Vault"/>
+			<meta name="apple-mobile-web-app-title" content="CryptKeep"/>
 			<link rel="preload" href="/static/fonts/ibm-plex-sans-400.woff2" as="font" type="font/woff2" crossorigin/>
 			<link rel="preload" href="/static/fonts/ibm-plex-mono-500.woff2" as="font" type="font/woff2" crossorigin/>
 			<link rel="stylesheet" href={ asset("tokens.css") }/>
@@ -110,11 +110,11 @@ templ fullPage(s Shell, bare bool, body templ.Component) {
 
 templ sidebar(s Shell) {
 	<nav id="sidebar" class="sidebar" aria-label="Main">
-		<a class="brand" href="/" aria-label="Vault, overview" data-on:click={ navClick("/", "all") }>
+		<a class="brand" href="/" aria-label="CryptKeep, overview" data-on:click={ navClick("/", "all") }>
 			<span class="brand__mark">
-				@Icon("vault", 16)
+				@Icon("logo", 16)
 			</span>
-			<span class="brand__name">Vault</span>
+			<span class="brand__name">CryptKeep</span>
 		</a>
 		<div class="nav-group">
 			for _, it := range sideNav {

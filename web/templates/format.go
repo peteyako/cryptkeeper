@@ -1,4 +1,4 @@
-// Package templates renders the Vault web UI (templ components) and holds the number
+// Package templates renders the CryptKeep web UI (templ components) and holds the number
 // formatting rules shared by every page.
 //
 // Number rules (from the Vault Foundations board):
@@ -207,6 +207,16 @@ func ChangeAbs(v float64) string {
 	default:
 		return Minus + "$" + groupDecimal(s)
 	}
+}
+
+// HeldChange is what a price change of pct percent did to a holding now worth value: its
+// value now minus its value at the old price. ok is false when the percentage can't be
+// applied (NaN, or a fall of 100% or more).
+func HeldChange(value, pct float64) (usd float64, ok bool) {
+	if !finite(value) || !finite(pct) || pct <= -100 {
+		return 0, false
+	}
+	return value * pct / (100 + pct), true
 }
 
 // Direction classifies a change as "up", "down" or "flat" using the same rounding as

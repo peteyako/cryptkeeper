@@ -15,7 +15,7 @@ templ activityBody(p ActivityPage) {
 	<div class="activity" data-signals={ actSignals(p) }>
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">Vault</span>
+				<span class="eyebrow">CryptKeep</span>
 				<h1 class="h-title">Activity</h1>
 				<p class="lede">Synced from your wallets and exchanges</p>
 			</div>
@@ -64,6 +64,7 @@ templ activityBody(p ActivityPage) {
 			</div>
 			<aside class="act-aside">
 				@ActivitySyncCard(p.Sync, p.Now)
+				@SyncStream(syncFeedInit(SyncTotal(p.Sync)))
 			</aside>
 		</div>
 	</div>
@@ -87,6 +88,7 @@ templ actSelect(id, label, signal string, opts []selectOpt, current string) {
 // #activity-list, so a filter change patches just this.
 templ ActivityList(p ActivityPage) {
 	<div id="activity-list" class="act-list">
+		@ActivityNew(false)
 		if len(p.Rows) == 0 {
 			@activityEmpty(p)
 		} else {
@@ -109,7 +111,7 @@ templ activityEmpty(p ActivityPage) {
 			<a class="btn btn--secondary" href="/activity">Clear filters</a>
 		} else {
 			<h2 class="empty__title">No activity yet</h2>
-			<p class="empty__text">It appears as Vault syncs your sources; history is backfilled gradually.</p>
+			<p class="empty__text">It appears as CryptKeep syncs your sources; history is backfilled gradually.</p>
 		}
 	</div>
 }
@@ -221,8 +223,9 @@ templ ActivityMore(p ActivityPage) {
 }
 
 // ActivitySyncCard lists each source's activity sync state: how many entries it has, whether
-// the history is fully backfilled, when it last synced and its last error. Its root is
-// #activity-sync. The Activity and Settings pages both show it.
+// the history is fully backfilled, when it last synced and, in plain language, why the last
+// attempt failed. Its root is #activity-sync, which SyncStream keeps current. The Activity
+// and Settings pages both show it.
 templ ActivitySyncCard(rows []SyncRow, now time.Time) {
 	{{ now = nowOr(now) }}
 	<section id="activity-sync" class="card sync-card" aria-labelledby="sync-h">
@@ -239,22 +242,67 @@ templ ActivitySyncCard(rows []SyncRow, now time.Time) {
 						<div class="sync-row__top">
 							<span class={ "src-dot", "src-dot--" + SourceTone(s.Kind) } aria-hidden="true"></span>
 							<span class="sync-row__name">{ s.Label }</span>
-							if s.BackfillDone {
-								@StatusChip("●", "Up to date", "gain")
-							} else {
-								@StatusChip("◌", "Backfilling history…", "neutral")
+							switch {
+								case s.Syncing:
+									@StatusChip("◌", "Syncing…", "info")
+								case s.BackfillDone:
+									@StatusChip("●", "Up to date", "gain")
+								default:
+									@StatusChip("◌", "Backfilling history…", "neutral")
 							}
 						</div>
 						<p class="sync-row__meta">{ syncEntries(s.Count) } · { syncWhen(s, now) }</p>
-						if s.LastError != "" {
-							<p class="sync-row__err">
-								<span aria-hidden="true">✕</span>
-								{ s.LastError }
-							</p>
-						}
+						@syncProblem(s)
 					</li>
 				}
 			</ul>
 		}
 	</section>
+}
+
+// syncProblem is why a source's last sync failed, its fix and the raw error behind a
+// Details toggle, or nothing when the last attempt succeeded. SyncStream re-renders the
+// card, so data-preserve-attr keeps a Details toggle the user opened open.
+templ syncProblem(s SyncRow) {
+	if e := ExplainError(s.LastError, s.Type, s.PublicEndpoint, s.Every); e.Text != "" {
+		<div class="sync-row__err">
+			<p class="sync-row__err-text">
+				<span aria-hidden="true">✕</span>
+				<span>{ e.Text }</span>
+			</p>
+			if e.Fix != "" {
+				<p class="sync-row__fix">{ e.Fix }</p>
+			}
+			if e.Raw != "" {
+				<details class="sync-row__raw" data-preserve-attr="open">
+					<summary>Details</summary>
+					<code>{ e.Raw }</code>
+				</details>
+			}
+		</div>
+	}
+}
+
+// SyncStream is the hidden element that keeps #activity-sync current over SSE while the
+// page is open: the stream patches the card whenever a source starts or finishes syncing,
+// and every 30 seconds so "Synced 2m ago" stays true. init is syncInit, or syncFeedInit on
+// the Activity page, where the stream also offers new entries (ActivityNew).
+// requestCancellation 'cleanup' ends it when navigation removes the element.
+templ SyncStream(init string) {
+	<div hidden data-init={ init }></div>
+}
+
+// ActivityNew is the prompt at the top of the feed (#activity-new) that offers entries
+// synced since the list was rendered. The sync stream fills it; clicking reloads the list
+// with the current filters, and every list render empties it again. Reloading is left to
+// the user so a list they have scrolled or paged never changes under them.
+templ ActivityNew(show bool) {
+	<div id="activity-new" class="act-new" aria-live="polite">
+		if show {
+			<button type="button" class="btn btn--secondary act-new__btn" data-on:click={ actFilterGet }>
+				@Icon("refresh", 16)
+				New activity synced · Show
+			</button>
+		}
+	</div>
 }

@@ -1,7 +1,7 @@
 services:
-  vault:
+  cryptkeep:
     build: .
-    image: vault-portfolio
+    image: cryptkeep
     restart: unless-stopped
     ports:
       - "8787:8787"

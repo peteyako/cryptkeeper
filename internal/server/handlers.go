@@ -299,6 +299,7 @@ func (s *Server) walletPage(r *http.Request, id, tab string) (templates.WalletPa
 	p := templates.WalletPage{
 		Shell: s.shell(r, wv.Label, "wallets", "all", ""),
 		W:     wv, Tab: tab, IsBitcoin: isBTC, Now: s.Now(),
+		PublicEndpoint: s.publicEndpoint(wv.Type), RetryEvery: time.Duration(s.Cfg.RefreshMinutes) * time.Minute,
 	}
 	if tab == "activity" {
 		s.walletActivity(r.Context(), &p)

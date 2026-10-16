@@ -239,7 +239,7 @@ func TestManifest(t *testing.T) {
 	if err := json.Unmarshal([]byte(readStatic(t, "manifest.webmanifest")), &m); err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "Vault" || m.ShortName != "Vault" || m.Display != "standalone" || m.StartURL != "/" {
+	if m.Name != "CryptKeep" || m.ShortName != "CryptKeep" || m.Display != "standalone" || m.StartURL != "/" {
 		t.Errorf("manifest basics: %+v", m)
 	}
 	if !strings.EqualFold(m.ThemeColor, templates.ThemeColorDark) || !strings.EqualFold(m.BackgroundColor, templates.ThemeColorDark) {

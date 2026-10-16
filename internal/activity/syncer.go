@@ -59,6 +59,10 @@ type Syncer struct {
 	once sync.Once
 	kick chan struct{}
 	sem  chan struct{}
+
+	mu      sync.Mutex
+	running map[string]bool            // sources being synced right now
+	subs    map[chan struct{}]struct{} // Subscribe channels
 }
 
 func (s *Syncer) init() {
@@ -80,6 +84,59 @@ func (s *Syncer) callTimeout() time.Duration {
 		return s.timeout
 	}
 	return activityTimeout
+}
+
+// Subscribe returns a channel that receives a signal whenever a source starts or finishes
+// syncing (its status in the store has changed by then), and a cancel func that must be
+// called when the subscriber goes away. Signals coalesce: a slow reader gets one, not a
+// backlog.
+func (s *Syncer) Subscribe() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	s.mu.Lock()
+	if s.subs == nil {
+		s.subs = map[chan struct{}]struct{}{}
+	}
+	s.subs[ch] = struct{}{}
+	s.mu.Unlock()
+	var once sync.Once
+	return ch, func() {
+		once.Do(func() {
+			s.mu.Lock()
+			delete(s.subs, ch)
+			s.mu.Unlock()
+		})
+	}
+}
+
+// Running returns the ids of the sources being synced right now.
+func (s *Syncer) Running() map[string]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]bool, len(s.running))
+	for id := range s.running {
+		out[id] = true
+	}
+	return out
+}
+
+// setRunning marks a source as syncing or not and signals the subscribers.
+func (s *Syncer) setRunning(id string, on bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if on {
+		if s.running == nil {
+			s.running = map[string]bool{}
+		}
+		s.running[id] = true
+	} else {
+		delete(s.running, id)
+	}
+	for ch := range s.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 // Kick asks Run for an early pass. It never blocks and coalesces repeated kicks.
@@ -149,6 +206,8 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 		}
 		seen[e.ID] = true
 		g.Go(func() error {
+			s.setRunning(e.ID, true)
+			defer s.setRunning(e.ID, false) // after syncSource has saved the outcome
 			got := s.syncSource(ctx, e, since, vals)
 			mu.Lock()
 			fresh = append(fresh, got...)

@@ -11,7 +11,7 @@ templ reportsBody(p ReportsPage) {
 	<div class="reports">
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">Vault</span>
+				<span class="eyebrow">CryptKeep</span>
 				<h1 class="h-title">Reports</h1>
 				<p class="lede">Profit and loss, cost basis and exports</p>
 			</div>
@@ -89,7 +89,7 @@ templ PnLTable(p ReportsPage) {
 			<span class="meta">average cost, all wallets</span>
 		</div>
 		if len(p.Rows) == 0 {
-			<p class="empty-note">Nothing is held yet. Profit and loss appears once Vault has balances to compare with what you paid.</p>
+			<p class="empty-note">Nothing is held yet. Profit and loss appears once CryptKeep has balances to compare with what you paid.</p>
 		} else {
 			<div class="table-scroll">
 				<table class="tbl tbl--pnl">
@@ -201,7 +201,7 @@ templ realizedCard(p ReportsPage) {
 			<span class="meta">by year</span>
 		</div>
 		if len(p.Realized) == 0 {
-			<p class="empty-note">No sales on record yet. Realized P/L appears once Vault sees you sell, trade or swap.</p>
+			<p class="empty-note">No sales on record yet. Realized P/L appears once CryptKeep sees you sell, trade or swap.</p>
 		} else {
 			<ul class="year-list">
 				for _, y := range p.Realized {
@@ -225,7 +225,7 @@ templ CostBasisPanel(p ReportsPage) {
 	<section id="basis-panel" class="card basis-panel" aria-labelledby="basis-h">
 		<div class="basis-panel__intro">
 			<h2 id="basis-h" class="h-card">Manual cost basis</h2>
-			<p class="muted-text">Tell Vault what you paid when it can't work it out, for example for coins you moved in from somewhere else.</p>
+			<p class="muted-text">Tell CryptKeep what you paid when it can't work it out, for example for coins you moved in from somewhere else.</p>
 		</div>
 		if p.BasisErr != "" {
 			<div role="alert">
@@ -298,7 +298,7 @@ templ CSVImportPanel(p ReportsPage) {
 	<section id="csv-import" class="card csv-import" aria-labelledby="csv-h">
 		<div class="csv-import__intro">
 			<h2 id="csv-h" class="h-card">Import from a CSV</h2>
-			<p class="muted-text">Bring in older history from an exchange export, so cost basis can use trades Vault can't fetch.</p>
+			<p class="muted-text">Bring in older history from an exchange export, so cost basis can use trades CryptKeep can't fetch.</p>
 		</div>
 		<form
 			id="csv-form"

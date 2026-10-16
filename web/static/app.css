@@ -1,5 +1,5 @@
 /*
-  Vault components and layout. Built only on the tokens in tokens.css: no raw colors here.
+  CryptKeep components and layout. Built only on the tokens in tokens.css: no raw colors here.
   Mobile first. The sidebar appears at 760px; below that a bottom nav takes over.
 */
 
@@ -126,7 +126,7 @@ button {
   stroke-width: 2.2;
 }
 
-.icon-vault {
+.icon-logo {
   stroke-width: 2.4;
 }
 
@@ -621,6 +621,19 @@ body.amounts-hidden .fig-m {
 .chg--flat,
 .chg--none {
   color: var(--text-3);
+}
+
+/* A change column: the percent with, under it, the dollar amount it made on the holding. */
+.chg-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.chg.chg--usd {
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .stale {
@@ -1794,6 +1807,13 @@ body.amounts-hidden .fig-m {
 
   .tbl--holdings .col-chg .chg {
     font-size: 12px;
+  }
+
+  /* One line on a phone: "▲ +2.14% +$412.06". */
+  .tbl--holdings .chg-cell {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
   }
 
   .tbl--holdings .col-held,
@@ -3269,6 +3289,22 @@ body.amounts-hidden .fig-m {
   display: none;
 }
 
+/* "New activity synced · Show", filled by the sync stream. */
+.act-new {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
+}
+
+.act-new:empty {
+  display: none;
+}
+
+.act-new__btn {
+  min-height: 36px;
+  font-size: 13px;
+}
+
 @media (max-width: 759.98px) {
   .tx__clock,
   .tx__hash,
@@ -3350,13 +3386,46 @@ body.amounts-hidden .fig-m {
 
 .sync-row__err {
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
   padding-left: 18px;
-  color: var(--loss);
   font-size: 12px;
   line-height: 18px;
-  overflow-wrap: anywhere; /* errors can contain long URLs */
   min-width: 0;
+}
+
+.sync-row__err-text {
+  display: flex;
+  gap: 6px;
+  color: var(--loss);
+}
+
+.sync-row__fix {
+  color: var(--text-2);
+}
+
+.sync-row__raw,
+.notice__raw {
+  color: var(--text-3);
+  overflow-wrap: anywhere; /* raw errors can contain long URLs */
+}
+
+.notice__raw {
+  margin-top: 6px;
+}
+
+.sync-row__raw summary,
+.notice__raw summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.sync-row__raw code,
+.notice__raw code {
+  display: block;
+  margin-top: 4px;
+  font: 400 12px/16px var(--font-mono);
 }
 
 /* ---- reports --------------------------------------------------------------------------- */

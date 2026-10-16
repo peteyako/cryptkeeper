@@ -39,7 +39,7 @@ type Stores struct {
 }
 
 // Export builds a backup. Without withSecrets, exchange secrets are blanked; with it they
-// stay sealed (only importable by a Vault with the same secret key).
+// stay sealed (only importable by a CryptKeep with the same secret key).
 func Export(st Stores, withSecrets bool) ([]byte, error) {
 	f := File{Version: Version}
 	if st.Sources != nil {
@@ -205,7 +205,7 @@ func (st Stores) check(f File) error {
 		len(f.Portfolios) > 0 && st.Portfolios == nil,
 		len(f.Alerts) > 0 && st.Alerts == nil,
 		f.CostBasis != nil && st.CostBasis == nil:
-		return fmt.Errorf("this Vault can't restore every section of the file")
+		return fmt.Errorf("this CryptKeep can't restore every section of the file")
 	}
 	return nil
 }

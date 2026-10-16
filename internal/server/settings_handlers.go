@@ -54,7 +54,7 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 	return templates.SettingsPage{
 		Shell: s.shell(r, "Settings", "settings", "all", ""), Wallets: wallets,
 		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
-		Sync: s.syncRows(r.Context()), Now: s.Now(),
+		Sync: s.syncRows(r.Context()), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports(),
 	}
 }
 
@@ -87,21 +87,37 @@ func (s *Server) backupStores() backup.Stores {
 }
 
 // backupExport downloads everything the user configured; ?secrets=1 keeps sealed secrets.
+// With CRYPTKEEP_SECRET_KEY set the whole file is encrypted, secrets always included.
 func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
-	withSecrets := r.URL.Query().Get("secrets") == "1"
+	encrypt := s.Cfg.EncryptExports()
+	withSecrets := encrypt || r.URL.Query().Get("secrets") == "1"
 	raw, err := backup.Export(s.backupStores(), withSecrets)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	name := "vault-backup"
-	if withSecrets {
-		name = "vault-backup-with-encrypted-secrets"
+	name := "cryptkeep-backup"
+	if withSecrets && !encrypt {
+		name = "cryptkeep-backup-with-encrypted-secrets"
+	}
+	if raw, name, err = s.sealExport(raw, name); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.yaml"`, name, s.Now().Format("2006-01-02")))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(raw)
+}
+
+// sealExport encrypts a YAML export when the user set CRYPTKEEP_SECRET_KEY, and marks the
+// download name as encrypted. Otherwise it returns raw and name unchanged.
+func (s *Server) sealExport(raw []byte, name string) ([]byte, string, error) {
+	if !s.Cfg.EncryptExports() {
+		return raw, name, nil
+	}
+	sealed, err := s.Box.SealFile(raw)
+	return sealed, name + "-encrypted", err
 }
 
 // backupImport restores a backup (or an older sources or portfolios export).
@@ -114,7 +130,11 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 	} else {
 		raw, _ := io.ReadAll(io.LimitReader(file, 4<<20))
 		file.Close()
-		res, err := backup.Import(s.backupStores(), raw, r.PostFormValue("mode") == "replace")
+		raw, err := s.Box.OpenFile(raw)
+		var res backup.Result
+		if err == nil {
+			res, err = backup.Import(s.backupStores(), raw, r.PostFormValue("mode") == "replace")
+		}
 		switch {
 		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis:
 			outcome.Message = "Nothing was restored: " + err.Error()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
@@ -99,18 +100,85 @@ func (s *Server) syncRows(ctx context.Context) []templates.SyncRow {
 	if err != nil {
 		s.Log.Warn("activity statuses", "err", err)
 	}
+	var running map[string]bool
+	if s.Syncer != nil {
+		running = s.Syncer.Running()
+	}
+	every := time.Duration(s.Cfg.ActivityMinutes) * time.Minute
 	var rows []templates.SyncRow
 	for _, d := range s.Registry.Defs() {
 		if d.Type == sources.TypeManual {
 			continue
 		}
-		row := templates.SyncRow{ID: d.ID, Label: d.Label, Kind: d.Kind}
+		row := templates.SyncRow{
+			ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind, Syncing: running[d.ID],
+			PublicEndpoint: s.publicEndpoint(d.Type), Every: every,
+		}
 		if x, ok := st[d.ID]; ok {
 			row.Count, row.BackfillDone, row.LastSync, row.LastError = x.Count, x.BackfillDone, x.LastSync, x.LastError
 		}
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// publicEndpoint reports whether sources of a type read from a shared public endpoint (the
+// public Solana RPC, a public Esplora server). Those are slow and rate-limited, so an error
+// from one comes with the advice to use a private endpoint.
+func (s *Server) publicEndpoint(sourceType string) bool {
+	switch sourceType {
+	case sources.TypeSolana:
+		u := s.Cfg.Solana.RPCURL
+		return u == "" || strings.Contains(u, "api.mainnet-beta.solana.com")
+	case sources.TypeBitcoin:
+		u := s.Cfg.Bitcoin.EsploraURL
+		return u == "" || strings.Contains(u, "mempool.space") || strings.Contains(u, "blockstream.info")
+	}
+	return false
+}
+
+// syncTick is how often the activity sync stream re-renders the card with nothing new to
+// report, so relative times ("Synced 2m ago") stay true.
+const syncTick = 30 * time.Second
+
+// activitySync streams the activity sync card (#activity-sync) while the Activity or
+// Settings page is open: right away, whenever a source starts or finishes syncing, and every
+// syncTick. On the Activity page, ?feed= carries the number of entries the page was rendered
+// with, and each time the total grows past what was last seen the stream also shows the
+// "new activity" prompt (#activity-new).
+func (s *Server) activitySync(w http.ResponseWriter, r *http.Request) {
+	var changes <-chan struct{} // nil without a syncer: only the ticker fires
+	if s.Syncer != nil {
+		ch, cancel := s.Syncer.Subscribe()
+		defer cancel()
+		changes = ch
+	}
+	seen, feed := 0, false
+	if v := r.URL.Query().Get("feed"); v != "" {
+		n, err := strconv.Atoi(v)
+		seen, feed = n, err == nil
+	}
+	sse := datastar.NewSSE(w, r)
+	tick := time.NewTicker(syncTick)
+	defer tick.Stop()
+	for {
+		rows := s.syncRows(r.Context())
+		if err := sse.PatchElementTempl(templates.ActivitySyncCard(rows, s.Now())); err != nil {
+			return
+		}
+		if total := templates.SyncTotal(rows); feed && total > seen {
+			seen = total
+			if err := sse.PatchElementTempl(templates.ActivityNew(true)); err != nil {
+				return
+			}
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-changes:
+		case <-tick.C:
+		}
+	}
 }
 
 func (s *Server) activityPage(r *http.Request, f activityFilter, before time.Time) templates.ActivityPage {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestOpenMigrateAndKV(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vault.db")
+	path := filepath.Join(t.TempDir(), "cryptkeep.db")
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestOpenMigrateAndKV(t *testing.T) {
 }
 
 func TestMigrationsRunOnceByName(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vault.db")
+	path := filepath.Join(t.TempDir(), "cryptkeep.db")
 	AddMigration("test-extra", `CREATE TABLE extra (x INTEGER)`)
 	defer func() { migrations = migrations[:len(migrations)-1] }()
 	for range 2 { // reopening must not re-run anything

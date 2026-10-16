@@ -132,7 +132,7 @@ templ chartSVG(points []portfolio.Point, label string) {
 			}
 		</svg>
 		if len(points) < 2 {
-			<p class="chart__empty">History fills in as Vault records your balances.</p>
+			<p class="chart__empty">History fills in as CryptKeep records your balances.</p>
 		}
 	</div>
 }
@@ -270,10 +270,10 @@ templ holdingsCard(p OverviewPage) {
 									}
 								</td>
 								<td class="col-chg num">
-									@changeCell(a.Price)
+									@changeCell(pct24h(a.Price), a.ValueUSD, a.Priced, "24 hour")
 								</td>
 								<td class="col-chg7 num">
-									@changeCell7(a.Change7d)
+									@changeCell(a.Change7d, a.ValueUSD, a.Priced, "7 day")
 								</td>
 								if len(p.PnL) > 0 {
 									<td class="col-pnl num" data-show="$showPnl" style="display:none">
@@ -289,12 +289,17 @@ templ holdingsCard(p OverviewPage) {
 	</section>
 }
 
-// pnlCell is the optional P/L column: the arrow, sign and percent of the unrealized result,
-// or a dash when the cost of the asset is not known.
+// pnlCell is the optional P/L column: the arrow, sign and percent of the unrealized result
+// with its dollar amount under it, or a dash when the cost of the asset is not known.
 templ pnlCell(c PnLCell) {
 	if c.OK {
 		{{ text, dir := ChangePct(c.Pct) }}
-		<span class={ "chg", "chg--" + dir }>{ text }</span>
+		<span class="chg-cell">
+			<span class={ "chg", "chg--" + dir }>{ text }</span>
+			<span class={ "chg", "chg--usd", "chg--" + dir }>
+				@FigText(ChangeAbs(c.Unrealized), "$ ••••")
+			</span>
+		</span>
 	} else {
 		<span class="chg chg--none" aria-label="No profit or loss available">—</span>
 	}
@@ -337,7 +342,7 @@ templ watchCard(p OverviewPage) {
 								@priceCell(r.Price, p.Now)
 							</td>
 							<td class="col-chg num">
-								@changeCell(r.Price)
+								@changeCell(pct24h(r.Price), 0, false, "24 hour")
 							</td>
 						</tr>
 					}

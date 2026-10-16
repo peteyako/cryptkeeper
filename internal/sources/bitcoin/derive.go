@@ -16,7 +16,7 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 )
 
-// mainnet is the only network Vault supports.
+// mainnet is the only network CryptKeep supports.
 var mainnet = &chaincfg.MainNetParams
 
 // scriptType is the output type of a single-key HD account.
@@ -110,11 +110,11 @@ var keyVersions = map[uint32]keyVersion{
 
 var xpubVersion = []byte{0x04, 0x88, 0xb2, 0x1e}
 
-var errPrivateKey = errors.New("that is a private key: Vault is read-only and only accepts public keys " +
+var errPrivateKey = errors.New("that is a private key: CryptKeep is read-only and only accepts public keys " +
 	"(xpub/ypub/zpub), descriptors with public keys, or addresses. Never paste private keys or seed phrases")
 
 func errTestnet(what string) error {
-	return fmt.Errorf("%s is a testnet key or address: Vault is mainnet only", what)
+	return fmt.Errorf("%s is a testnet key or address: CryptKeep is mainnet only", what)
 }
 
 // extendedKeyPrefixes are the leading characters of every version in keyVersions.

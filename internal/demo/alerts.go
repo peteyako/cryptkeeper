@@ -53,7 +53,7 @@ func Alerts(now time.Time) templates.AlertsPage {
 			{
 				Time: now.Add(-5 * time.Hour), RuleID: AlertBigSend, Title: "Large send from Coinbase",
 				Body: "A send worth about $3,206.00 left Coinbase for bc1q8f…a7x4.",
-				Err:  "ntfy returned 503 Service Unavailable. Vault will not retry this one.",
+				Err:  "ntfy returned 503 Service Unavailable. CryptKeep will not retry this one.",
 			},
 			{
 				Time: now.Add(-2*24*time.Hour - 3*time.Hour), RuleID: AlertColdDrop, Title: "Cold storage balance dropped",

@@ -386,6 +386,15 @@ func syncWhen(s SyncRow, now time.Time) string {
 	return "Synced " + Ago(s.LastSync, now)
 }
 
+// SyncTotal is the number of entries across every source's activity.
+func SyncTotal(rows []SyncRow) int {
+	n := 0
+	for _, r := range rows {
+		n += r.Count
+	}
+	return n
+}
+
 // nowOr is now, or the wall clock when the page did not carry one.
 func nowOr(now time.Time) time.Time {
 	if now.IsZero() {

@@ -3,6 +3,7 @@ package templates
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -77,18 +78,30 @@ func bodySignals(s Shell) string {
 
 // bodyInit restores the persisted privacy and theme choice. Every storage access is
 // guarded: localStorage can be missing or throw (private windows, blocked site data).
-const bodyInit = `try { const s = window.localStorage; if (s) { $hide = s.getItem('vault.hide') === '1'; $theme = s.getItem('vault.theme') || 'system' } } catch (e) {}`
+const bodyInit = `try { const s = window.localStorage; if (s) { $hide = s.getItem('cryptkeep.hide') === '1'; $theme = s.getItem('cryptkeep.theme') || 'system' } } catch (e) {}`
 
 // bodyEffect persists the choice and applies the theme to <html data-theme>. Both
 // signals are read up front so the effect always subscribes to both, even when storage
 // is unavailable. It must come after data-init in the attribute order, or the defaults
 // would be written over the stored values before they are restored.
-const bodyEffect = `const h = $hide, t = $theme; try { const s = window.localStorage; if (s) { s.setItem('vault.hide', h ? '1' : '0'); s.setItem('vault.theme', t) } } catch (e) {} ; t === 'system' ? delete document.documentElement.dataset.theme : (document.documentElement.dataset.theme = t)`
+const bodyEffect = `const h = $hide, t = $theme; try { const s = window.localStorage; if (s) { s.setItem('cryptkeep.hide', h ? '1' : '0'); s.setItem('cryptkeep.theme', t) } } catch (e) {} ; t === 'system' ? delete document.documentElement.dataset.theme : (document.documentElement.dataset.theme = t)`
 
 // liveInit opens the persistent SSE stream. requestCancellation 'cleanup' aborts it when
 // the #live element is removed — i.e. when navigating away from the overview — so a
 // stream never outlives the page it patches.
 const liveInit = `@get('/stream', {filterSignals: {include: /^(pf|range)$/}, requestCancellation: 'cleanup'})`
+
+// syncStreamOpts send no signals and end the activity sync stream with its element.
+const syncStreamOpts = `{filterSignals: {include: /^$/}, requestCancellation: 'cleanup'}`
+
+// syncInit opens the activity sync stream (see SyncStream).
+const syncInit = `@get('/activity/sync', ` + syncStreamOpts + `)`
+
+// syncFeedInit is syncInit for the Activity page: total is the number of entries the page
+// was rendered with, so the stream can offer the ones synced after it (ActivityNew).
+func syncFeedInit(total int) string {
+	return "@get('/activity/sync?feed=" + strconv.Itoa(total) + "', " + syncStreamOpts + ")"
+}
 
 const refreshClick = `@post('/refresh', ` + liveFilter + `)`
 

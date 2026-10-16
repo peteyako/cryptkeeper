@@ -1,7 +1,7 @@
 // Package secrets seals exchange API secrets at rest with AES-256-GCM.
 //
 // Sealed values look like "enc:v1:<base64(nonce||ciphertext)>". The key comes from
-// VAULT_SECRET_KEY (base64, 32 bytes) or, if unset, from data/secret.key, which is
+// CRYPTKEEP_SECRET_KEY (base64, 32 bytes) or, if unset, from data/secret.key, which is
 // generated on first use with mode 0600. This protects a leaked sources.yaml or backup;
 // it does not protect against someone who can also read the key file.
 package secrets
@@ -44,7 +44,7 @@ func LoadKey(envKey, keyFile string) ([]byte, error) {
 	if envKey != "" {
 		k, err := base64.StdEncoding.DecodeString(strings.TrimSpace(envKey))
 		if err != nil {
-			return nil, fmt.Errorf("VAULT_SECRET_KEY: %w", err)
+			return nil, fmt.Errorf("CRYPTKEEP_SECRET_KEY: %w", err)
 		}
 		return k, nil
 	}

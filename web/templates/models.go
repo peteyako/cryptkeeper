@@ -76,7 +76,11 @@ type WalletPage struct {
 	// ActivityMore says there are older ones (the tab then links to the full Activity page).
 	Activity     []ActivityRow
 	ActivityMore bool
-	Now          time.Time
+	// PublicEndpoint and RetryEvery explain a balance error (W.Err): whether the source reads
+	// from a shared public endpoint, and how often balances refresh.
+	PublicEndpoint bool
+	RetryEvery     time.Duration
+	Now            time.Time
 }
 
 // SourcePickPage is step 1 of the add-source flow.
@@ -112,6 +116,8 @@ type SettingsPage struct {
 	Now time.Time
 	// BackupImport is the outcome of the last restore (Settings → Backup & restore).
 	BackupImport ImportOutcome
+	// EncryptedExports: CRYPTKEEP_SECRET_KEY is set, so exports are encrypted as a whole.
+	EncryptedExports bool
 }
 
 // PortfolioItem is one portfolio on the manager page.
@@ -149,6 +155,8 @@ type PortfoliosPage struct {
 	// Import is the result shown under the import form. Optional: a handler can also
 	// patch ImportResultView on its own.
 	Import ImportOutcome
+	// EncryptedExports: CRYPTKEEP_SECRET_KEY is set, so exports are encrypted as a whole.
+	EncryptedExports bool
 }
 
 // WalletOption is one wallet a portfolio can be limited to.
@@ -192,11 +200,17 @@ type ActivityRow struct {
 // SyncRow is one source's activity sync state.
 type SyncRow struct {
 	ID, Label    string
+	Type         string // source type: names the service in an error
 	Kind         core.Kind
 	Count        int
 	BackfillDone bool
+	Syncing      bool // a sync of this source is running right now
 	LastSync     time.Time
-	LastError    string
+	LastError    string // raw error of the most recent failed attempt
+	// PublicEndpoint is set when the source reads from a shared public endpoint (the public
+	// Solana RPC, mempool.space), the usual cause of timeouts and rate limits.
+	PublicEndpoint bool
+	Every          time.Duration // how often activity syncs, i.e. when a failure is retried
 }
 
 // ActivityPage is the Activity screen (/activity).
