@@ -1,11 +1,11 @@
 package costbasis
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,21 +61,21 @@ func TestParseManualEmptyAndVersion(t *testing.T) {
 
 func TestParseManualRejectsBadInput(t *testing.T) {
 	cases := map[string]string{
-		"unknown field":      "version: 1\nassets:\n  - {asset: BTC, amount: 1, costUsd: 1, bogus: true}\n",
-		"unknown top":        "version: 1\nextra: 1\n",
-		"zero amount":        "assets:\n  - {asset: BTC, amount: 0, costUsd: 1}\n",
-		"negative amount":    "assets:\n  - {asset: BTC, amount: -1, costUsd: 1}\n",
-		"negative cost":      "assets:\n  - {asset: BTC, amount: 1, costUsd: -5}\n",
-		"missing asset":      "assets:\n  - {amount: 1, costUsd: 1}\n",
-		"empty spl mint":     "assets:\n  - {asset: 'spl:', amount: 1, costUsd: 1}\n",
-		"duplicate asset":    "assets:\n  - {asset: BTC, amount: 1, costUsd: 1}\n  - {asset: btc, amount: 2, costUsd: 1}\n",
-		"lot zero amount":    "lots:\n  - {asset: ETH, amount: 0, costUsd: 1, date: 2021-01-01}\n",
-		"lot negative cost":  "lots:\n  - {asset: ETH, amount: 1, costUsd: -1, date: 2021-01-01}\n",
-		"lot bad date":       "lots:\n  - {asset: ETH, amount: 1, costUsd: 1, date: yesterday}\n",
-		"lot unknown field":  "lots:\n  - {asset: ETH, amount: 1, costUsd: 1, extra: 1}\n",
-		"not yaml":           "assets: [",
-		"nan amount":         "assets:\n  - {asset: BTC, amount: .nan, costUsd: 1}\n",
-		"infinite cost":      "assets:\n  - {asset: BTC, amount: 1, costUsd: .inf}\n",
+		"unknown field":     "version: 1\nassets:\n  - {asset: BTC, amount: 1, costUsd: 1, bogus: true}\n",
+		"unknown top":       "version: 1\nextra: 1\n",
+		"zero amount":       "assets:\n  - {asset: BTC, amount: 0, costUsd: 1}\n",
+		"negative amount":   "assets:\n  - {asset: BTC, amount: -1, costUsd: 1}\n",
+		"negative cost":     "assets:\n  - {asset: BTC, amount: 1, costUsd: -5}\n",
+		"missing asset":     "assets:\n  - {amount: 1, costUsd: 1}\n",
+		"empty spl mint":    "assets:\n  - {asset: 'spl:', amount: 1, costUsd: 1}\n",
+		"duplicate asset":   "assets:\n  - {asset: BTC, amount: 1, costUsd: 1}\n  - {asset: btc, amount: 2, costUsd: 1}\n",
+		"lot zero amount":   "lots:\n  - {asset: ETH, amount: 0, costUsd: 1, date: 2021-01-01}\n",
+		"lot negative cost": "lots:\n  - {asset: ETH, amount: 1, costUsd: -1, date: 2021-01-01}\n",
+		"lot bad date":      "lots:\n  - {asset: ETH, amount: 1, costUsd: 1, date: yesterday}\n",
+		"lot unknown field": "lots:\n  - {asset: ETH, amount: 1, costUsd: 1, extra: 1}\n",
+		"not yaml":          "assets: [",
+		"nan amount":        "assets:\n  - {asset: BTC, amount: .nan, costUsd: 1}\n",
+		"infinite cost":     "assets:\n  - {asset: BTC, amount: 1, costUsd: .inf}\n",
 	}
 	for name, raw := range cases {
 		if _, err := ParseManual([]byte(raw)); err == nil {
@@ -91,6 +91,16 @@ func TestParseManualAllowsZeroCostAndUndatedLots(t *testing.T) {
 	}
 	if m.Assets[0].Asset != "SOL" || m.Lots[0].Asset != "ETH" || !m.Lots[0].Date.IsZero() {
 		t.Errorf("manual = %+v", m)
+	}
+	out, err := m.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "date:") {
+		t.Errorf("undated lot should not render a date:\n%s", out)
+	}
+	if back, err := ParseManual(out); err != nil || !reflect.DeepEqual(back, m) {
+		t.Errorf("round trip: %v\n%+v\n%+v", err, back, m)
 	}
 }
 
@@ -305,5 +315,36 @@ func TestNewManualStoreFailsOnInvalidFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid file accepted")
 	}
-	var _ = errors.Is
+}
+
+func TestManualStoreConcurrentUse(t *testing.T) {
+	fx := newStoreFixture(t)
+	s, err := NewManualStore(fx.path, fx.backups)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			asset := string(rune('A' + i))
+			for j := 1; j <= 5; j++ {
+				if err := s.SetAsset(asset, float64(j), float64(j), ""); err != nil {
+					t.Error(err)
+					return
+				}
+				_ = s.Get()
+				_ = s.Err()
+			}
+		}(i)
+	}
+	wg.Wait()
+	if got := len(s.Get().Assets); got != 8 {
+		t.Errorf("assets = %d, want 8", got)
+	}
+	s2, err := NewManualStore(fx.path, fx.backups)
+	if err != nil || len(s2.Get().Assets) != 8 {
+		t.Errorf("reload: %v", err)
+	}
 }

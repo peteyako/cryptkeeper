@@ -368,10 +368,10 @@ func TestForPortfolio(t *testing.T) {
 		"ETH": {Amount: 1, Basis: 1000, AvgCost: 1000},
 	}}
 	assets := rows(
-		portfolio.AssetRow{AssetKey: "BTC", Amount: 1, ValueUSD: 30000},  // pro-rata: basis 20000
-		portfolio.AssetRow{AssetKey: "ETH", Amount: 4, ValueUSD: 8000},   // covered 1 of 4: basis 1000, value 2000
-		portfolio.AssetRow{AssetKey: "SOL", Amount: 10, ValueUSD: 1500},  // no basis: excluded
-		portfolio.AssetRow{AssetKey: "XRP", Amount: 0, ValueUSD: 0},      // empty
+		portfolio.AssetRow{AssetKey: "BTC", Amount: 1, ValueUSD: 30000}, // pro-rata: basis 20000
+		portfolio.AssetRow{AssetKey: "ETH", Amount: 4, ValueUSD: 8000},  // covered 1 of 4: basis 1000, value 2000
+		portfolio.AssetRow{AssetKey: "SOL", Amount: 10, ValueUSD: 1500}, // no basis: excluded
+		portfolio.AssetRow{AssetKey: "XRP", Amount: 0, ValueUSD: 0},     // empty
 	)
 	basis, value, unreal := ForPortfolio(res, assets)
 	near(t, "basis", basis, 21000)
@@ -382,4 +382,22 @@ func TestForPortfolio(t *testing.T) {
 	if b != 0 || v != 0 || u != 0 {
 		t.Errorf("empty = %v %v %v", b, v, u)
 	}
+}
+
+func TestComputeCanonicalizesAndDropsBadManualEntries(t *testing.T) {
+	manual := Manual{
+		Assets: []ManualAsset{
+			{Asset: "btc", Amount: 1, CostUSD: 100},
+			{Asset: "ETH", Amount: -1, CostUSD: 5}, // invalid: dropped
+			{Asset: "", Amount: 1, CostUSD: 5},     // invalid: dropped
+			{Asset: "SOL", Amount: 1, CostUSD: -5}, // invalid: dropped
+		},
+		Lots: []ManualLot{{Asset: "spl:AbC", Amount: 2, CostUSD: 4}},
+	}
+	res := Compute(nil, manual)
+	if len(res.Assets) != 2 {
+		t.Fatalf("assets = %+v", res.Assets)
+	}
+	near(t, "btc", res.Assets["BTC"].Basis, 100)
+	near(t, "spl", res.Assets["spl:AbC"].Amount, 2)
 }
