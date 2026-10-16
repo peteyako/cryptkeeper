@@ -793,3 +793,338 @@ func TestLogosAreOptInAndHTTPSOnly(t *testing.T) {
 		t.Error("non-https logo URLs must be dropped")
 	}
 }
+
+// ---- portfolios -------------------------------------------------------------------------
+
+// tagOf returns the opening tag of the first element whose attributes contain marker.
+func tagOf(t *testing.T, html, marker string) string {
+	t.Helper()
+	i := strings.Index(html, marker)
+	if i < 0 {
+		t.Fatalf("no element with %q", marker)
+	}
+	start := strings.LastIndex(html[:i], "<")
+	end := strings.Index(html[i:], ">") + i
+	return html[start : end+1]
+}
+
+func TestPortfolioManager(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "portfolios")
+	un := page{"portfolios (unescaped)", html.UnescapeString(p.html), false}
+	has(t, p,
+		`<title>Portfolios · Vault</title>`, `<h1 class="h-title">Portfolios</h1>`,
+		`href="/portfolios/new"`, "New portfolio", `aria-label="Hide balances"`,
+		"Long-term", "Trading", "Majors", "3 wallets", "2 wallets", "All wallets", "All assets", "BTC, ETH, SOL +2",
+		"2 assets", "3 assets", "None", "53% of net worth", "47% of net worth",
+		`href="/p/long-term"`, `href="/portfolios/long-term/edit"`, `href="/portfolios/long-term/export" download`,
+		`aria-label="Open Long-term"`, `aria-label="Edit Long-term"`, `aria-label="Export Long-term"`, `aria-label="Delete Long-term"`,
+	)
+	has(t, un,
+		`data-on:click="confirm('Delete the portfolio Long-term? Your wallets are not affected.') && @post('/portfolios/long-term/delete')"`,
+		`data-on:click="confirm('Restore this backup? The current list is backed up first.') && @post('/portfolios/restore/20261016-114205.yaml')"`,
+	)
+	// Export is a plain download link, never a Datastar action.
+	for _, m := range regexp.MustCompile(`<a [^>]*download[^>]*>`).FindAllString(p.html, -1) {
+		if strings.Contains(m, "data-on") {
+			t.Errorf("export link must be a plain anchor: %s", m)
+		}
+	}
+	if n := strings.Count(p.html, " download"); n != 4 {
+		t.Errorf("want 3 per-portfolio export links and Export all, got %d download attributes", n)
+	}
+	// Values are private figures; shares are not.
+	has(t, p, `<span class="fig-v">$30,238.33</span>`, `$ ••••••`)
+
+	// The sidebar reads "Portfolios" as the current section, and no main item is current.
+	has(t, p, `class="nav-head nav-head--on"`, `class="nav-manage" href="/portfolios" aria-current="page"`)
+	if n := strings.Count(p.html, `aria-current="page"`); n != 1 {
+		t.Errorf("only the Manage link should be current on /portfolios, got %d aria-current", n)
+	}
+	lacks(t, p, "nav-item--on", "bn-item--on", "@get(")
+
+	// Save and restore.
+	has(t, p,
+		"Save &amp; restore", "Export all", `href="/portfolios/export" download`,
+		`<form id="import-form" class="form" method="post" action="/portfolios/import" enctype="multipart/form-data"`,
+		`data-indicator="importing"`, `data-attr:disabled="$importing"`,
+		`name="file" type="file" accept=".yaml,.yml,text/yaml" required`,
+		`name="mode" value="merge" checked`, `name="mode" value="replace"`,
+		"Add new portfolios and update ones with the same id", "Your file becomes the whole list",
+		"Backups", "4 backups", "Oct 16, 11:35", "25m ago · 1.3 KB", "3h ago · 1.2 KB", "980 B", `datetime="2026-10-16T11:35:00Z"`,
+		`aria-label="Restore the backup from Oct 16, 11:35"`,
+	)
+	has(t, un, `data-on:submit="@post('/portfolios/import', {contentType: 'form'})"`)
+	lacks(t, p, "No backups yet", "No portfolios yet")
+	if strings.Contains(tagOf(t, p.html, `value="replace"`), "checked") {
+		t.Error("Merge is the default import mode, not Replace")
+	}
+	if !strings.Contains(tagOf(t, p.html, `id="import-form"`), "data-on:submit") {
+		t.Error("import form must post through Datastar")
+	}
+
+	// Empty: friendly copy and a primary action; the save and restore panel is still there.
+	e := byName(t, pages, "portfolios empty")
+	has(t, e, "No portfolios yet", `<a class="btn btn--primary" href="/portfolios/new">`, "No backups yet — one is made before every change.", `id="import-form"`)
+	lacks(t, e, "pf-item", `class="backup-row"`)
+
+	// Warnings: a hand-edit error and wallets that no longer exist.
+	w := byName(t, pages, "portfolios warnings")
+	has(t, w, `role="alert"`, "notice--warn", "Vault can't read portfolios.yaml.", "line 7: field walet not found in type portfolios.Portfolio",
+		"Fix the file, or restore a backup.", "2 wallets in this portfolio no longer exist: ", `<span class="mono">old-ledger, paper-2019</span>`, "Edit the portfolio to clear it.")
+	lacks(t, e, "notice--warn")
+	// With an unreadable file and nothing parsed, the empty state would be misleading.
+	bad := demo.Portfolios(now)
+	bad.Items, bad.LoadError = nil, "line 2: boom"
+	out := render(t, templates.PortfolioList(bad))
+	if strings.Contains(out, "No portfolios yet") || !strings.Contains(out, "line 2: boom") {
+		t.Errorf("a load error replaces the empty state: %s", out)
+	}
+	one := demo.Portfolios(now)
+	one.Items = append([]templates.PortfolioItem(nil), one.Items[:1]...)
+	one.Items[0].Missing = []string{"gone"}
+	if out := render(t, templates.PortfolioList(one)); !strings.Contains(out, "1 wallet in this portfolio no longer exists: ") {
+		t.Error("singular missing-wallet copy")
+	}
+
+	// Fragments.
+	ok := byName(t, pages, "import ok")
+	has(t, ok, "notice--gain", "Imported: 2 added, 1 replaced, 3 unchanged.", `aria-live="polite"`)
+	fail := byName(t, pages, "import failed")
+	has(t, fail, "notice--loss", "Couldn&#39;t read that file: line 3.")
+	if got := strings.TrimSpace(byName(t, pages, "import empty").html); got != `<div id="import-result" class="import-result" aria-live="polite"></div>` {
+		t.Errorf("empty import result should be an empty container, got %q", got)
+	}
+	// The IO panel can carry the result itself, so one patch refreshes backups and message.
+	has(t, byName(t, pages, "portfolio io imported"), "Imported: 2 added, 1 replaced, 3 unchanged.")
+	lacks(t, byName(t, pages, "portfolio io"), "notice--gain", "notice--loss")
+}
+
+func TestPortfolioFormPage(t *testing.T) {
+	pages := allPages(t)
+
+	n := byName(t, pages, "portfolio form new")
+	un := page{"new (unescaped)", html.UnescapeString(n.html), false}
+	has(t, un,
+		`<title>New portfolio · Vault</title>`, "New portfolio", "Group some of your holdings under a name.",
+		`<form id="portfolio-form" class="form card pf-form" method="post" action="/portfolios"`,
+		`data-indicator="saving"`, `data-on:submit="@post('/portfolios', {contentType: 'form'})"`,
+		`data-attr:disabled="$saving"`, "Create portfolio", `<a class="btn btn--ghost" href="/portfolios">Cancel</a>`,
+		`data-signals="{walletsMode: 'all', assetsMode: 'all', assetQ: ''}"`,
+		`name="name"`, `maxlength="60"`, "required", `placeholder="e.g. Long-term"`,
+		"All wallets", "Only selected wallets", "All assets", "Only selected assets",
+		"Watch only (shown with live price, not counted)", `name="watch"`, `placeholder="ETH AVAX spl:<mint>"`,
+		`id="form-errors"`,
+	)
+	lacks(t, un, `name="editId"`, "Save changes")
+	// Both pickers start hidden when "All" is chosen, and are toggled by the mode signals.
+	if got := strings.Count(n.html, `class="pf-pick" data-show="$walletsMode === &#39;selected&#39;" style="display:none"`) +
+		strings.Count(n.html, `class="pf-pick" data-show="$assetsMode === &#39;selected&#39;" style="display:none"`); got != 2 {
+		t.Errorf("both pickers must start hidden in All mode, got %d", got)
+	}
+	for _, id := range []string{"f-walletsMode-all", "f-assetsMode-all"} {
+		tag := tagOf(t, n.html, `id="`+id+`"`)
+		if !strings.Contains(tag, "checked") || !strings.Contains(tag, `type="radio"`) {
+			t.Errorf("%s should be a checked radio: %s", id, tag)
+		}
+	}
+	for id, bind := range map[string]string{"f-walletsMode-all": "walletsMode", "f-walletsMode-selected": "walletsMode", "f-assetsMode-all": "assetsMode", "f-assetsMode-selected": "assetsMode"} {
+		if tag := tagOf(t, n.html, `id="`+id+`"`); !strings.Contains(tag, `data-bind="`+bind+`"`) || !strings.Contains(tag, `name="`+bind+`"`) {
+			t.Errorf("%s must be bound to %s: %s", id, bind, tag)
+		}
+	}
+
+	// Editing Long-term: only selected wallets, the signal and the ticks follow the data.
+	lt := byName(t, pages, "portfolio form edit long-term")
+	lun := page{"edit (unescaped)", html.UnescapeString(lt.html), false}
+	has(t, lun,
+		"Edit Long-term", "Save changes", `name="editId" value="long-term"`,
+		`action="/portfolios/long-term"`, `data-on:submit="@post('/portfolios/long-term', {contentType: 'form'})"`,
+		`data-signals="{walletsMode: 'selected', assetsMode: 'all', assetQ: ''}"`,
+		"Exchanges", "Bitcoin", "Solana", "Manual", "Coinbase", "Kraken", "Cold storage", "Phantom", "Paper wallet at mom's",
+		"Exchange", "Hardware wallet", "Hot wallet", "Only holdings in these wallets count.",
+		`class="src-dot src-dot--exchange"`, `class="src-dot src-dot--hot"`, `class="src-dot src-dot--hardware"`, `class="src-dot src-dot--manual"`,
+		`value="ETH LINK"`,
+	)
+	lacks(t, lun, "Create portfolio")
+	ticked := map[string]bool{}
+	for _, m := range regexp.MustCompile(`<input [^>]*name="wallets"[^>]*>`).FindAllString(lt.html, -1) {
+		v := regexp.MustCompile(`value="([^"]*)"`).FindStringSubmatch(m)[1]
+		ticked[v] = strings.Contains(m, "checked")
+	}
+	want := map[string]bool{"cold": true, "coinbase": false, "kraken": false, "phantom": true, "mom-safe": true}
+	if len(ticked) != len(want) {
+		t.Errorf("wallet checkboxes = %v", ticked)
+	}
+	for id, on := range want {
+		if ticked[id] != on {
+			t.Errorf("wallet %s ticked=%v, want %v", id, ticked[id], on)
+		}
+	}
+	if strings.Contains(lt.html, `class="pf-pick" data-show="$walletsMode === &#39;selected&#39;" style="display:none"`) {
+		t.Error("the wallet picker is visible when only selected wallets are chosen")
+	}
+	if !strings.Contains(lt.html, `class="pf-pick" data-show="$assetsMode === &#39;selected&#39;" style="display:none"`) {
+		t.Error("the asset picker must be hidden for All assets")
+	}
+
+	// Editing Majors: the asset picker with search, ticks, extra and watch text.
+	mj := byName(t, pages, "portfolio form edit majors")
+	mun := page{"majors (unescaped)", html.UnescapeString(mj.html), false}
+	has(t, mun,
+		`data-signals="{walletsMode: 'all', assetsMode: 'selected', assetQ: ''}"`,
+		`data-bind="assetQ"`, `<span class="sr-only">Search your assets</span>`,
+		`data-on:keydown="evt.key === 'Enter' && evt.preventDefault()"`,
+		`data-search="btc bitcoin btc"`, `data-search="usdc usd coin usdc"`,
+		`data-show="!$assetQ || el.dataset.search.includes($assetQ.toLowerCase())"`,
+		`name="assets" value="BTC" checked`, `name="assets" value="USDC">`,
+		"Bitcoin", "USD Coin", "Add assets you don't hold yet", `placeholder="ETH, spl:<mint>"`,
+		`value="AVAX spl:J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"`, `value="DOGE ARB"`,
+		"Only these assets count. If you also picked wallets, a holding must match both.",
+	)
+	if n := len(regexp.MustCompile(`<label[^>]*data-search=`).FindAllString(mj.html, -1)); n != 8 {
+		t.Errorf("want one filterable row per held asset (8), got %d", n)
+	}
+	// Asset values are private figures too.
+	has(t, mj, `<span class="fig-v">$30,209.57</span>`)
+	// The search box has no name, so it is never posted.
+	if tag := tagOf(t, mj.html, `id="pf-asset-q"`); strings.Contains(tag, "name=") {
+		t.Errorf("the asset search must not be submitted: %s", tag)
+	}
+	if !strings.Contains(tagOf(t, mj.html, `class="pf-pick" data-show="$walletsMode`), `style="display:none"`) {
+		t.Error("wallet picker hidden for All wallets")
+	}
+
+	// Validation errors: inline, described, and in the summary.
+	inv := byName(t, pages, "portfolio form invalid")
+	has(t, inv,
+		`role="alert"`, "Nothing was saved. Fix the fields below and try again.",
+		`<p id="f-name-err" class="field__error">`, "Give the portfolio a name.",
+		`<p id="f-wallets-err" class="field__error">`, "Pick at least one wallet, or choose All wallets.",
+		"<strong>Name:</strong> Give the portfolio a name.", "<strong>Wallets:</strong> Pick at least one wallet",
+		`aria-invalid="true"`, `aria-describedby="f-name-err"`, `aria-describedby="f-wallets-err f-wallets-help"`,
+	)
+
+	// A wallet the portfolio lists but that no longer exists is called out; saving drops it.
+	gone := byName(t, pages, "portfolio form missing wallet")
+	has(t, gone, "1 wallet in this portfolio no longer exists: ", `<span class="mono">old-ledger</span>`, "Saving removes it.")
+	lacks(t, byName(t, pages, "portfolio form edit long-term"), "no longer exists")
+	// Nothing to pick from: say so instead of rendering empty boxes.
+	none := byName(t, pages, "portfolio form no options")
+	has(t, none, "No wallets yet.", `href="/sources/new"`, "Nothing is held yet. Add assets by symbol below.")
+	lacks(t, none, `class="pick-box`, `id="pf-asset-q"`)
+
+	// Every choice is a labelled input: the row is the label, and it is at least 48px tall.
+	for _, name := range []string{"portfolio form new", "portfolio form edit long-term", "portfolio form edit majors"} {
+		p := byName(t, pages, name)
+		inputs := regexp.MustCompile(`<input [^>]*type="(radio|checkbox)"[^>]*>`).FindAllString(p.html, -1)
+		if len(inputs) < 4 {
+			t.Errorf("%s: only %d radios/checkboxes", name, len(inputs))
+		}
+		for _, in := range inputs {
+			id := regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(in)[1]
+			if !regexp.MustCompile(`<label class="choice[^"]*" for="` + id + `"`).MatchString(p.html) {
+				t.Errorf("%s: %s is not inside a .choice label for it", name, id)
+			}
+		}
+	}
+	css := readStatic(t, "app.css")
+	if b := cssBlock(t, css, ".choice {"); !strings.Contains(b, "min-height: 48px") {
+		t.Errorf(".choice must be at least 44px tall: %s", b)
+	}
+}
+
+func TestPortfolioPagesEscapeHostileValues(t *testing.T) {
+	const evil = `<img src=x onerror=alert(1)>'"&`
+	pp := demo.Portfolios(now)
+	pp.Items = append([]templates.PortfolioItem(nil), pp.Items...)
+	pp.Items[0].ID = "x'y</script><i>"
+	pp.Items[0].Name = evil
+	pp.Items[1].Missing = []string{evil}
+	pp.LoadError = evil
+	pp.Backups = append([]templates.BackupRow(nil), pp.Backups...)
+	pp.Backups[0].Name = "b'</script>.yaml"
+	pp.Import = templates.ImportOutcome{Message: evil}
+	out := render(t, templates.PortfoliosFull(pp))
+
+	pf := demo.PortfolioForm(demo.PFMajors, now)
+	pf.EditID = "x'y</script><i>"
+	pf.Name = evil
+	pf.ExtraAssets, pf.Watch = evil, evil
+	pf.AssetOptions = append([]templates.AssetOption(nil), pf.AssetOptions...)
+	pf.AssetOptions[0].Key, pf.AssetOptions[0].Name = evil, evil
+	pf.WalletOptions = append([]templates.WalletOption(nil), pf.WalletOptions...)
+	pf.WalletOptions[0].Label = evil
+	pf.Errors = map[string]string{"name": evil, "": evil}
+	form := render(t, templates.PortfolioFormFull(pf))
+
+	for name, o := range map[string]string{"manager": out, "form": form} {
+		for _, bad := range []string{"<img", "<i>", "</script><i>", "onerror=alert(1)>"} {
+			if strings.Contains(o, bad) {
+				t.Errorf("%s: unescaped %q in output", name, bad)
+			}
+		}
+		if strings.Count(o, "<script") != 1 {
+			t.Errorf("%s: script injected", name)
+		}
+	}
+	un := html.UnescapeString(out)
+	for _, want := range []string{
+		`@post('/portfolios/x%27y%3C%2Fscript%3E%3Ci%3E/delete')`,
+		`confirm('Delete the portfolio \u003cimg src=x onerror=alert(1)\u003e\'\"\u0026? Your wallets are not affected.')`,
+		`@post('/portfolios/restore/b%27%3C%2Fscript%3E.yaml')`,
+		`href="/portfolios/x%27y%3C%2Fscript%3E%3Ci%3E/edit"`,
+	} {
+		if !strings.Contains(un, want) {
+			t.Errorf("manager is missing %q; delete/restore expressions:\n%s", want, grep(un, "/delete"))
+		}
+	}
+	fun := html.UnescapeString(form)
+	if !strings.Contains(fun, `data-on:submit="@post('/portfolios/x%27y%3C%2Fscript%3E%3Ci%3E', {contentType: 'form'})"`) {
+		t.Errorf("form action not escaped:\n%s", grep(fun, "data-on:submit"))
+	}
+}
+
+// TestOverviewPortfolioChanges: the 7d column, the Edit link and the Manage links.
+func TestOverviewPortfolioChanges(t *testing.T) {
+	pages := allPages(t)
+	ov := byName(t, pages, "overview")
+	has(t, ov,
+		`<th class="col-chg num" scope="col">24h</th><th class="col-chg7 num" scope="col">7d</th>`,
+		// BTC +5.84% and SOL +12.40% over 7 days, ETH -3.12%, USDC flat.
+		`<td class="col-chg7 num"><span class="chg chg--up">▲ +5.84%</span></td>`,
+		`<span class="chg chg--up">▲ +12.40%</span>`, `<span class="chg chg--down">▼ −3.12%</span>`,
+		`<span class="chg chg--flat">– 0.00%</span>`,
+		// Assets without history show the dash with an accessible name.
+		`<span class="chg chg--none" aria-label="No 7 day change available">—</span>`,
+		// The sidebar and the phone menu lead to the manager.
+		`class="nav-manage" href="/portfolios">Manage</a>`, `class="nav-item pf-menu__manage" href="/portfolios">Manage portfolios</a>`,
+		`href="/portfolios/new"`,
+	)
+	lacks(t, ov, `nav-head--on`, "pf-edit", "/portfolios/all/edit")
+	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 8 {
+		t.Errorf("want a 7d cell on every holdings row (8), got %d", n)
+	}
+	// The watch list has no 7d data, so it keeps just 24h.
+	if strings.Contains(byName(t, pages, "overview empty").html, "col-chg7") {
+		t.Error("the empty overview has no table")
+	}
+
+	lt := byName(t, pages, "overview long-term")
+	has(t, lt, `<a class="btn btn--secondary btn--sm pf-edit" href="/portfolios/long-term/edit" aria-label="Edit Long-term">Edit</a>`, "53% of all holdings", "Manage portfolios")
+	mj := byName(t, pages, "overview majors")
+	has(t, mj, "Majors", `href="/portfolios/majors/edit"`)
+
+	// The portfolio menu is there even when there is only "All holdings" (it holds Manage).
+	solo := demo.Overview(now)
+	solo.Portfolios = solo.Portfolios[:1]
+	if out := render(t, templates.OverviewFull(solo)); !strings.Contains(out, "Manage portfolios") {
+		t.Error("the phone menu should always offer Manage portfolios")
+	}
+	// A portfolio with a hostile id still gets a safe Edit href.
+	bad, _ := demo.OverviewFor(demo.PFLongTerm, "1W", now)
+	bad.PF = "a b/c"
+	if out := render(t, templates.OverviewFull(bad)); !strings.Contains(out, `href="/portfolios/a%20b%2Fc/edit"`) {
+		t.Error("Edit href must path-escape the portfolio id")
+	}
+}

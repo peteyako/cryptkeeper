@@ -90,10 +90,7 @@ func (s *Server) watchRows(ctx context.Context, keys []string, held map[string]c
 	}
 	rows := make([]templates.WatchRow, 0, len(keys))
 	for _, k := range keys {
-		row := templates.WatchRow{AssetKey: k, Symbol: k}
-		if m, ok := core.IsSPLKey(k); ok {
-			row.Symbol = m[:min(4, len(m))] + "…" + m[max(0, len(m)-4):]
-		}
+		row := templates.WatchRow{AssetKey: k, Symbol: displayKey(k)}
 		if p, ok := held[k]; ok {
 			row.Price = &p
 		} else if p, ok := prices[k]; ok {
@@ -125,6 +122,15 @@ func (s *Server) applyChange7d(ctx context.Context, snap *portfolio.Snapshot) {
 			snap.Assets[i].Change7d = &v
 		}
 	}
+}
+
+// displayKey shortens "spl:<mint>" keys for display ("JUPy…DvCN"); symbols pass through.
+func displayKey(k string) string {
+	m, ok := core.IsSPLKey(k)
+	if !ok || len(m) <= 10 {
+		return k
+	}
+	return m[:4] + "…" + m[len(m)-4:]
 }
 
 // --- manager ---
@@ -180,10 +186,7 @@ func assetsText(sel portfolios.Selector, snap portfolio.Snapshot) string {
 	for _, k := range sel.IDs[:min(3, len(sel.IDs))] {
 		n := symbol[k]
 		if n == "" {
-			n = k
-			if m, ok := core.IsSPLKey(k); ok {
-				n = m[:min(4, len(m))] + "…"
-			}
+			n = displayKey(k)
 		}
 		names = append(names, n)
 	}
@@ -198,12 +201,12 @@ func (s *Server) portfoliosManager(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, templates.PortfoliosFull(s.portfoliosPage(r)))
 }
 
-// patchManager re-renders the list and the save/restore panel, then the import message.
+// patchManager re-renders the list and the save/restore panel (which shows the outcome).
 func (s *Server) patchManager(sse *datastar.ServerSentEventGenerator, r *http.Request, outcome templates.ImportOutcome) {
 	p := s.portfoliosPage(r)
+	p.Import = outcome
 	_ = sse.PatchElementTempl(templates.PortfolioList(p))
 	_ = sse.PatchElementTempl(templates.PortfolioIO(p))
-	_ = sse.PatchElementTempl(templates.ImportResultView(outcome))
 }
 
 // --- editor ---

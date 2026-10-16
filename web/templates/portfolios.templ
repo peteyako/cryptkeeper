@@ -16,7 +16,7 @@ templ portfoliosBody(p PortfoliosPage) {
 	<div class="portfolios">
 		<header class="page-head">
 			<div class="page-head__title">
-				<span class="eyebrow">{ Plural(len(p.Items), "portfolio") }</span>
+				<span class="eyebrow">Vault</span>
 				<h1 class="h-title">Portfolios</h1>
 			</div>
 			<div class="page-head__actions">
@@ -112,9 +112,7 @@ templ portfolioCard(it PortfolioItem) {
 		</dl>
 		if len(it.Missing) > 0 {
 			@Notice("warn", "alert") {
-				{ missingText(it.Missing) }
-				<span class="mono">{ strings.Join(it.Missing, ", ") }</span>
-				. Edit the portfolio to clear it.
+				{ missingText(it.Missing) }<span class="mono">{ strings.Join(it.Missing, ", ") }</span>. Edit the portfolio to clear it.
 			}
 		}
 		<div class="pf-item__actions">
@@ -326,9 +324,7 @@ templ pfWalletsSection(p PortfolioFormPage) {
 		>
 			if len(missing) > 0 {
 				@Notice("warn", "alert") {
-					{ missingText(missing) }
-					<span class="mono">{ strings.Join(missing, ", ") }</span>
-					. Saving removes it.
+					{ missingText(missing) }<span class="mono">{ strings.Join(missing, ", ") }</span>. Saving removes it.
 				}
 			}
 			if len(p.WalletOptions) == 0 {

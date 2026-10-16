@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/sources/manual"
@@ -34,6 +36,7 @@ func (f fakeExchange) Fetch(context.Context) (core.WalletResult, error) {
 type env struct {
 	t       *testing.T
 	srv     *httptest.Server
+	ps      *portfolios.Store
 	reg     *sources.Registry
 	ref     *portfolio.Refresher
 	dataDir string
@@ -79,12 +82,16 @@ func newEnv(t *testing.T, password string) *env {
 	}
 	broker := portfolio.NewBroker()
 	hist := &portfolio.History{DB: db}
+	ps, err := portfolios.NewStore(filepath.Join(dir, "portfolios.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	ref := &portfolio.Refresher{Agg: &portfolio.Aggregator{Wallets: wallets, Prices: prices, DB: db, StaleMax: time.Hour}, Broker: broker, History: hist, Interval: time.Hour, MinForceInterval: time.Millisecond}
 	cfg := config.Default()
 	cfg.Password = password
 	cfg.User = "admin"
 	h := New(Deps{
-		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Refresher: ref, Broker: broker, History: hist, Prices: prices,
+		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Portfolios: ps, Refresher: ref, Broker: broker, History: hist, Prices: prices,
 		DetectBitcoin: func(s string) (string, error) {
 			if strings.HasPrefix(s, "wsh(") {
 				return "descriptor", nil
@@ -94,7 +101,7 @@ func newEnv(t *testing.T, password string) *env {
 	})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, reg: reg, ref: ref, dataDir: dir}
+	return &env{t: t, srv: srv, ps: ps, reg: reg, ref: ref, dataDir: dir}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {
@@ -274,4 +281,70 @@ func TestStreamSendsInitialPatch(t *testing.T) {
 		}
 	}
 	t.Fatal("no patch event on the stream")
+}
+
+func TestPortfolioFlow(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "cold", Type: sources.TypeManual, Label: "Cold", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
+	e.reg.Upsert(sources.Def{ID: "hot", Type: sources.TypeManual, Label: "Hot", Holdings: []manual.Holding{{Asset: "SOL", Amount: 10}, {Asset: "BTC", Amount: 1}}})
+	e.ref.Force(context.Background())
+
+	// Create "BTC only" over all wallets.
+	body, hdr := form(url.Values{"name": {"BTC only"}, "walletsMode": {"all"}, "assetsMode": {"selected"}, "assets": {"BTC"}, "watch": {"eth"}})
+	_, out := e.do("POST", "/portfolios", body, hdr)
+	if !strings.Contains(out, "/p/btc-only") {
+		t.Fatalf("save: %s", out)
+	}
+	p, ok := e.ps.Get("btc-only")
+	if !ok || p.Assets.All || len(p.Watch) != 1 || p.Watch[0] != "ETH" {
+		t.Fatalf("stored %+v", p)
+	}
+	// The filtered overview shows only BTC (2 × $100) and the sidebar lists the portfolio.
+	resp, page := e.do("GET", "/p/btc-only", nil, nil)
+	if resp.StatusCode != 200 || !strings.Contains(page, "$200.00") || !strings.Contains(page, "BTC only") {
+		t.Fatalf("filtered overview %d", resp.StatusCode)
+	}
+	if resp, _ := e.do("GET", "/p/nope", nil, nil); resp.StatusCode != 404 {
+		t.Fatalf("unknown portfolio: %d", resp.StatusCode)
+	}
+	// Export → delete → import (merge) restores it.
+	resp, exported := e.do("GET", "/portfolios/export", nil, nil)
+	if resp.StatusCode != 200 || !strings.Contains(exported, "btc-only") || !strings.Contains(resp.Header.Get("Content-Disposition"), "attachment") {
+		t.Fatalf("export %d %s", resp.StatusCode, exported)
+	}
+	e.do("POST", "/portfolios/btc-only/delete", nil, ds(nil))
+	if _, ok := e.ps.Get("btc-only"); ok {
+		t.Fatal("not deleted")
+	}
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("file", "portfolios.yaml")
+	fw.Write([]byte(exported))
+	mw.WriteField("mode", "merge")
+	mw.Close()
+	_, out = e.do("POST", "/portfolios/import", &buf, ds(map[string]string{"Content-Type": mw.FormDataContentType()}))
+	if !strings.Contains(out, "1 added") {
+		t.Fatalf("import: %s", out)
+	}
+	// Restore the newest backup (taken before the import).
+	bs, _ := e.ps.Backups()
+	if len(bs) == 0 {
+		t.Fatal("no backups")
+	}
+	_, out = e.do("POST", "/portfolios/restore/"+bs[0].Name, nil, ds(nil))
+	if !strings.Contains(out, "restored") {
+		t.Fatalf("restore: %s", out)
+	}
+	// Removing a source drops it from explicit wallet lists.
+	e.ps.Upsert(portfolios.Portfolio{ID: "hot-only", Name: "Hot only", Wallets: portfolios.Selector{IDs: []string{"hot"}}, Assets: portfolios.AllSelector()})
+	e.do("POST", "/sources/hot/delete", nil, ds(nil))
+	if p, _ := e.ps.Get("hot-only"); len(p.Wallets.IDs) != 0 {
+		t.Fatalf("deleted source still referenced: %+v", p.Wallets)
+	}
+	// Editor and manager pages render.
+	for _, path := range []string{"/portfolios", "/portfolios/new", "/portfolios/hot-only/edit"} {
+		if resp, _ := e.do("GET", path, nil, nil); resp.StatusCode != 200 {
+			t.Fatalf("%s: %d", path, resp.StatusCode)
+		}
+	}
 }

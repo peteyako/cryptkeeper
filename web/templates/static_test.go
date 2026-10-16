@@ -306,7 +306,7 @@ func TestTokenContrast(t *testing.T) {
 	}
 	pairs := [][2]string{
 		{"--text-1", "--bg"}, {"--text-1", "--surface-1"}, {"--text-1", "--surface-2"},
-		{"--text-1", "--accent-soft"}, {"--text-1", "--warn-soft"}, {"--text-1", "--loss-soft"}, {"--text-1", "--gain-soft"},
+		{"--text-1", "--accent-soft"}, {"--text-2", "--accent-soft"}, {"--link", "--surface-2"}, {"--text-1", "--warn-soft"}, {"--text-1", "--loss-soft"}, {"--text-1", "--gain-soft"},
 		{"--text-2", "--bg"}, {"--text-2", "--surface-1"}, {"--text-2", "--surface-2"},
 		{"--text-3", "--bg"}, {"--text-3", "--surface-1"}, {"--text-3", "--nav"},
 		{"--on-accent", "--accent"},

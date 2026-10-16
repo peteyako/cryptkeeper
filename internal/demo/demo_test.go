@@ -184,3 +184,89 @@ func TestPageBuilders(t *testing.T) {
 		t.Error("QR")
 	}
 }
+
+func TestChange7dFixtures(t *testing.T) {
+	var with, without int
+	for _, a := range Snapshot(now).Assets {
+		if a.Change7d != nil {
+			with++
+		} else {
+			without++
+		}
+	}
+	if with < 4 || without < 1 {
+		t.Errorf("want some assets with a 7d change and some without, got %d/%d", with, without)
+	}
+}
+
+func TestMajorsPortfolio(t *testing.T) {
+	s, ok := SnapshotFor(PFMajors, now)
+	if !ok || len(s.Assets) != 5 {
+		t.Fatalf("majors: ok=%v assets=%d", ok, len(s.Assets))
+	}
+	var walletSum float64
+	for _, w := range s.Wallets {
+		walletSum += w.ValueUSD
+		for _, r := range w.Rows {
+			if !contains(portfolioAssets[PFMajors], r.AssetKey) {
+				t.Errorf("%s holds %s, which Majors excludes", w.ID, r.AssetKey)
+			}
+		}
+	}
+	if !near(walletSum, s.TotalUSD) {
+		t.Errorf("majors wallets sum to %v, total is %v", walletSum, s.TotalUSD)
+	}
+	if s.TotalUSD >= Snapshot(now).TotalUSD {
+		t.Error("majors should be a subset of everything")
+	}
+}
+
+func TestPortfolioPageBuilders(t *testing.T) {
+	p := Portfolios(now)
+	if len(p.Items) != 3 || len(p.Backups) == 0 || p.Active != "portfolios" {
+		t.Fatalf("portfolios page: %d items, %d backups, active %q", len(p.Items), len(p.Backups), p.Active)
+	}
+	all := Snapshot(now).TotalUSD
+	for _, it := range p.Items {
+		snap, _ := SnapshotFor(it.ID, now)
+		if !near(it.ValueUSD, snap.TotalUSD) || math.Abs(it.Share-snap.TotalUSD/all) > 1e-9 {
+			t.Errorf("%s: value %v share %v do not match the snapshot", it.ID, it.ValueUSD, it.Share)
+		}
+		if it.Name == "" || it.WalletsText == "" || it.AssetsText == "" {
+			t.Errorf("%s: texts missing: %+v", it.ID, it)
+		}
+	}
+	if got := assetsText([]string{"BTC", "ETH", "SOL", "LINK", "DOT"}); got != "BTC, ETH, SOL +2" {
+		t.Errorf("assetsText = %q", got)
+	}
+	if assetsText(nil) != "All assets" || assetsText([]string{"BTC", "ETH"}) != "BTC, ETH" {
+		t.Error("assetsText short forms")
+	}
+	for i := 1; i < len(p.Backups); i++ {
+		if !p.Backups[i].Time.Before(p.Backups[i-1].Time) {
+			t.Error("backups should be newest first")
+		}
+	}
+
+	nf := PortfolioForm("", now)
+	if nf.EditID != "" || !nf.AllWallets || !nf.AllAssets || len(nf.WalletOptions) != 5 || len(nf.AssetOptions) != 8 {
+		t.Errorf("new form: %+v", nf.EditID)
+	}
+	for i := 1; i < len(nf.AssetOptions); i++ {
+		if nf.AssetOptions[i].ValueUSD > nf.AssetOptions[i-1].ValueUSD {
+			t.Error("asset options should be by value descending")
+		}
+	}
+	for _, id := range []string{PFLongTerm, PFTrading, PFMajors} {
+		f := PortfolioForm(id, now)
+		if f.EditID != id || f.Name == "" || (f.AllWallets && f.AllAssets) {
+			t.Errorf("%s edit form: %+v", id, f.EditID)
+		}
+	}
+	if PortfolioForm("nope", now).EditID != "" {
+		t.Error("an unknown id gives the create form")
+	}
+	if bad := PortfolioFormInvalid(now); bad.Errors["name"] == "" || bad.Errors[""] == "" || bad.AllWallets {
+		t.Error("invalid form should show errors")
+	}
+}

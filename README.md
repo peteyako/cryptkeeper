@@ -88,6 +88,36 @@ solana:
 Coins held anywhere Vault can't read, one per line: `BTC 0.25 owed by Sam`. Use
 `spl:<mint>` for Solana tokens.
 
+## Portfolios
+
+Group what you hold into named portfolios (sidebar → **New portfolio**, or **Manage**):
+
+- **By coin or token** — e.g. "Memecoins: BONK, WIF" across every wallet and exchange.
+- **By wallet** — e.g. "Kids' wallets" = everything in two specific sources.
+- **Both** — only those coins inside those wallets.
+- **Watch list** — coins shown with a live price but not counted.
+
+Each portfolio gets its own tab with total, chart, allocation and holdings. Portfolios live in
+`data/portfolios.yaml`, which you can edit by hand (typos are reported with line numbers):
+
+```yaml
+version: 1
+portfolios:
+  - { id: long-term, name: Long-term, wallets: all, assets: [BTC, SOL], watch: [ETH] }
+  - { id: kids, name: "Kids' wallets", wallets: [kids-phantom, kids-cash], assets: all }
+  - { id: watch, name: Watchlist, wallets: [], watch: [ETH, AVAX] }
+```
+
+`wallets`/`assets` take `all` (the default when omitted) or a list; `[]` means none. Asset keys
+are exchange symbols (`BTC`) or `spl:<mint>` for Solana tokens. Save and restore locally from
+**Portfolios → Save & restore** (export, import with merge or replace, restore any automatic
+backup) or the CLI:
+
+```sh
+crypto-portfolio portfolios export -o portfolios.yaml [-id long-term]
+crypto-portfolio portfolios import portfolios.yaml [-replace]
+```
+
 ## Secrets and your data directory
 
 - Exchange secrets are encrypted at rest (AES-256-GCM) in `data/sources.yaml`.
