@@ -13,6 +13,9 @@ tmp_dir = "tmp"
   pre_cmd = ["go tool templ generate"]
   cmd = "go build -o ./tmp/cryptkeep ."
   entrypoint = ["./tmp/cryptkeep"]
+  # The same binary for older air releases, which ignore entrypoint and would otherwise run
+  # ./tmp/main (e.g. a global `air` v1.52 instead of `task dev`). Newer air uses entrypoint.
+  bin = "./tmp/cryptkeep"
   args_bin = ["serve", "-config", "config.yaml"]
   include_ext = ["go", "templ", "css", "js", "webmanifest"]
   exclude_dir = ["tmp", "data", "dist", "docs", ".task", ".git", "testdata"]
