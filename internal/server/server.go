@@ -88,8 +88,6 @@ func New(d Deps) http.Handler {
 		r.Get("/w/{id}", s.wallet)
 		r.Get("/w/{id}/tab/{tab}", s.walletTab)
 
-		r.Get("/sources/export", s.sourcesExport)
-		r.Post("/sources/import", s.sourcesImport)
 		r.Get("/sources/new", s.sourcePick)
 		r.Get("/sources/new/{type}", s.sourceNew)
 		r.Get("/sources/{id}/edit", s.sourceEdit)
@@ -132,6 +130,8 @@ func New(d Deps) http.Handler {
 
 		r.Get("/settings", s.settings)
 		r.Post("/settings/logos", s.settingsLogos)
+		r.Get("/backup/export", s.backupExport)
+		r.Post("/backup/import", s.backupImport)
 	})
 	return r
 }

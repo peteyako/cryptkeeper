@@ -541,43 +541,60 @@ func TestSettingsLogosToggle(t *testing.T) {
 	}
 }
 
-func TestSourcesExportImport(t *testing.T) {
+func TestBackupExportRestore(t *testing.T) {
 	e := newEnv(t, "")
 	e.reg.Upsert(sources.Def{ID: "kraken", Type: sources.TypeKraken, Label: "Kraken", APIKey: "pub-key", APISecret: "very-secret"})
-	e.reg.Upsert(sources.Def{ID: "old", Type: sources.TypeManual, Label: "Old", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
-	e.ps.Upsert(portfolios.Portfolio{ID: "old-only", Name: "Old only", Wallets: portfolios.Selector{IDs: []string{"old"}}, Assets: portfolios.AllSelector()})
+	e.reg.Upsert(sources.Def{ID: "kids", Type: sources.TypeManual, Label: "Kids", Holdings: []manual.Holding{{Asset: "SOL", Amount: 3}}})
+	e.ps.Upsert(portfolios.Portfolio{ID: "test", Name: "Test", Wallets: portfolios.Selector{IDs: []string{"kids"}}, Assets: portfolios.AllSelector()})
+	e.rules.Upsert(alerts.Rule{ID: "btc-high", Type: alerts.TypePrice, Asset: "BTC", Above: 100000})
 
-	resp, plain := e.do("GET", "/sources/export", nil, nil)
-	if resp.StatusCode != 200 || strings.Contains(plain, "very-secret") || strings.Contains(plain, "enc:v1:") || !strings.Contains(plain, "kraken") {
+	resp, plain := e.do("GET", "/backup/export", nil, nil)
+	if resp.StatusCode != 200 || strings.Contains(plain, "very-secret") || strings.Contains(plain, "enc:v1:") {
 		t.Fatalf("export without secrets: %d\n%s", resp.StatusCode, plain)
 	}
-	_, sealed := e.do("GET", "/sources/export?secrets=1", nil, nil)
+	for _, want := range []string{"sources:", "portfolios:", "id: test", "alerts:", "btc-high"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("backup missing %q:\n%s", want, plain)
+		}
+	}
+	_, sealed := e.do("GET", "/backup/export?secrets=1", nil, nil)
 	if strings.Contains(sealed, "very-secret") || !strings.Contains(sealed, "enc:v1:") {
 		t.Fatal("export with secrets must carry them sealed, never in plaintext")
 	}
 
-	// Replace with a file listing only a new manual source and a secret-less exchange source.
+	// The reported scenario: delete the portfolio and its source, then restore the backup.
+	e.ps.Delete("test")
+	e.do("POST", "/sources/kids/delete", nil, ds(nil))
+	body, hdr := multipartFile(t, "file", "vault-backup.yaml", []byte(sealed), map[string]string{"mode": "merge"})
+	_, out := e.do("POST", "/backup/import", body, hdr)
+	if !strings.Contains(out, "backup-import-result") || !strings.Contains(out, "portfolios 1 added") {
+		t.Fatalf("restore: %.500s", out)
+	}
+	if p, ok := e.ps.Get("test"); !ok || !p.Wallets.Has("kids") {
+		t.Fatalf("portfolio not restored with its wallet: %+v", p)
+	}
+	if _, ok := e.reg.Get("kids"); !ok {
+		t.Fatal("source not restored")
+	}
+
+	// Replace with a sources-only file: kraken goes (with cleanup), portfolios are untouched.
 	file := []byte("version: 1\nsources:\n  - {id: kids, type: manual, label: Kids, kind: manual, holdings: [{asset: SOL, amount: 3}]}\n  - {id: kraken2, type: kraken, label: Kraken two, kind: exchange}\n")
-	body, hdr := multipartFile(t, "file", "sources.yaml", file, map[string]string{"mode": "replace"})
-	_, out := e.do("POST", "/sources/import", body, hdr)
-	if !strings.Contains(out, "2 added") || !strings.Contains(out, "2 removed") {
-		t.Fatalf("import: %.400s", out)
+	body, hdr = multipartFile(t, "file", "sources.yaml", file, map[string]string{"mode": "replace"})
+	_, out = e.do("POST", "/backup/import", body, hdr)
+	if !strings.Contains(out, "1 removed") {
+		t.Fatalf("replace: %.400s", out)
 	}
-	if _, ok := e.reg.Get("old"); ok {
-		t.Fatal("replace must remove sources missing from the file")
+	if _, ok := e.ps.Get("test"); !ok {
+		t.Fatal("sections not in the file must be kept")
 	}
-	if p, _ := e.ps.Get("old-only"); len(p.Wallets.IDs) != 0 {
-		t.Fatal("removed source still referenced by a portfolio")
-	}
-	// The secret-less exchange source exists and says what's missing.
 	e.ref.Force(context.Background())
 	if _, page := e.do("GET", "/w/kraken2", nil, nil); !strings.Contains(page, "edit this source") {
 		t.Fatal("a source without secrets should ask for them")
 	}
-	// A seed phrase in an import file is refused.
+	// A seed phrase anywhere in a backup is refused.
 	seed := []byte("version: 1\nsources:\n  - {id: x, type: bitcoin, label: X, kind: hardware, key: \"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}\n")
-	body, hdr = multipartFile(t, "file", "sources.yaml", seed, map[string]string{"mode": "merge"})
-	if _, out := e.do("POST", "/sources/import", body, hdr); !strings.Contains(out, "seed phrase") {
+	body, hdr = multipartFile(t, "file", "b.yaml", seed, map[string]string{"mode": "merge"})
+	if _, out := e.do("POST", "/backup/import", body, hdr); !strings.Contains(out, "seed phrase") {
 		t.Fatalf("seed import: %.300s", out)
 	}
 }

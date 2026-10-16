@@ -110,8 +110,8 @@ type SettingsPage struct {
 	Sync []SyncRow
 	// Now times the relative "2m ago" texts; the zero value means time.Now().
 	Now time.Time
-	// SourcesImport is the outcome of the last sources import (Settings → Back up sources).
-	SourcesImport ImportOutcome
+	// BackupImport is the outcome of the last restore (Settings → Backup & restore).
+	BackupImport ImportOutcome
 }
 
 // PortfolioItem is one portfolio on the manager page.

@@ -169,16 +169,21 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 - Every change to a YAML file keeps a timestamped copy in `data/backups/` (newest 30).
 - Back up the whole `data/` directory.
 
-Back up your sources from **Settings → Back up sources** (export with or without the API
-secrets — included secrets stay encrypted and only import into a Vault with the same key) or
-the CLI:
+### Backup & restore
+
+**Settings → Backup & restore** exports everything you set up in one YAML file — sources,
+portfolios, alert rules and manual cost basis — and restores it (merge, or replace the
+sections the file contains). Exchange secrets are left out unless you choose "with encrypted
+secrets"; those stay AES-256-GCM sealed and only restore into a Vault with the same key
+(`VAULT_SECRET_KEY` or `data/secret.key`). Balances and activity aren't included: Vault fetches
+them again. Restore also accepts an older sources or portfolios export.
 
 ```sh
-crypto-portfolio sources export -o sources.yaml [-secrets]
-crypto-portfolio sources import sources.yaml [-replace]
+crypto-portfolio backup export -o vault-backup.yaml [-secrets]
+crypto-portfolio backup import vault-backup.yaml [-replace]
 ```
 
-An exchange source imported without its secrets shows "needs its API key" until you edit it.
+An exchange source restored without its secrets shows "needs its API key" until you edit it.
 
 ## Remote access, password, phone app
 

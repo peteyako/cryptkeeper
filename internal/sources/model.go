@@ -78,6 +78,11 @@ var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 // Validate checks the type-independent shape. Type-specific validation (parsing keys,
 // addresses) happens when the factory builds the source.
 func (d *Def) Validate() error {
+	for _, v := range []string{d.Key, d.Descriptor, d.Address} {
+		if LooksLikeSeed(strings.ToLower(strings.TrimSpace(v))) {
+			return fmt.Errorf("%s: that looks like a seed phrase or private key; Vault only needs public keys, so it is never stored", d.ID)
+		}
+	}
 	if !idRe.MatchString(d.ID) {
 		return fmt.Errorf("id %q: use 1–40 lowercase letters, digits or dashes", d.ID)
 	}
@@ -88,11 +93,6 @@ func (d *Def) Validate() error {
 	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:
 	default:
 		return fmt.Errorf("%s: kind %q must be exchange, hot, hardware or manual", d.ID, d.Kind)
-	}
-	for _, v := range []string{d.Key, d.Descriptor, d.Address} {
-		if LooksLikeSeed(strings.ToLower(strings.TrimSpace(v))) {
-			return fmt.Errorf("%s: that looks like a seed phrase or private key; Vault only needs public keys, so it is never stored", d.ID)
-		}
 	}
 	switch d.Type {
 	case TypeCoinbase:

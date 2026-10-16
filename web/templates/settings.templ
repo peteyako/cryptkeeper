@@ -100,7 +100,7 @@ templ settingsBody(p SettingsPage) {
 				}
 			</section>
 			@SettingsDisplay(p)
-			@SourcesIO(p)
+			@BackupIO(p)
 			@ActivitySyncCard(p.Sync, p.Now)
 			<section class="card setting" aria-labelledby="set-pf-h">
 				<div class="setting__text">
@@ -176,72 +176,73 @@ templ SettingsDisplay(p SettingsPage) {
 	</section>
 }
 
-// SourcesIO exports and imports data/sources.yaml (secrets excluded unless asked for).
-templ SourcesIO(p SettingsPage) {
-	<section id="sources-io" class="card pf-io" aria-labelledby="set-srcio-h">
+// BackupIO exports and restores everything in one file: sources, portfolios, alert rules
+// and manual cost basis (secrets excluded unless asked for).
+templ BackupIO(p SettingsPage) {
+	<section id="backup-io" class="card pf-io" aria-labelledby="set-backup-h">
 		<div class="pf-io__intro">
-			<h2 id="set-srcio-h" class="h-card">Back up sources</h2>
-			<p class="muted-text">Your connected wallets and exchanges in one YAML file. Exports leave API secrets out unless you include them encrypted; encrypted secrets only import into a Vault with the same secret key.</p>
+			<h2 id="set-backup-h" class="h-card">{ "Backup & restore" }</h2>
+			<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules and manual cost basis. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a Vault with the same secret key. Balances and activity aren't included; Vault fetches them again.</p>
 		</div>
 		<div class="pf-io__block pf-io__row">
 			<div class="pf-io__text">
 				<h3 class="h-card">Export</h3>
-				<p class="muted-text">Without secrets you re-enter exchange keys after importing.</p>
+				<p class="muted-text">Without secrets you re-enter exchange keys after restoring.</p>
 			</div>
 			<div class="btn-row">
-				<a class="btn btn--secondary" href="/sources/export" download>
+				<a class="btn btn--secondary" href="/backup/export" download>
 					@Icon("download", 16)
 					Export
 				</a>
-				<a class="btn btn--ghost" href="/sources/export?secrets=1" download>With encrypted secrets</a>
+				<a class="btn btn--ghost" href="/backup/export?secrets=1" download>With encrypted secrets</a>
 			</div>
 		</div>
 		<div class="pf-io__block">
-			<h3 class="h-card">Import</h3>
+			<h3 class="h-card">Restore</h3>
 			<form
-				id="sources-import-form"
+				id="backup-import-form"
 				class="form"
 				method="post"
-				action="/sources/import"
+				action="/backup/import"
 				enctype="multipart/form-data"
-				data-indicator="importingSources"
-				data-on:submit={ sourcesImportSubmit }
+				data-indicator="restoring"
+				data-on:submit={ backupImportSubmit }
 			>
 				<div class="field">
-					<label class="field__label" for="f-src-file">Sources file</label>
+					<label class="field__label" for="f-backup-file">Backup file</label>
 					<input
 						class="input input--file"
-						id="f-src-file"
+						id="f-backup-file"
 						name="file"
 						type="file"
 						accept=".yaml,.yml,text/yaml"
 						required
-						aria-describedby="f-src-file-help"
+						aria-describedby="f-backup-file-help"
 					/>
-					<p id="f-src-file-help" class="field__help">A sources file exported from Vault. It is checked before anything changes, and the current file is backed up first.</p>
+					<p id="f-backup-file-help" class="field__help">A Vault backup, or a sources or portfolios export. Everything is checked before anything changes, and each file is backed up first.</p>
 				</div>
 				<fieldset class="pf-section">
-					<legend class="field__label pf-legend">How to import</legend>
+					<legend class="field__label pf-legend">How to restore</legend>
 					<div class="choices">
-						@modeChoice("mode", "f-src-merge", "merge", "Merge", "Add new sources and update ones with the same id; blank secrets keep the stored ones", true, false)
-						@modeChoice("mode", "f-src-replace", "replace", "Replace all", "Sources not in the file are removed, with their activity", false, false)
+						@modeChoice("mode", "f-backup-merge", "merge", "Merge", "Add what's missing and update entries with the same id", true, false)
+						@modeChoice("mode", "f-backup-replace", "replace", "Replace", "Each section in the file replaces yours; sections not in the file are kept", false, false)
 					</div>
 				</fieldset>
 				<button
 					type="submit"
 					class="btn btn--secondary btn--block"
-					data-attr:disabled="$importingSources"
-					data-class="{'is-busy': $importingSources}"
-				>Import</button>
+					data-attr:disabled="$restoring"
+					data-class="{'is-busy': $restoring}"
+				>Restore</button>
 			</form>
-			@SourcesImportResult(p.SourcesImport)
+			@BackupImportResult(p.BackupImport)
 		</div>
 	</section>
 }
 
-// SourcesImportResult is the sources import outcome (patched after an import).
-templ SourcesImportResult(r ImportOutcome) {
-	<div id="sources-import-result" class="import-result" aria-live="polite">
+// BackupImportResult is the restore outcome (patched after an import).
+templ BackupImportResult(r ImportOutcome) {
+	<div id="backup-import-result" class="import-result" aria-live="polite">
 		if r.Message != "" {
 			if r.OK {
 				@Notice("gain", "check") {

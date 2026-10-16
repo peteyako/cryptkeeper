@@ -8,7 +8,7 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/backup"
 	"crypto-portfolio/web/templates"
 )
 
@@ -79,17 +79,24 @@ func (s *Server) settingsLogos(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElementTempl(templates.SettingsDisplay(s.settingsPage(r)))
 }
 
-// sourcesExport downloads data/sources.yaml; ?secrets=1 keeps the sealed secrets.
-func (s *Server) sourcesExport(w http.ResponseWriter, r *http.Request) {
+func (s *Server) backupStores() backup.Stores {
+	return backup.Stores{
+		Sources: s.Registry, Portfolios: s.Portfolios, Alerts: s.AlertRules, CostBasis: s.CostBasis,
+		OnSourceRemoved: func(id string) { s.cleanupSource(context.Background(), id) },
+	}
+}
+
+// backupExport downloads everything the user configured; ?secrets=1 keeps sealed secrets.
+func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
 	withSecrets := r.URL.Query().Get("secrets") == "1"
-	raw, err := s.Registry.Export(withSecrets)
+	raw, err := backup.Export(s.backupStores(), withSecrets)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	name := "sources"
+	name := "vault-backup"
 	if withSecrets {
-		name = "sources-with-encrypted-secrets"
+		name = "vault-backup-with-encrypted-secrets"
 	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.yaml"`, name, s.Now().Format("2006-01-02")))
@@ -97,42 +104,37 @@ func (s *Server) sourcesExport(w http.ResponseWriter, r *http.Request) {
 	w.Write(raw)
 }
 
-// sourcesImport merges or replaces sources from an exported file.
-func (s *Server) sourcesImport(w http.ResponseWriter, r *http.Request) {
+// backupImport restores a backup (or an older sources or portfolios export).
+func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 	outcome := templates.ImportOutcome{}
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		outcome.Message = "Choose a sources file to import."
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		outcome.Message = "Choose a backup file to restore."
 	} else if file, _, err := r.FormFile("file"); err != nil {
-		outcome.Message = "Choose a sources file to import."
+		outcome.Message = "Choose a backup file to restore."
 	} else {
-		raw, _ := io.ReadAll(io.LimitReader(file, 1<<20))
+		raw, _ := io.ReadAll(io.LimitReader(file, 4<<20))
 		file.Close()
-		f, err := sources.ParseFile(raw) // Import validates each source, incl. the seed-phrase check
-		if err != nil {
-			outcome.Message = "Nothing was imported: " + err.Error()
-		} else {
-			res, err := s.Registry.Import(f, r.PostFormValue("mode") == "replace")
-			if err != nil {
-				outcome.Message = "Nothing was imported: " + err.Error()
-			} else {
-				for _, id := range res.Removed {
-					s.cleanupSource(r.Context(), id)
-				}
-				outcome.OK = true
-				outcome.Message = fmt.Sprintf("Imported: %d added, %d replaced, %d unchanged", res.Added, res.Replaced, res.Unchanged)
-				if len(res.Removed) > 0 {
-					outcome.Message += fmt.Sprintf(", %d removed", len(res.Removed))
-				}
-				outcome.Message += ". Exchange sources without secrets need their keys re-entered (Edit)."
-				s.Refresher.Kick()
-				if s.Syncer != nil {
-					s.Syncer.Kick()
-				}
+		res, err := backup.Import(s.backupStores(), raw, r.PostFormValue("mode") == "replace")
+		switch {
+		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis:
+			outcome.Message = "Nothing was restored: " + err.Error()
+		case err != nil:
+			outcome.Message = res.Summary() + " Then stopped: " + err.Error()
+		default:
+			outcome.OK = true
+			outcome.Message = res.Summary()
+			if res.Sources != nil {
+				outcome.Message += " Exchange sources restored without secrets need their keys re-entered (Edit)."
 			}
+		}
+		s.costs.invalidate()
+		s.Refresher.Kick()
+		if s.Syncer != nil {
+			s.Syncer.Kick()
 		}
 	}
 	sse := datastar.NewSSE(w, r)
-	_ = sse.PatchElementTempl(templates.SourcesImportResult(outcome))
+	_ = sse.PatchElementTempl(templates.BackupImportResult(outcome))
 }
 
 // cleanupSource removes what belongs to a deleted source: portfolio references and activity.

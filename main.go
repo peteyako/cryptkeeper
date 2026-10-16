@@ -3,6 +3,8 @@
 //	crypto-portfolio serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
 //	crypto-portfolio portfolios export [-o file.yaml] [-id ID]
 //	crypto-portfolio portfolios import file.yaml [-replace]
+//	crypto-portfolio backup export [-o file.yaml] [-secrets]
+//	crypto-portfolio backup import file.yaml [-replace]
 //	crypto-portfolio sources export [-o file.yaml] [-secrets]
 //	crypto-portfolio sources import file.yaml [-replace]
 //	crypto-portfolio healthcheck [-addr 127.0.0.1:8787]
@@ -24,6 +26,7 @@ import (
 
 	"crypto-portfolio/internal/activity"
 	"crypto-portfolio/internal/alerts"
+	"crypto-portfolio/internal/backup"
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/costbasis"
@@ -59,12 +62,14 @@ func main() {
 		err = sourcesCmd(args)
 	case "portfolios":
 		err = portfoliosCmd(args)
+	case "backup":
+		err = backupCmd(args)
 	case "healthcheck":
 		err = healthcheck(args)
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (serve, portfolios, sources, healthcheck, version)", cmd)
+		err = fmt.Errorf("unknown command %q (serve, backup, portfolios, sources, healthcheck, version)", cmd)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -518,6 +523,65 @@ func portfoliosCmd(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown portfolios command %q", sub)
+}
+
+// backupCmd exports or restores everything (sources, portfolios, alert rules, cost basis).
+func backupCmd(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: backup export [-o file] [-secrets] | backup import FILE [-replace]")
+	}
+	sub, rest := args[0], args[1:]
+	fs := flag.NewFlagSet("backup "+sub, flag.ExitOnError)
+	switch sub {
+	case "export":
+		out := fs.String("o", "", "output file (default stdout)")
+		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key)")
+		a, _, err := setup(fs, rest)
+		if err != nil {
+			return err
+		}
+		defer a.db.Close()
+		raw, err := backup.Export(a.backupStores(), *withSecrets)
+		if err != nil {
+			return err
+		}
+		if *out == "" {
+			_, err = os.Stdout.Write(raw)
+			return err
+		}
+		return os.WriteFile(*out, raw, 0o600)
+	case "import":
+		replace := fs.Bool("replace", false, "each section in the file replaces the current one")
+		a, fs, err := setup(fs, rest)
+		if err != nil {
+			return err
+		}
+		defer a.db.Close()
+		if fs.NArg() != 1 {
+			return errors.New("usage: backup import FILE [-replace]")
+		}
+		raw, err := os.ReadFile(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		res, err := backup.Import(a.backupStores(), raw, *replace)
+		fmt.Println(res.Summary())
+		if err != nil {
+			return fmt.Errorf("%s: %w", fs.Arg(0), err)
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown backup command %q", sub)
+}
+
+func (a *app) backupStores() backup.Stores {
+	return backup.Stores{
+		Sources: a.registry, Portfolios: a.portfolios, Alerts: a.alertRules, CostBasis: a.costbasis,
+		OnSourceRemoved: func(id string) {
+			a.portfolios.RemoveWallet(id)
+			a.activity.DeleteSource(context.Background(), id)
+		},
+	}
 }
 
 func healthcheck(args []string) error {
