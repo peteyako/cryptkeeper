@@ -22,6 +22,7 @@ import (
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/httpx"
+	"crypto-portfolio/internal/sources/solana/defi"
 )
 
 const (
@@ -39,7 +40,8 @@ type Config struct {
 	HideMints          []string
 	AllowMints         []string // always shown and counted, even if Jupiter hasn't verified them
 	Overrides          map[string]config.TokenOverride
-	JupiterTokensURL   string // default "https://lite-api.jup.ag/tokens/v2/search"
+	JupiterTokensURL   string   // default "https://lite-api.jup.ag/tokens/v2/search"
+	DeFi               []string // adapters to run: "jupiter", "orca", "raydium"; empty = none
 }
 
 // Source implements core.Source and core.AddressLister for one Solana address.
@@ -49,6 +51,9 @@ type Source struct {
 	res   *resolver
 	hide  map[string]bool
 	allow map[string]bool
+
+	defi    []defi.Adapter
+	defiRPC defi.RPC
 
 	mu       sync.Mutex
 	nftMints []string
@@ -86,6 +91,10 @@ func New(cfg Config, c *httpx.Client, cache MetaCache) (*Source, error) {
 	}
 	for _, m := range cfg.AllowMints {
 		s.allow[m] = true
+	}
+	if len(cfg.DeFi) > 0 {
+		s.defi = defi.Adapters(cfg.DeFi, c)
+		s.defiRPC = defi.NewHTTPRPC(cfg.RPCURL, c)
 	}
 	for _, m := range cfg.HideMints {
 		s.hide[m] = true
@@ -155,6 +164,11 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("Ignored %d token accounts with unreadable balances", ts.skipped))
 	}
 
+	// DeFi positions first: they claim position NFTs and LP tokens, which then don't
+	// appear as plain tokens or count as NFTs.
+	positions, claimed, defiWarnings := s.defiPositions(ctx, ts)
+	res.Warnings = append(res.Warnings, defiWarnings...)
+
 	// Native SOL: wallet balance plus wrapped SOL, in lamports.
 	solLamports := new(big.Int).SetUint64(lamports)
 	var tokens []*mintBalance
@@ -162,6 +176,8 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 	for _, mint := range slices.Sorted(maps.Keys(ts.byMint)) {
 		mb := ts.byMint[mint]
 		switch {
+		case claimed[mint]:
+			// Accounted for by a DeFi position.
 		case mint == WrappedSOLMint:
 			solLamports.Add(solLamports, mb.Amount)
 		case mb.Amount.Sign() == 0:
@@ -202,6 +218,7 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 	sortHoldings(shown)
 	sortHoldings(hidden)
 	res.Holdings = append(res.Holdings, shown...)
+	res.Holdings = append(res.Holdings, positions...)
 	res.Hidden = hidden
 	res.NFTCount = len(nfts)
 

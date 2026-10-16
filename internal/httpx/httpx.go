@@ -80,11 +80,11 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 			continue
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			lastErr = &retryAfterError{StatusError{resp.StatusCode, string(body), req.URL.Redacted()}, retryAfter(resp)}
+			lastErr = &retryAfterError{StatusError{resp.StatusCode, string(body), safeURL(req)}, retryAfter(resp)}
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return body, &StatusError{resp.StatusCode, string(body), req.URL.Redacted()}
+			return body, &StatusError{resp.StatusCode, string(body), safeURL(req)}
 		}
 		return body, nil
 	}
@@ -92,6 +92,12 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 		return nil, &ra.StatusError
 	}
 	return nil, lastErr
+}
+
+// safeURL is the request URL for error messages without the query string or user info:
+// providers put API keys in query parameters (?api-key=…), and error text reaches the UI.
+func safeURL(req *http.Request) string {
+	return req.URL.Scheme + "://" + req.URL.Host + req.URL.Path
 }
 
 type retryAfterError struct {
