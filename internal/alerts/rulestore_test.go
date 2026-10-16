@@ -272,3 +272,36 @@ func TestRuleStoreConcurrent(t *testing.T) {
 		t.Fatalf("want 40 rules with distinct auto ids, got %d", n)
 	}
 }
+
+func TestRuleStoreImport(t *testing.T) {
+	dir := t.TempDir()
+	s, err := NewRuleStore(filepath.Join(dir, "alerts.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Upsert(Rule{ID: "keep", Type: TypePrice, Asset: "BTC", Above: 100}); err != nil {
+		t.Fatal(err)
+	}
+	in := []Rule{
+		{ID: "keep", Type: TypePrice, Asset: "BTC", Above: 200}, // replaced
+		{ID: "new", Type: TypeSourceDown, Minutes: 30},          // added
+		{Type: TypeLargeActivity, MinUsd: 1000},                 // added with a generated id
+	}
+	res, err := s.Import(in, false)
+	if err != nil || res.Added != 2 || res.Replaced != 1 {
+		t.Fatalf("merge: %+v %v", res, err)
+	}
+	if r, _ := s.Get("keep"); r.Above != 200 || len(s.List()) != 3 {
+		t.Fatalf("after merge: %+v (%d rules)", r, len(s.List()))
+	}
+	res, err = s.Import(in[:1], true)
+	if err != nil || res.Removed != 2 || len(s.List()) != 1 {
+		t.Fatalf("replace: %+v %v (%d rules)", res, err, len(s.List()))
+	}
+	if _, err := s.Import([]Rule{{ID: "bad", Type: TypePrice}}, false); err == nil {
+		t.Fatal("invalid rules must be rejected before writing")
+	}
+	if len(s.List()) != 1 {
+		t.Fatal("a rejected import must not change anything")
+	}
+}

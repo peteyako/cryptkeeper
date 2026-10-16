@@ -112,7 +112,9 @@ portfolios:
   - { id: watch, name: Watchlist, wallets: [], watch: [ETH, AVAX] }
 ```
 
-`wallets`/`assets` take `all` (the default when omitted) or a list; `[]` means none. Asset keys
+`wallets`/`assets` take `all` (the default when omitted) or a list; `[]` means none. **Export
+all** also includes your alert rules (an `alerts:` section), and importing such a file restores
+them too — one file backs up both. Asset keys
 are exchange symbols (`BTC`) or `spl:<mint>` for Solana tokens. Save and restore locally from
 **Portfolios → Save & restore** (export, import with merge or replace, restore any automatic
 backup) or the CLI:
@@ -167,10 +169,16 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 - Every change to a YAML file keeps a timestamped copy in `data/backups/` (newest 30).
 - Back up the whole `data/` directory.
 
+Back up your sources from **Settings → Back up sources** (export with or without the API
+secrets — included secrets stay encrypted and only import into a Vault with the same key) or
+the CLI:
+
 ```sh
-crypto-portfolio sources export -o sources.yaml        # without secrets
+crypto-portfolio sources export -o sources.yaml [-secrets]
 crypto-portfolio sources import sources.yaml [-replace]
 ```
+
+An exchange source imported without its secrets shows "needs its API key" until you edit it.
 
 ## Remote access, password, phone app
 
@@ -187,7 +195,8 @@ needs HTTPS (use the `tailscale serve` URL) → menu → *Install app*.
 
 ## Configuration
 
-See `config.example.yaml`. Dates and times are shown in the server's time zone; in Docker set
+See `config.example.yaml`. Token logos (instead of ticker monograms) can be switched on in **Settings**; they load from
+the token issuers' servers. Dates and times are shown in the server's time zone; in Docker set
 `TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (default 5), `staleMaxHours`
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.

@@ -112,3 +112,42 @@ func TestHandEditReloadAndValidation(t *testing.T) {
 		t.Fatalf("unique id %q", got)
 	}
 }
+
+func TestImportMergeReplaceAndSecrets(t *testing.T) {
+	var builds atomic.Int32
+	r, path := newReg(t, &builds)
+	r.Upsert(Def{ID: "kraken", Type: TypeKraken, Label: "Kraken", APIKey: "k-1111", APISecret: "stored-secret"})
+	r.Upsert(Def{ID: "gone", Type: TypeSolana, Label: "Old", Address: "abc"})
+
+	// An export without secrets, plus a new exchange source with no secret at all.
+	f := File{Sources: []Def{
+		{ID: "kraken", Type: TypeKraken, Label: "Kraken renamed"},        // blank secret keeps the stored one
+		{ID: "cb", Type: TypeCoinbase, Label: "Coinbase", KeyName: "kn"}, // new, no private key: allowed
+		{ID: "cold", Type: TypeBitcoin, Label: "Cold", Key: "zpub-x", PrivateKey: ""},
+	}}
+	res, err := r.Import(f, false)
+	if err != nil || res.Added != 2 || res.Replaced != 1 {
+		t.Fatalf("merge: %+v %v", res, err)
+	}
+	d, _ := r.Get("kraken")
+	opened, _ := r.Open(d)
+	if opened.APISecret != "stored-secret" || d.Label != "Kraken renamed" {
+		t.Fatalf("blank secret must keep the stored one: %+v", opened)
+	}
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), "stored-secret") {
+		t.Fatal("plaintext secret on disk")
+	}
+	// Replace removes what the file doesn't list and reports it.
+	res, err = r.Import(File{Sources: []Def{{ID: "cold", Type: TypeBitcoin, Label: "Cold", Key: "zpub-x"}}}, true)
+	if err != nil || len(res.Removed) != 3 || len(r.Defs()) != 1 {
+		t.Fatalf("replace: %+v %v (%d left)", res, err, len(r.Defs()))
+	}
+	// Invalid entries reject the whole import.
+	if _, err := r.Import(File{Sources: []Def{{ID: "Bad ID", Type: TypeSolana, Label: "x", Address: "a"}}}, false); err == nil {
+		t.Fatal("expected validation error")
+	}
+	if _, err := ParseFile([]byte("version: 1\nsources:\n  - {id: a, typo: b}\n")); err == nil || !strings.Contains(err.Error(), "line 3") {
+		t.Fatalf("strict parse: %v", err)
+	}
+}

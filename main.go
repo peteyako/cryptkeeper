@@ -91,7 +91,7 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 	cfgPath := fs.String("config", "config.yaml", "server settings file")
 	dataDir := fs.String("data", "data", "data directory (sources, portfolios, database, backups)")
 	envPath := fs.String("env", ".env", "optional KEY=VALUE file for secrets")
-	if err := fs.Parse(args); err != nil {
+	if err := parseInterspersed(fs, args); err != nil {
 		return nil, fs, err
 	}
 	if err := config.LoadDotEnv(*envPath); err != nil {
@@ -149,8 +149,14 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 	return func(d sources.Def) (core.Source, error) {
 		switch d.Type {
 		case sources.TypeCoinbase:
+			if d.PrivateKey == "" {
+				return nil, errors.New("needs its API private key: edit this source to add it")
+			}
 			return asSource(coinbase.New(coinbase.Config{ID: d.ID, Label: d.Label, KeyName: d.KeyName, PrivateKey: d.PrivateKey}, a.client))
 		case sources.TypeKraken:
+			if d.APIKey == "" || d.APISecret == "" {
+				return nil, errors.New("needs its API key and secret: edit this source to add them")
+			}
 			return asSource(kraken.New(kraken.Config{ID: d.ID, Label: d.Label, APIKey: d.APIKey, APISecret: d.APISecret}, a.client))
 		case sources.TypeBitcoin:
 			return asSource(bitcoin.New(bitcoin.Config{
@@ -198,6 +204,26 @@ func (a *app) wallets() []portfolio.Wallet {
 		out = append(out, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
 	}
 	return out
+}
+
+// parseInterspersed lets flags appear before or after positional arguments
+// ("sources import file.yaml -replace" as well as "sources import -replace file.yaml");
+// the standard flag package stops at the first positional one. Positionals end up in
+// fs.Args() in their original order.
+func parseInterspersed(fs *flag.FlagSet, args []string) error {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+	return fs.Parse(append([]string{"--"}, positional...))
 }
 
 // activitySources lists live sources that can report transactions.
@@ -345,7 +371,7 @@ func serve(args []string) error {
 	h := server.New(server.Deps{
 		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log,
 		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref,
-		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, Broker: broker, History: hist, Prices: a.priceFunc(),
+		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, DB: a.db, Broker: broker, History: hist, Prices: a.priceFunc(),
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
 	})
@@ -407,27 +433,23 @@ func sourcesCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		var f sources.File
-		if err := yamlfile.Decode(raw, &f); err != nil {
+		f, err := sources.ParseFile(raw)
+		if err != nil {
 			return fmt.Errorf("%s: %w", fs.Arg(0), err)
 		}
-		keep := map[string]bool{}
-		for _, d := range f.Sources {
-			keep[d.ID] = true
-			if _, err := a.registry.Upsert(d); err != nil {
+		res, err := a.registry.Import(f, *replace)
+		if err != nil {
+			return err
+		}
+		for _, id := range res.Removed {
+			if _, err := a.portfolios.RemoveWallet(id); err != nil {
+				return err
+			}
+			if err := a.activity.DeleteSource(context.Background(), id); err != nil {
 				return err
 			}
 		}
-		if *replace {
-			for _, d := range a.registry.Defs() {
-				if !keep[d.ID] {
-					if err := a.registry.Delete(d.ID); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		fmt.Printf("imported %d sources\n", len(f.Sources))
+		fmt.Printf("imported: %d added, %d replaced, %d unchanged, %d removed\n", res.Added, res.Replaced, res.Unchanged, len(res.Removed))
 		return nil
 	}
 	return fmt.Errorf("unknown sources command %q", sub)
@@ -443,6 +465,7 @@ func portfoliosCmd(args []string) error {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
 		id := fs.String("id", "", "export one portfolio (default: all)")
+		withAlerts := fs.Bool("alerts", true, "include alert rules when exporting all")
 		a, _, err := setup(fs, rest)
 		if err != nil {
 			return err
@@ -451,6 +474,11 @@ func portfoliosCmd(args []string) error {
 		raw, err := a.portfolios.Export(*id)
 		if err != nil {
 			return err
+		}
+		if *id == "" && *withAlerts {
+			if raw, err = portfolios.WithAlerts(raw, a.alertRules.List()); err != nil {
+				return err
+			}
 		}
 		if *out == "" {
 			_, err = os.Stdout.Write(raw)
@@ -480,6 +508,13 @@ func portfoliosCmd(args []string) error {
 			return fmt.Errorf("%s: %w", fs.Arg(0), err)
 		}
 		fmt.Printf("imported: %d added, %d replaced, %d unchanged, %d removed\n", res.Added, res.Replaced, res.Unchanged, res.Removed)
+		if f, err := portfolios.Parse(raw); err == nil && len(f.Alerts) > 0 {
+			ar, err := a.alertRules.Import(f.Alerts, *replace)
+			if err != nil {
+				return fmt.Errorf("alert rules: %w", err)
+			}
+			fmt.Printf("alert rules: %d added, %d replaced, %d unchanged\n", ar.Added, ar.Replaced, ar.Unchanged)
+		}
 		return nil
 	}
 	return fmt.Errorf("unknown portfolios command %q", sub)

@@ -175,30 +175,10 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 		d.Holdings = hs
 		d.Kind = core.KindManual
 	}
-	if lower := strings.ToLower(r.PostFormValue("key") + r.PostFormValue("address")); looksLikeSeed(lower) {
+	if lower := strings.ToLower(r.PostFormValue("key") + r.PostFormValue("address")); sources.LooksLikeSeed(lower) {
 		errs[""] = "That looks like a seed phrase or private key. Vault only needs public keys — never enter a seed phrase here."
 	}
 	return d, errs
-}
-
-// looksLikeSeed catches the most damaging paste mistake: a 12/24-word mnemonic or an
-// xprv/WIF private key where a public key belongs.
-func looksLikeSeed(s string) bool {
-	if strings.HasPrefix(s, "xprv") || strings.HasPrefix(s, "yprv") || strings.HasPrefix(s, "zprv") || strings.Contains(s, "prv") && strings.Contains(s, "(") {
-		return true
-	}
-	words := strings.Fields(s)
-	if len(words) != 12 && len(words) != 18 && len(words) != 24 {
-		return false
-	}
-	for _, w := range words {
-		for _, c := range w {
-			if c < 'a' || c > 'z' {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // formEditID reads the hidden "editId" field (the Test button posts the form to
@@ -322,13 +302,7 @@ func (s *Server) sourceDelete(w http.ResponseWriter, r *http.Request) {
 		_ = sse.PatchElementTempl(templates.FormErrors(map[string]string{"": err.Error()}))
 		return
 	}
-	s.removeFromPortfolios(id)
-	if s.Activity != nil {
-		if err := s.Activity.DeleteSource(r.Context(), id); err != nil {
-			s.Log.Warn("delete activity", "source", id, "err", err)
-		}
-		s.costs.invalidate()
-	}
+	s.cleanupSource(r.Context(), id)
 	s.Refresher.Kick()
 	_ = sse.Redirect("/")
 }

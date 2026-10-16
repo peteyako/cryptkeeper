@@ -89,15 +89,20 @@ func (d *Def) Validate() error {
 	default:
 		return fmt.Errorf("%s: kind %q must be exchange, hot, hardware or manual", d.ID, d.Kind)
 	}
+	for _, v := range []string{d.Key, d.Descriptor, d.Address} {
+		if LooksLikeSeed(strings.ToLower(strings.TrimSpace(v))) {
+			return fmt.Errorf("%s: that looks like a seed phrase or private key; Vault only needs public keys, so it is never stored", d.ID)
+		}
+	}
 	switch d.Type {
 	case TypeCoinbase:
-		if d.KeyName == "" || d.PrivateKey == "" {
-			return fmt.Errorf("%s: Coinbase needs an API key name and private key", d.ID)
+		if d.KeyName == "" {
+			return fmt.Errorf("%s: Coinbase needs an API key name", d.ID)
 		}
+		// A missing private key is allowed (an import without secrets): the source then
+		// fails to build and its card asks for the key. The add form still requires it.
 	case TypeKraken:
-		if d.APIKey == "" || d.APISecret == "" {
-			return fmt.Errorf("%s: Kraken needs an API key and secret", d.ID)
-		}
+		// Same for Kraken's key and secret.
 	case TypeBitcoin:
 		if d.Key == "" && d.Descriptor == "" {
 			return fmt.Errorf("%s: Bitcoin needs an extended public key, descriptor or address", d.ID)
@@ -151,4 +156,25 @@ func Slug(label string) string {
 		s = "source"
 	}
 	return s
+}
+
+// LooksLikeSeed catches the most damaging paste mistake: a 12/18/24-word mnemonic or an
+// xprv/yprv/zprv private key (bare or inside a descriptor) where a public key belongs.
+// Callers pass lower-cased input.
+func LooksLikeSeed(s string) bool {
+	if strings.HasPrefix(s, "xprv") || strings.HasPrefix(s, "yprv") || strings.HasPrefix(s, "zprv") || strings.Contains(s, "prv") && strings.Contains(s, "(") {
+		return true
+	}
+	words := strings.Fields(s)
+	if len(words) != 12 && len(words) != 18 && len(words) != 24 {
+		return false
+	}
+	for _, w := range words {
+		for _, c := range w {
+			if c < 'a' || c > 'z' {
+				return false
+			}
+		}
+	}
+	return true
 }

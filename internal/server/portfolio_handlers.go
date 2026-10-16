@@ -357,6 +357,14 @@ func (s *Server) portfolioExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	// "Export all" also carries the alert rules, so one file backs up both.
+	if id == "" && s.AlertRules != nil {
+		if withAlerts, err := portfolios.WithAlerts(raw, s.AlertRules.List()); err == nil {
+			raw = withAlerts
+		} else {
+			s.Log.Warn("export alert rules", "err", err)
+		}
+	}
 	name := "portfolios"
 	if id != "" {
 		name = "portfolio-" + id
@@ -390,6 +398,7 @@ func (s *Server) portfolioImport(w http.ResponseWriter, r *http.Request) {
 				outcome.Message += fmt.Sprintf(", %d removed", res.Removed)
 			}
 			outcome.Message += "."
+			outcome.Message += s.importAlertSection(raw, mode == portfolios.ImportReplace)
 		}
 	}
 	sse := datastar.NewSSE(w, r)
@@ -403,6 +412,20 @@ func (s *Server) portfolioRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.patchManager(sse, r, templates.ImportOutcome{OK: true, Message: "Backup restored. The previous list was backed up first."})
+}
+
+// importAlertSection applies the optional alerts section of a portfolios file and returns
+// a sentence for the import message ("" when the file has no alerts section).
+func (s *Server) importAlertSection(raw []byte, replace bool) string {
+	f, err := portfolios.Parse(raw)
+	if err != nil || len(f.Alerts) == 0 || s.AlertRules == nil {
+		return ""
+	}
+	res, err := s.AlertRules.Import(f.Alerts, replace)
+	if err != nil {
+		return " Alert rules were not imported: " + err.Error()
+	}
+	return fmt.Sprintf(" Alert rules: %d added, %d replaced, %d unchanged.", res.Added, res.Replaced, res.Unchanged)
 }
 
 // removeFromPortfolios drops a deleted source from explicit wallet lists.

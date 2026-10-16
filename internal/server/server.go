@@ -19,6 +19,7 @@ import (
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/store"
 	"crypto-portfolio/web/static"
 )
 
@@ -35,6 +36,7 @@ type Deps struct {
 	CostBasis  *costbasis.ManualStore
 	AlertRules *alerts.RuleStore
 	Alerts     *alerts.Engine
+	DB         *store.DB // UI settings changed from the Settings page
 	Refresher  *portfolio.Refresher
 	Broker     *portfolio.Broker
 	History    *portfolio.History
@@ -86,6 +88,8 @@ func New(d Deps) http.Handler {
 		r.Get("/w/{id}", s.wallet)
 		r.Get("/w/{id}/tab/{tab}", s.walletTab)
 
+		r.Get("/sources/export", s.sourcesExport)
+		r.Post("/sources/import", s.sourcesImport)
 		r.Get("/sources/new", s.sourcePick)
 		r.Get("/sources/new/{type}", s.sourceNew)
 		r.Get("/sources/{id}/edit", s.sourceEdit)
@@ -127,6 +131,7 @@ func New(d Deps) http.Handler {
 		r.Post("/alerts/{id}/delete", s.alertDelete)
 
 		r.Get("/settings", s.settings)
+		r.Post("/settings/logos", s.settingsLogos)
 	})
 	return r
 }

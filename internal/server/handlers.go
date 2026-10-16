@@ -48,7 +48,7 @@ func (s *Server) shell(r *http.Request, title, active, pf, rng string) templates
 		rng = "1W"
 	}
 	sh := templates.Shell{
-		Title: title, Active: active, PF: pf, Range: rng, ShowLogos: s.Cfg.ShowTokenLogos,
+		Title: title, Active: active, PF: pf, Range: rng, ShowLogos: s.showLogos(r.Context()),
 		Portfolios: s.portfolioNav(),
 	}
 	if s.Cfg.Password != "" {
@@ -254,8 +254,7 @@ func (s *Server) findWallet(id string) (portfolio.WalletView, sources.Entry, boo
 			return wv, entry, true
 		}
 	}
-	// Added but not fetched yet.
-	return portfolio.WalletView{ID: id, Label: entry.Def.Label, Type: entry.Def.Type, Kind: entry.Def.Kind, Status: portfolio.StatusPending}, entry, true
+	return pendingWallet(entry.Def), entry, true // added but not fetched yet
 }
 
 var walletTabs = map[string]bool{"holdings": true, "activity": true, "addresses": true, "utxos": true}
@@ -326,24 +325,9 @@ func (s *Server) walletTab(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElementTempl(templates.WalletTab(p))
 }
 
-func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
-	snap, _ := s.latest()
-	wallets := snap.Wallets
-	// Include sources that have no snapshot entry yet.
-	have := map[string]bool{}
-	for _, wv := range wallets {
-		have[wv.ID] = true
-	}
-	for _, d := range s.Registry.Defs() {
-		if !have[d.ID] {
-			wallets = append(wallets, portfolio.WalletView{ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind, Status: portfolio.StatusPending})
-		}
-	}
-	s.render(w, r, templates.SettingsFull(templates.SettingsPage{
-		Shell: s.shell(r, "Settings", "settings", "all", ""), Wallets: wallets,
-		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
-		Sync: s.syncRows(r.Context()),
-	}))
+// pendingWallet is the view of a source that hasn't been fetched yet.
+func pendingWallet(d sources.Def) portfolio.WalletView {
+	return portfolio.WalletView{ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind, Status: portfolio.StatusPending}
 }
 
 // qrSVG renders text as an SVG QR code (dark modules on a light quiet zone, as in the design).

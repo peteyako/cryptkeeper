@@ -229,6 +229,95 @@ func (r *Registry) Upsert(plain Def) (Def, error) {
 	return sealed, nil
 }
 
+// ImportResult counts what an Import changed; Removed lists the ids it deleted so callers
+// can clean up portfolios and activity.
+type ImportResult struct {
+	Added, Replaced, Unchanged int
+	Removed                    []string
+}
+
+// Import merges (or, with replace, substitutes) the sources in f in one validated write.
+// Secrets may be plaintext (sealed here), sealed with this install's key (kept), or blank
+// (an existing source keeps its stored secret; a new one is saved without it).
+func (r *Registry) Import(f File, replace bool) (ImportResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.reloadLocked(false); err != nil {
+		return ImportResult{}, err
+	}
+	var res ImportResult
+	next := File{Version: 1}
+	if !replace {
+		next.Sources = slices.Clone(r.file.Sources)
+	}
+	seen := map[string]bool{}
+	for _, d := range f.Sources {
+		if seen[d.ID] {
+			return ImportResult{}, fmt.Errorf("duplicate source id %q in the import", d.ID)
+		}
+		seen[d.ID] = true
+		cur := slices.IndexFunc(r.file.Sources, func(x Def) bool { return x.ID == d.ID })
+		for _, name := range SecretFields {
+			p := d.Secret(name)
+			switch {
+			case *p == "" && cur >= 0:
+				*p = *r.file.Sources[cur].Secret(name)
+			case *p != "" && !secrets.IsSealed(*p):
+				sealed, err := r.box.Seal(*p)
+				if err != nil {
+					return ImportResult{}, err
+				}
+				*p = sealed
+			}
+		}
+		if d.Kind == "" {
+			d.Kind = DefaultKind(d.Type)
+		}
+		if err := d.Validate(); err != nil {
+			return ImportResult{}, err
+		}
+		switch {
+		case cur < 0:
+			res.Added++
+		case defHash(r.file.Sources[cur]) == defHash(d):
+			res.Unchanged++
+		default:
+			res.Replaced++
+		}
+		if i := slices.IndexFunc(next.Sources, func(x Def) bool { return x.ID == d.ID }); i >= 0 {
+			next.Sources[i] = d
+		} else {
+			next.Sources = append(next.Sources, d)
+		}
+	}
+	if replace {
+		for _, d := range r.file.Sources {
+			if !seen[d.ID] {
+				res.Removed = append(res.Removed, d.ID)
+			}
+		}
+	}
+	if res.Added == 0 && res.Replaced == 0 && len(res.Removed) == 0 {
+		return res, nil
+	}
+	if err := r.writeLocked(next); err != nil {
+		return ImportResult{}, err
+	}
+	return res, nil
+}
+
+// ParseFile strictly decodes a sources document (line-numbered errors).
+func ParseFile(raw []byte) (File, error) {
+	var f File
+	if err := yamlfile.Decode(raw, &f); err != nil {
+		return File{}, err
+	}
+	if f.Version == 0 {
+		f.Version = 1
+	}
+	return f, nil
+}
+
 // Delete removes a source.
 func (r *Registry) Delete(id string) error {
 	r.mu.Lock()

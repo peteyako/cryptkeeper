@@ -201,3 +201,64 @@ func (s *RuleStore) Delete(id string) error {
 	}
 	return s.commitLocked(f, data)
 }
+
+// ImportResult counts what an Import changed.
+type ImportResult struct{ Added, Replaced, Unchanged, Removed int }
+
+// Import adds rules in bulk (from a portfolios export). Rules with an id that already
+// exists replace it; replace=true makes the file exactly the imported rules. The whole
+// result is validated before anything is written, and the previous file is backed up.
+func (s *RuleStore) Import(rules []Rule, replace bool) (ImportResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.syncLocked()
+
+	cur := s.file.clone()
+	var res ImportResult
+	next := File{Version: Version}
+	if !replace {
+		next = cur.clone()
+	}
+	for _, r := range rules {
+		r = r.clone()
+		r.normalize()
+		if r.ID == "" {
+			r.ID = uniqueID(autoID(r), func(id string) bool { return next.index(id) >= 0 })
+		}
+		switch i := cur.index(r.ID); {
+		case i < 0:
+			res.Added++
+		case reflect.DeepEqual(cur.Rules[i], r):
+			res.Unchanged++
+		default:
+			res.Replaced++
+		}
+		if i := next.index(r.ID); i >= 0 {
+			next.Rules[i] = r
+		} else {
+			next.Rules = append(next.Rules, r)
+		}
+	}
+	if replace {
+		for _, r := range cur.Rules {
+			if next.index(r.ID) < 0 {
+				res.Removed++
+			}
+		}
+	}
+	next.normalize()
+	if err := next.Validate(); err != nil {
+		return ImportResult{}, err
+	}
+	if res.Added == 0 && res.Replaced == 0 && res.Removed == 0 && s.loadErr == nil {
+		return res, nil
+	}
+	data, err := next.Encode()
+	if err != nil {
+		return ImportResult{}, err
+	}
+	if err := s.commitLocked(next, data); err != nil {
+		return ImportResult{}, err
+	}
+	return res, nil
+}

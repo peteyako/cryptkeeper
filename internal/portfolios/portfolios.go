@@ -16,6 +16,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/internal/yamlfile"
 )
@@ -186,6 +187,10 @@ func normalizeList(in []string, norm func(string) string) []string {
 type File struct {
 	Version    int         `yaml:"version"`
 	Portfolios []Portfolio `yaml:"portfolios"`
+	// Alerts is an optional section carried by "Export all" so one file backs up portfolios
+	// and alert rules together. data/portfolios.yaml itself never stores it: the store only
+	// keeps Portfolios (clone drops this field).
+	Alerts []alerts.Rule `yaml:"alerts,omitempty"`
 }
 
 func (f File) clone() File {
@@ -223,6 +228,13 @@ func Parse(raw []byte) (File, error) {
 	f.normalize()
 	if err := f.Validate(); err != nil {
 		return File{}, err
+	}
+	if len(f.Alerts) > 0 {
+		rules, err := alerts.NormalizeRules(f.Alerts)
+		if err != nil {
+			return File{}, fmt.Errorf("alerts section: %w", err)
+		}
+		f.Alerts = rules
 	}
 	return f, nil
 }
@@ -324,4 +336,17 @@ func uniqueID(base string, taken func(string) bool) string {
 		id = stem + suffix
 	}
 	return id
+}
+
+// WithAlerts adds an alerts section to an exported portfolios document (no-op without rules).
+func WithAlerts(raw []byte, rules []alerts.Rule) ([]byte, error) {
+	if len(rules) == 0 {
+		return raw, nil
+	}
+	f, err := Parse(raw)
+	if err != nil {
+		return nil, err
+	}
+	f.Alerts = rules
+	return f.Encode()
 }

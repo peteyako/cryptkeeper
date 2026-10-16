@@ -4322,3 +4322,11 @@ body.amounts-hidden .fig-m {
     forced-color-adjust: none;
   }
 }
+
+/* Settings: a row of related buttons (sources export). */
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}

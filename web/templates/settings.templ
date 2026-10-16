@@ -99,6 +99,8 @@ templ settingsBody(p SettingsPage) {
 					</ul>
 				}
 			</section>
+			@SettingsDisplay(p)
+			@SourcesIO(p)
 			@ActivitySyncCard(p.Sync, p.Now)
 			<section class="card setting" aria-labelledby="set-pf-h">
 				<div class="setting__text">
@@ -153,5 +155,103 @@ templ errorBody(msg string) {
 			<p class="empty__text">{ msg }</p>
 			<a class="btn btn--secondary" href="/">Back to overview</a>
 		</section>
+	</div>
+}
+
+// SettingsDisplay holds display options stored on the server (they change what pages render).
+templ SettingsDisplay(p SettingsPage) {
+	<section id="settings-display" class="card setting" aria-labelledby="set-display-h">
+		<div class="setting__text">
+			<h2 id="set-display-h" class="h-card">Token logos</h2>
+			<p class="muted-text">Show Solana token logos instead of ticker monograms. Logos load from the token issuers' servers, which can see your IP address.</p>
+		</div>
+		<form id="logos-form" method="post" action="/settings/logos" data-on:change={ logosChange }>
+			<label class="choice" for="f-show-logos">
+				<input class="choice__input" id="f-show-logos" type="checkbox" name="showLogos" value="on" checked?={ p.ShowLogos }/>
+				<span class="choice__text">
+					<span class="choice__title">Show token logos</span>
+				</span>
+			</label>
+		</form>
+	</section>
+}
+
+// SourcesIO exports and imports data/sources.yaml (secrets excluded unless asked for).
+templ SourcesIO(p SettingsPage) {
+	<section id="sources-io" class="card pf-io" aria-labelledby="set-srcio-h">
+		<div class="pf-io__intro">
+			<h2 id="set-srcio-h" class="h-card">Back up sources</h2>
+			<p class="muted-text">Your connected wallets and exchanges in one YAML file. Exports leave API secrets out unless you include them encrypted; encrypted secrets only import into a Vault with the same secret key.</p>
+		</div>
+		<div class="pf-io__block pf-io__row">
+			<div class="pf-io__text">
+				<h3 class="h-card">Export</h3>
+				<p class="muted-text">Without secrets you re-enter exchange keys after importing.</p>
+			</div>
+			<div class="btn-row">
+				<a class="btn btn--secondary" href="/sources/export" download>
+					@Icon("download", 16)
+					Export
+				</a>
+				<a class="btn btn--ghost" href="/sources/export?secrets=1" download>With encrypted secrets</a>
+			</div>
+		</div>
+		<div class="pf-io__block">
+			<h3 class="h-card">Import</h3>
+			<form
+				id="sources-import-form"
+				class="form"
+				method="post"
+				action="/sources/import"
+				enctype="multipart/form-data"
+				data-indicator="importingSources"
+				data-on:submit={ sourcesImportSubmit }
+			>
+				<div class="field">
+					<label class="field__label" for="f-src-file">Sources file</label>
+					<input
+						class="input input--file"
+						id="f-src-file"
+						name="file"
+						type="file"
+						accept=".yaml,.yml,text/yaml"
+						required
+						aria-describedby="f-src-file-help"
+					/>
+					<p id="f-src-file-help" class="field__help">A sources file exported from Vault. It is checked before anything changes, and the current file is backed up first.</p>
+				</div>
+				<fieldset class="pf-section">
+					<legend class="field__label pf-legend">How to import</legend>
+					<div class="choices">
+						@modeChoice("mode", "f-src-merge", "merge", "Merge", "Add new sources and update ones with the same id; blank secrets keep the stored ones", true, false)
+						@modeChoice("mode", "f-src-replace", "replace", "Replace all", "Sources not in the file are removed, with their activity", false, false)
+					</div>
+				</fieldset>
+				<button
+					type="submit"
+					class="btn btn--secondary btn--block"
+					data-attr:disabled="$importingSources"
+					data-class="{'is-busy': $importingSources}"
+				>Import</button>
+			</form>
+			@SourcesImportResult(p.SourcesImport)
+		</div>
+	</section>
+}
+
+// SourcesImportResult is the sources import outcome (patched after an import).
+templ SourcesImportResult(r ImportOutcome) {
+	<div id="sources-import-result" class="import-result" aria-live="polite">
+		if r.Message != "" {
+			if r.OK {
+				@Notice("gain", "check") {
+					{ r.Message }
+				}
+			} else {
+				@Notice("loss", "x") {
+					{ r.Message }
+				}
+			}
+		}
 	</div>
 }

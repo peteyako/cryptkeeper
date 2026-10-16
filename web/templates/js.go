@@ -308,3 +308,9 @@ func alertSignals(p AlertFormPage) string {
 
 // ruleTypeIs is true while the given alert type is chosen.
 func ruleTypeIs(t string) string { return "$ruleType === " + JSString(t) }
+
+// logosChange saves the token-logos setting when its checkbox changes.
+const logosChange = `@post('/settings/logos', {contentType: 'form'})`
+
+// sourcesImportSubmit posts the sources import form (multipart: the file and the mode).
+const sourcesImportSubmit = `@post('/sources/import', {contentType: 'form'})`

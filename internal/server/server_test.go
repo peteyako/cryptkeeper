@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -63,6 +64,9 @@ func newEnv(t *testing.T, password string) *env {
 			case sources.TypeManual:
 				return manual.New(d.ID, d.Holdings), nil
 			case sources.TypeKraken:
+				if d.APISecret == "" {
+					return nil, errors.New("needs its API key and secret: edit this source to add them")
+				}
 				return fakeExchange{d.ID}, nil
 			case sources.TypeBitcoin:
 				return fakeExchange{d.ID}, nil
@@ -108,7 +112,7 @@ func newEnv(t *testing.T, password string) *env {
 	cfg.User = "admin"
 	h := New(Deps{
 		Cfg: cfg, DataDir: dir, Version: "test", Registry: reg, Portfolios: ps, Refresher: ref,
-		Activity: act, CostBasis: cb, AlertRules: rules, Alerts: engine, Broker: broker, History: hist, Prices: prices,
+		Activity: act, CostBasis: cb, AlertRules: rules, Alerts: engine, DB: db, Broker: broker, History: hist, Prices: prices,
 		DetectBitcoin: func(s string) (string, error) {
 			if strings.HasPrefix(s, "wsh(") {
 				return "descriptor", nil
@@ -500,5 +504,107 @@ func TestDeletingSourceRemovesItsActivity(t *testing.T) {
 	e.do("POST", "/sources/hot/delete", nil, ds(nil))
 	if _, ok, _ := e.act.Get(context.Background(), "hot:1"); ok {
 		t.Fatal("activity of a removed source must be deleted")
+	}
+}
+
+func multipartFile(t *testing.T, field, name string, content []byte, extra map[string]string) (io.Reader, map[string]string) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, v := range extra {
+		mw.WriteField(k, v)
+	}
+	fw, _ := mw.CreateFormFile(field, name)
+	fw.Write(content)
+	mw.Close()
+	return &buf, ds(map[string]string{"Content-Type": mw.FormDataContentType()})
+}
+
+func TestSettingsLogosToggle(t *testing.T) {
+	e := newEnv(t, "")
+	if _, page := e.do("GET", "/settings", nil, nil); !strings.Contains(page, `id="f-show-logos"`) || strings.Contains(page, `id="f-show-logos" type="checkbox" name="showLogos" value="on" checked`) {
+		t.Fatal("logos toggle should render unchecked by default")
+	}
+	body, hdr := form(url.Values{"showLogos": {"on"}})
+	_, out := e.do("POST", "/settings/logos", body, hdr)
+	if !strings.Contains(out, "settings-display") || !strings.Contains(out, "checked") {
+		t.Fatalf("toggle patch: %.300s", out)
+	}
+	// Persisted: a fresh page load (and the shell of every page) sees it.
+	if _, page := e.do("GET", "/settings", nil, nil); !strings.Contains(page, "checked") {
+		t.Fatal("setting not persisted")
+	}
+	body, hdr = form(url.Values{})
+	e.do("POST", "/settings/logos", body, hdr)
+	if _, page := e.do("GET", "/settings", nil, nil); strings.Contains(page, `name="showLogos" value="on" checked`) {
+		t.Fatal("unchecking must turn it off")
+	}
+}
+
+func TestSourcesExportImport(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "kraken", Type: sources.TypeKraken, Label: "Kraken", APIKey: "pub-key", APISecret: "very-secret"})
+	e.reg.Upsert(sources.Def{ID: "old", Type: sources.TypeManual, Label: "Old", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
+	e.ps.Upsert(portfolios.Portfolio{ID: "old-only", Name: "Old only", Wallets: portfolios.Selector{IDs: []string{"old"}}, Assets: portfolios.AllSelector()})
+
+	resp, plain := e.do("GET", "/sources/export", nil, nil)
+	if resp.StatusCode != 200 || strings.Contains(plain, "very-secret") || strings.Contains(plain, "enc:v1:") || !strings.Contains(plain, "kraken") {
+		t.Fatalf("export without secrets: %d\n%s", resp.StatusCode, plain)
+	}
+	_, sealed := e.do("GET", "/sources/export?secrets=1", nil, nil)
+	if strings.Contains(sealed, "very-secret") || !strings.Contains(sealed, "enc:v1:") {
+		t.Fatal("export with secrets must carry them sealed, never in plaintext")
+	}
+
+	// Replace with a file listing only a new manual source and a secret-less exchange source.
+	file := []byte("version: 1\nsources:\n  - {id: kids, type: manual, label: Kids, kind: manual, holdings: [{asset: SOL, amount: 3}]}\n  - {id: kraken2, type: kraken, label: Kraken two, kind: exchange}\n")
+	body, hdr := multipartFile(t, "file", "sources.yaml", file, map[string]string{"mode": "replace"})
+	_, out := e.do("POST", "/sources/import", body, hdr)
+	if !strings.Contains(out, "2 added") || !strings.Contains(out, "2 removed") {
+		t.Fatalf("import: %.400s", out)
+	}
+	if _, ok := e.reg.Get("old"); ok {
+		t.Fatal("replace must remove sources missing from the file")
+	}
+	if p, _ := e.ps.Get("old-only"); len(p.Wallets.IDs) != 0 {
+		t.Fatal("removed source still referenced by a portfolio")
+	}
+	// The secret-less exchange source exists and says what's missing.
+	e.ref.Force(context.Background())
+	if _, page := e.do("GET", "/w/kraken2", nil, nil); !strings.Contains(page, "edit this source") {
+		t.Fatal("a source without secrets should ask for them")
+	}
+	// A seed phrase in an import file is refused.
+	seed := []byte("version: 1\nsources:\n  - {id: x, type: bitcoin, label: X, kind: hardware, key: \"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}\n")
+	body, hdr = multipartFile(t, "file", "sources.yaml", seed, map[string]string{"mode": "merge"})
+	if _, out := e.do("POST", "/sources/import", body, hdr); !strings.Contains(out, "seed phrase") {
+		t.Fatalf("seed import: %.300s", out)
+	}
+}
+
+func TestPortfolioExportCarriesAlertRules(t *testing.T) {
+	e := newEnv(t, "")
+	e.ps.Upsert(portfolios.Portfolio{ID: "lt", Name: "Long-term", Wallets: portfolios.AllSelector(), Assets: portfolios.AllSelector()})
+	e.rules.Upsert(alerts.Rule{ID: "btc-high", Type: alerts.TypePrice, Asset: "BTC", Above: 100000})
+	_, exported := e.do("GET", "/portfolios/export", nil, nil)
+	if !strings.Contains(exported, "alerts:") || !strings.Contains(exported, "btc-high") {
+		t.Fatalf("export all should include alert rules:\n%s", exported)
+	}
+	if _, one := e.do("GET", "/portfolios/lt/export", nil, nil); strings.Contains(one, "alerts:") {
+		t.Fatal("a single-portfolio export carries no alert rules")
+	}
+	// Restore into an empty install: portfolios and alert rules both come back.
+	e.ps.Delete("lt")
+	e.rules.Delete("btc-high")
+	body, hdr := multipartFile(t, "file", "portfolios.yaml", []byte(exported), map[string]string{"mode": "merge"})
+	_, out := e.do("POST", "/portfolios/import", body, hdr)
+	if !strings.Contains(out, "Alert rules: 1 added") {
+		t.Fatalf("import message: %.400s", out)
+	}
+	if _, ok := e.rules.Get("btc-high"); !ok {
+		t.Fatal("alert rule not restored")
+	}
+	if _, ok := e.ps.Get("lt"); !ok {
+		t.Fatal("portfolio not restored")
 	}
 }

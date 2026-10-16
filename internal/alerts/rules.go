@@ -436,3 +436,17 @@ func uniqueID(base string, taken func(string) bool) string {
 	}
 	return id
 }
+
+// NormalizeRules applies the same defaults and validation as Parse to rules that arrive
+// embedded in another document (the alerts section of a portfolios export).
+func NormalizeRules(rules []Rule) ([]Rule, error) {
+	f := File{Version: Version}
+	for _, r := range rules {
+		f.Rules = append(f.Rules, r.clone())
+	}
+	f.normalize()
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
+	return f.Rules, nil
+}

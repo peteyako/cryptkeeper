@@ -2,6 +2,7 @@ package portfolios
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -313,5 +314,31 @@ func TestSlug(t *testing.T) {
 		if err := f.Validate(); err != nil {
 			t.Errorf("Slug(%q) = %q is not a valid id: %v", tc.in, got, err)
 		}
+	}
+}
+
+func TestAlertsSectionIsParsedButNeverStored(t *testing.T) {
+	raw := []byte("version: 1\nportfolios:\n  - {id: a, name: A}\nalerts:\n  - {id: btc-high, type: price, asset: btc, above: 100000}\n")
+	f, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Alerts) != 1 || f.Alerts[0].Asset != "BTC" {
+		t.Fatalf("alerts section not normalized: %+v", f.Alerts)
+	}
+	if _, err := Parse([]byte("version: 1\nportfolios: []\nalerts:\n  - {id: x, type: price}\n")); err == nil || !strings.Contains(err.Error(), "alerts section") {
+		t.Fatalf("invalid alerts must be rejected: %v", err)
+	}
+	dir := t.TempDir()
+	st, err := NewStore(filepath.Join(dir, "portfolios.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Import(raw, ImportMerge); err != nil {
+		t.Fatal(err)
+	}
+	stored, _ := os.ReadFile(filepath.Join(dir, "portfolios.yaml"))
+	if strings.Contains(string(stored), "alerts") {
+		t.Fatalf("portfolios.yaml must not store alert rules:\n%s", stored)
 	}
 }
