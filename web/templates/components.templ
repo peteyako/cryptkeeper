@@ -76,7 +76,7 @@ templ SourceChip(kind core.Kind, text string) {
 // AccountCard is a source: a 3px rail in the source color, name, kind, status, value and meta.
 templ AccountCard(w portfolio.WalletView, now time.Time) {
 	{{ glyph, label, tone := StatusView(w, now) }}
-	<a class="acct" href={ templ.URL(walletHref(w.ID)) }>
+	<a class="acct" href={ templ.URL(walletHref(w.ID)) } data-on:click={ navClick(walletHref(w.ID), "") }>
 		<span class={ "acct__rail", "rail--" + SourceTone(w.Kind) } aria-hidden="true"></span>
 		<span class="acct__body">
 			<span class="acct__top">

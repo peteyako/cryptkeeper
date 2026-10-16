@@ -140,9 +140,32 @@ func ptrIf[T any](ok bool, v *T) *T {
 	return nil
 }
 
+// isNav reports a Datastar navigation: an in-app link or back/forward fetched the page
+// with @get (which sets Datastar-Request), rather than the browser loading it.
+func isNav(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.Header.Get("Datastar-Request") == "true"
+}
+
+// render writes a full page, or — for a Datastar navigation — only the page regions
+// (title, sidebar, #main, bottom bar) as one SSE patch that morphs them by id.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, c templ.Component) {
+	s.renderStatus(w, r, http.StatusOK, c)
+}
+
+// renderStatus is render with a status code for full loads (404 pages). A navigation
+// always answers 200: Datastar treats other statuses as failed requests and retries them.
+func (s *Server) renderStatus(w http.ResponseWriter, r *http.Request, code int, c templ.Component) {
+	if isNav(r) {
+		r = r.WithContext(templates.WithNav(r.Context()))
+		sse := datastar.NewSSE(w, r)
+		if err := sse.PatchElementTempl(c); err != nil {
+			s.Log.Error("render nav", "path", r.URL.Path, "err", err)
+		}
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
 	if err := c.Render(r.Context(), w); err != nil {
 		s.Log.Error("render", "path", r.URL.Path, "err", err)
 	}
@@ -150,10 +173,12 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c templ.Componen
 
 func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	v := viewSignals{PF: chi.URLParam(r, "pf"), Range: r.URL.Query().Get("range")}
+	if isNav(r) && v.Range == "" {
+		v.Range = readView(r).Range // keep the range picked before navigating away
+	}
 	v.normalize()
 	if _, ok := s.resolvePortfolio(v.PF, portfolio.Snapshot{}); !ok {
-		w.WriteHeader(http.StatusNotFound)
-		s.render(w, r, templates.ErrorFull(s.shell(r, "Not found", "overview", "all", ""), "That portfolio doesn't exist (it may have been deleted)."))
+		s.renderStatus(w, r, http.StatusNotFound, templates.ErrorFull(s.shell(r, "Not found", "overview", "all", ""), "That portfolio doesn't exist (it may have been deleted)."))
 		return
 	}
 	s.render(w, r, templates.OverviewFull(s.overviewPage(r, v)))
@@ -308,8 +333,7 @@ func (s *Server) walletPage(r *http.Request, id, tab string) (templates.WalletPa
 func (s *Server) wallet(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.walletPage(r, chi.URLParam(r, "id"), r.URL.Query().Get("tab"))
 	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		s.render(w, r, templates.ErrorFull(s.shell(r, "Not found", "wallets", "all", ""), "That wallet doesn't exist (it may have been removed)."))
+		s.renderStatus(w, r, http.StatusNotFound, templates.ErrorFull(s.shell(r, "Not found", "wallets", "all", ""), "That wallet doesn't exist (it may have been removed)."))
 		return
 	}
 	s.render(w, r, templates.WalletFull(p))

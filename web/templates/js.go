@@ -85,8 +85,10 @@ const bodyInit = `try { const s = window.localStorage; if (s) { $hide = s.getIte
 // would be written over the stored values before they are restored.
 const bodyEffect = `const h = $hide, t = $theme; try { const s = window.localStorage; if (s) { s.setItem('vault.hide', h ? '1' : '0'); s.setItem('vault.theme', t) } } catch (e) {} ; t === 'system' ? delete document.documentElement.dataset.theme : (document.documentElement.dataset.theme = t)`
 
-// liveInit opens the persistent SSE stream.
-const liveInit = `@get('/stream', ` + liveFilter + `)`
+// liveInit opens the persistent SSE stream. requestCancellation 'cleanup' aborts it when
+// the #live element is removed — i.e. when navigating away from the overview — so a
+// stream never outlives the page it patches.
+const liveInit = `@get('/stream', {filterSignals: {include: /^(pf|range)$/}, requestCancellation: 'cleanup'})`
 
 const refreshClick = `@post('/refresh', ` + liveFilter + `)`
 
@@ -314,3 +316,22 @@ const logosChange = `@post('/settings/logos', {contentType: 'form'})`
 
 // backupImportSubmit posts the restore form (multipart: the file and the mode).
 const backupImportSubmit = `@post('/backup/import', {contentType: 'form'})`
+
+// navClick turns an in-app link into a Datastar navigation: push the URL, then @get the
+// same URL; the server answers a Datastar GET with only the page regions (title, sidebar,
+// #main, bottom bar) over SSE, so styles, fonts and scripts never reload. Modified clicks
+// (cmd/ctrl/shift/alt, middle button) keep the browser's default, e.g. open in a new tab.
+// pf, when non-empty, sets the portfolio signal first (portfolio links and Overview).
+func navClick(href, pf string) string {
+	h := JSString(href)
+	setPF := ""
+	if pf != "" {
+		setPF = "$pf = " + JSString(pf) + ", "
+	}
+	return "(evt.metaKey || evt.ctrlKey || evt.shiftKey || evt.altKey || evt.button) || (evt.preventDefault(), " +
+		setPF + "$q = '', history.pushState(null, '', " + h + "), @get(" + h + ", " + liveFilter + "), window.scrollTo(0, 0))"
+}
+
+// navPop handles the browser's back/forward buttons the same way. Pages outside the app
+// shell (the add-source flow) are reloaded instead, since they use a different layout.
+const navPop = `location.pathname.startsWith('/sources/') ? location.reload() : ($pf = location.pathname.startsWith('/p/') ? decodeURIComponent(location.pathname.slice(3)) : 'all', $q = '', @get(location.pathname + location.search, ` + liveFilter + `))`

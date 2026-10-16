@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"strings"
@@ -553,4 +554,21 @@ func pfSaveLabel(p PortfolioFormPage) string {
 		return "Save changes"
 	}
 	return "Create portfolio"
+}
+
+type navCtxKey struct{}
+
+// WithNav marks a render as a Datastar navigation: Layout then emits only the page
+// regions (see navRegions) for the server to send as one SSE patch.
+func WithNav(ctx context.Context) context.Context { return context.WithValue(ctx, navCtxKey{}, true) }
+
+// IsNav reports whether ctx is a navigation render.
+func IsNav(ctx context.Context) bool { v, _ := ctx.Value(navCtxKey{}).(bool); return v }
+
+// navPF is the portfolio signal a main-nav link sets: Overview means all holdings.
+func navPF(key string) string {
+	if key == "overview" {
+		return "all"
+	}
+	return ""
 }

@@ -200,7 +200,7 @@ templ AlertFormFull(p AlertFormPage) {
 
 templ alertFormBody(p AlertFormPage) {
 	<div class="pf-editor" data-signals={ alertSignals(p) }>
-		<a class="back" href="/alerts">
+		<a class="back" href="/alerts" data-on:click={ navClick("/alerts", "") }>
 			@Icon("chevron-left", 16)
 			Alerts
 		</a>

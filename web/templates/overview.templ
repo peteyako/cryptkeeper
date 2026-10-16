@@ -33,7 +33,7 @@ templ Dashboard(p OverviewPage) {
 						for _, pf := range p.Portfolios {
 							@portfolioLink(p.Shell, pf)
 						}
-						<a class="nav-item pf-menu__manage" href="/portfolios">Manage portfolios</a>
+						<a class="nav-item pf-menu__manage" href="/portfolios" data-on:click={ navClick("/portfolios", "") }>Manage portfolios</a>
 					</div>
 				</details>
 				if normPF(p.PF) != "all" {

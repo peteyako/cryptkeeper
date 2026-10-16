@@ -48,7 +48,7 @@ templ WalletFull(p WalletPage) {
 
 templ walletBody(p WalletPage) {
 	<div class="wallet">
-		<a class="back" href={ templ.URL(pfHref(normPF(p.PF))) }>
+		<a class="back" href={ templ.URL(pfHref(normPF(p.PF))) } data-on:click={ navClick(pfHref(normPF(p.PF)), normPF(p.PF)) }>
 			@Icon("chevron-left", 16)
 			{ p.BackLabel() }
 		</a>

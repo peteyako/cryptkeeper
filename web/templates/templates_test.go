@@ -416,7 +416,7 @@ func TestLayoutHead(t *testing.T) {
 	p := byName(t, allPages(t), "overview")
 	has(t, p,
 		`<html lang="en">`,
-		`<title>Overview · Vault</title>`,
+		`<title id="page-title">Overview · Vault</title>`,
 		`name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"`,
 		`name="theme-color" content="`+templates.ThemeColorDark+`" media="(prefers-color-scheme: dark)"`,
 		`name="theme-color" content="`+templates.ThemeColorLight+`" media="(prefers-color-scheme: light)"`,
@@ -447,7 +447,7 @@ func TestLayoutHead(t *testing.T) {
 	)
 
 	// The live stream element is hidden and uses data-init, never data-on:load.
-	has(t, p, `<div id="live" hidden data-init="@get(&#39;/stream&#39;, {filterSignals: {include: /^(pf|range)$/}})"></div>`)
+	has(t, p, `<div id="live" hidden data-init="@get(&#39;/stream&#39;, {filterSignals: {include: /^(pf|range)$/}, requestCancellation: &#39;cleanup&#39;})"></div>`)
 	lacks(t, p, "data-on:load")
 
 	// Focus layout (the add-source flow) has no navigation.
@@ -889,7 +889,7 @@ func TestPortfolioManager(t *testing.T) {
 	p := byName(t, pages, "portfolios")
 	un := page{"portfolios (unescaped)", html.UnescapeString(p.html), false}
 	has(t, p,
-		`<title>Portfolios · Vault</title>`, `<h1 class="h-title">Portfolios</h1>`,
+		`<title id="page-title">Portfolios · Vault</title>`, `<h1 class="h-title">Portfolios</h1>`,
 		`href="/portfolios/new"`, "New portfolio", `aria-label="Hide balances"`,
 		"Long-term", "Trading", "Majors", "3 wallets", "2 wallets", "All wallets", "All assets", "BTC, ETH, SOL +2",
 		"2 assets", "3 assets", "None", "53% of net worth", "47% of net worth",
@@ -913,11 +913,11 @@ func TestPortfolioManager(t *testing.T) {
 	has(t, p, `<span class="fig-v">$30,238.33</span>`, `$ ••••••`)
 
 	// The sidebar reads "Portfolios" as the current section, and no main item is current.
-	has(t, p, `class="nav-head nav-head--on"`, `class="nav-manage" href="/portfolios" aria-current="page"`)
+	has(t, p, `class="nav-head nav-head--on"`, `class="nav-manage" href="/portfolios" data-on:click=`)
 	if n := strings.Count(p.html, `aria-current="page"`); n != 1 {
 		t.Errorf("only the Manage link should be current on /portfolios, got %d aria-current", n)
 	}
-	lacks(t, p, "nav-item--on", "bn-item--on", "@get(")
+	lacks(t, p, "nav-item--on", "bn-item--on", "@get(&#39;/view", "@get(&#39;/stream")
 
 	// Save and restore.
 	has(t, p,
@@ -982,7 +982,7 @@ func TestPortfolioFormPage(t *testing.T) {
 	n := byName(t, pages, "portfolio form new")
 	un := page{"new (unescaped)", html.UnescapeString(n.html), false}
 	has(t, un,
-		`<title>New portfolio · Vault</title>`, "New portfolio", "Group some of your holdings under a name.",
+		`<title id="page-title">New portfolio · Vault</title>`, "New portfolio", "Group some of your holdings under a name.",
 		`<form id="portfolio-form" class="form card pf-form" method="post" action="/portfolios"`,
 		`data-indicator="saving"`, `data-on:submit="@post('/portfolios', {contentType: 'form'})"`,
 		`data-attr:disabled="$saving"`, "Create portfolio", `<a class="btn btn--ghost" href="/portfolios">Cancel</a>`,
@@ -1174,7 +1174,7 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 		// Assets without history show the dash with an accessible name.
 		`<span class="chg chg--none" aria-label="No 7 day change available">—</span>`,
 		// The sidebar and the phone menu lead to the manager.
-		`class="nav-manage" href="/portfolios">Manage</a>`, `class="nav-item pf-menu__manage" href="/portfolios">Manage portfolios</a>`,
+		`class="nav-manage" href="/portfolios" data-on:click=`, `class="nav-item pf-menu__manage" href="/portfolios" data-on:click=`, `>Manage portfolios</a>`,
 		`href="/portfolios/new"`,
 	)
 	lacks(t, ov, `nav-head--on`, "pf-edit", "/portfolios/all/edit")
@@ -1216,8 +1216,8 @@ func TestActivityPage(t *testing.T) {
 	p := byName(t, pages, "activity")
 	un := unescaped(p)
 	has(t, p,
-		`<title>Activity · Vault</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
-		`aria-label="Hide balances"`, `<a class="nav-item nav-item--on" href="/activity" aria-current="page">`,
+		`<title id="page-title">Activity · Vault</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
+		`aria-label="Hide balances"`, `<a class="nav-item nav-item--on" href="/activity" data-on:click=`,
 		`<div class="activity" data-signals="{actSource: &#39;&#39;, actAsset: &#39;&#39;, actKind: &#39;&#39;}">`,
 		`role="group" aria-label="Filter activity"`, `data-indicator="filtering"`,
 		`<label class="field__label" for="f-act-source">Source</label>`, `<label class="field__label" for="f-act-asset">Asset</label>`, `<label class="field__label" for="f-act-kind">Kind</label>`,
@@ -1395,8 +1395,8 @@ func TestReportsPage(t *testing.T) {
 	p := byName(t, pages, "reports")
 	un := unescaped(p)
 	has(t, p,
-		`<title>Reports · Vault</title>`, `<h1 class="h-title">Reports</h1>`, "Profit and loss, cost basis and exports",
-		`<a class="nav-item nav-item--on" href="/reports" aria-current="page">`,
+		`<title id="page-title">Reports · Vault</title>`, `<h1 class="h-title">Reports</h1>`, "Profit and loss, cost basis and exports",
+		`<a class="nav-item nav-item--on" href="/reports" data-on:click=`,
 		// Tiles.
 		"Cost basis", "Value", "Unrealized P/L", "Basis known for 92% of value", `class="cover"`, `style="width:91.8%;"`,
 		`<span class="stat__value chg--up">▲ <span class="fig">`, `<span class="stat__sub chg--up">+23.32%</span>`, "All holdings, at today's prices",
@@ -1552,8 +1552,8 @@ func TestAlertsPage(t *testing.T) {
 	p := byName(t, pages, "alerts")
 	un := unescaped(p)
 	has(t, p,
-		`<title>Alerts · Vault</title>`, `<h1 class="h-title">Alerts</h1>`, "Get a notification when something changes",
-		`<a class="nav-item nav-item--on" href="/alerts" aria-current="page">`, `<a class="btn btn--primary btn--add" href="/alerts/new">`,
+		`<title id="page-title">Alerts · Vault</title>`, `<h1 class="h-title">Alerts</h1>`, "Get a notification when something changes",
+		`<a class="nav-item nav-item--on" href="/alerts" data-on:click=`, `<a class="btn btn--primary btn--add" href="/alerts/new">`,
 		// Rules.
 		`id="alert-rules"`, "5 rules", "Cold storage watch", "Any decrease in Cold storage", "BTC above $70,000", "Big day", "Kraken down", "Large send",
 		`<span class="chip chip--sm chip--info">Balance drop</span>`, `<span class="chip chip--sm chip--info">Price</span>`, `<span class="chip chip--sm chip--info">Portfolio move</span>`,
@@ -1626,7 +1626,7 @@ func TestAlertForm(t *testing.T) {
 	n := byName(t, pages, "alert form new")
 	un := unescaped(n)
 	has(t, n,
-		`<title>New alert · Vault</title>`, `<h1 class="h-title">New alert</h1>`, "Pick what to watch for", `<a class="back" href="/alerts">`,
+		`<title id="page-title">New alert · Vault</title>`, `<h1 class="h-title">New alert</h1>`, "Pick what to watch for", `<a class="back" href="/alerts" data-on:click=`,
 		`<form id="alert-form" class="form card pf-form" method="post" action="/alerts"`, `data-indicator="saving"`, `data-attr:disabled="$saving"`,
 		`<label class="field__label" for="f-type">Alert type</label>`, `name="type"`, `data-bind="ruleType"`,
 		`<option value="balance_drop" selected>Balance drop (cold-storage security)</option>`, `<option value="price">Price above or below</option>`,
@@ -1654,7 +1654,7 @@ func TestAlertForm(t *testing.T) {
 	price := byName(t, pages, "alert form edit "+demo.AlertBTCAbove)
 	pun := unescaped(price)
 	has(t, pun,
-		`<title>Edit alert · Vault</title>`, `action="/alerts/btc-70k"`, `name="editId" value="btc-70k"`, `data-signals="{ruleType: 'price'}"`,
+		`<title id="page-title">Edit alert · Vault</title>`, `action="/alerts/btc-70k"`, `name="editId" value="btc-70k"`, `data-signals="{ruleType: 'price'}"`,
 		`data-on:submit="@post('/alerts/btc-70k', {contentType: 'form'})"`, `<option value="price" selected>Price above or below</option>`,
 		`value="BTC"`, `value="70000"`, `value="BTC above $70,000"`, `<option value="24h" selected>24 hours</option>`, ">Save alert</button>",
 		`<datalist id="al-assets">`, `<option value="BTC">Bitcoin</option>`,

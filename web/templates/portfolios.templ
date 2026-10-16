@@ -265,7 +265,7 @@ templ PortfolioFormFull(p PortfolioFormPage) {
 
 templ portfolioFormBody(p PortfolioFormPage) {
 	<div class="pf-editor" data-signals={ pfFormSignals(p) }>
-		<a class="back" href="/portfolios">
+		<a class="back" href="/portfolios" data-on:click={ navClick("/portfolios", "") }>
 			@Icon("chevron-left", 16)
 			Portfolios
 		</a>

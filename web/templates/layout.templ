@@ -38,12 +38,36 @@ templ layoutFocus(s Shell, body templ.Component) {
 }
 
 templ page(s Shell, bare bool, body templ.Component) {
+	if IsNav(ctx) {
+		@navRegions(s, bare, body)
+	} else {
+		@fullPage(s, bare, body)
+	}
+}
+
+// navRegions is what a Datastar navigation receives instead of the whole document: the
+// title and the three id'd regions of the app shell, each morphed in place by id. A page
+// outside the shell (the add-source flow) can't be patched into it, so it reloads.
+templ navRegions(s Shell, bare bool, body templ.Component) {
+	if bare {
+		<main id="main" data-init="location.reload()"></main>
+	} else {
+		<title id="page-title">{ pageTitle(s.Title) }</title>
+		@sidebar(s)
+		<main id="main" class="main" tabindex="-1">
+			@body
+		</main>
+		@bottomBar(s)
+	}
+}
+
+templ fullPage(s Shell, bare bool, body templ.Component) {
 	<!doctype html>
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-			<title>{ pageTitle(s.Title) }</title>
+			<title id="page-title">{ pageTitle(s.Title) }</title>
 			<meta name="color-scheme" content="dark light"/>
 			<meta name="theme-color" content={ ThemeColorDark } media="(prefers-color-scheme: dark)"/>
 			<meta name="theme-color" content={ ThemeColorLight } media="(prefers-color-scheme: light)"/>
@@ -64,6 +88,7 @@ templ page(s Shell, bare bool, body templ.Component) {
 			data-class="{'amounts-hidden': $hide}"
 			data-init={ bodyInit }
 			data-effect={ bodyEffect }
+			data-on:popstate__window={ navPop }
 		>
 			if bare {
 				<main id="main" class="focus" tabindex="-1">
@@ -84,8 +109,8 @@ templ page(s Shell, bare bool, body templ.Component) {
 }
 
 templ sidebar(s Shell) {
-	<nav class="sidebar" aria-label="Main">
-		<a class="brand" href="/" aria-label="Vault, overview">
+	<nav id="sidebar" class="sidebar" aria-label="Main">
+		<a class="brand" href="/" aria-label="Vault, overview" data-on:click={ navClick("/", "all") }>
 			<span class="brand__mark">
 				@Icon("vault", 16)
 			</span>
@@ -96,6 +121,7 @@ templ sidebar(s Shell) {
 				<a
 					class={ "nav-item", templ.KV("nav-item--on", s.Active == it.Key) }
 					href={ templ.URL(it.Href) }
+					data-on:click={ navClick(it.Href, navPF(it.Key)) }
 					if s.Active == it.Key {
 						aria-current="page"
 					}
@@ -111,6 +137,7 @@ templ sidebar(s Shell) {
 				<a
 					class="nav-manage"
 					href="/portfolios"
+					data-on:click={ navClick("/portfolios", "") }
 					if s.Active == "portfolios" {
 						aria-current="page"
 					}
@@ -119,7 +146,7 @@ templ sidebar(s Shell) {
 			for _, p := range s.Portfolios {
 				@portfolioLink(s, p)
 			}
-			<a class="nav-new" href="/portfolios/new">
+			<a class="nav-new" href="/portfolios/new" data-on:click={ navClick("/portfolios/new", "") }>
 				@Icon("plus", 14)
 				New portfolio
 			</a>
@@ -152,6 +179,7 @@ templ portfolioLink(s Shell, p PortfolioNav) {
 		<a
 			class="nav-item"
 			href={ templ.URL(pfHref(p.ID)) }
+			data-on:click={ navClick(pfHref(p.ID), p.ID) }
 		>
 			<span class="nav-item__name">{ p.Name }</span>
 			<span class="nav-item__count">{ p.Count }</span>
@@ -160,11 +188,12 @@ templ portfolioLink(s Shell, p PortfolioNav) {
 }
 
 templ bottomBar(s Shell) {
-	<nav class="bottomnav" aria-label="Main">
+	<nav id="bottomnav" class="bottomnav" aria-label="Main">
 		for _, it := range bottomNav {
 			<a
 				class={ "bn-item", templ.KV("bn-item--on", s.Active == it.Key) }
 				href={ templ.URL(it.Href) }
+				data-on:click={ navClick(it.Href, navPF(it.Key)) }
 				if s.Active == it.Key {
 					aria-current="page"
 				}

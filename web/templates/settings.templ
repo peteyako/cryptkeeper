@@ -82,7 +82,7 @@ templ settingsBody(p SettingsPage) {
 						for _, w := range p.Wallets {
 							{{ glyph, label, tone := StatusView(w, time.Now()) }}
 							<li class="src-row">
-								<a class="src-row__main" href={ templ.URL(walletHref(w.ID)) }>
+								<a class="src-row__main" href={ templ.URL(walletHref(w.ID)) } data-on:click={ navClick(walletHref(w.ID), "") }>
 									<span class={ "src-dot", "src-dot--" + SourceTone(w.Kind) } aria-hidden="true"></span>
 									<span class="src-row__text">
 										<span class="src-row__name">{ w.Label }</span>

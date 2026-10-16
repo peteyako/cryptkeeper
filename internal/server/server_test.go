@@ -625,3 +625,45 @@ func TestPortfolioExportCarriesAlertRules(t *testing.T) {
 		t.Fatal("portfolio not restored")
 	}
 }
+
+func TestDatastarNavigationPatchesRegionsOnly(t *testing.T) {
+	e := newEnv(t, "")
+	// A normal browser load is a whole document.
+	if _, page := e.do("GET", "/activity", nil, nil); !strings.Contains(page, "<html") {
+		t.Fatal("full load must render the document")
+	}
+	// A Datastar @get of the same URL gets only the regions, as one SSE patch.
+	resp, out := e.do("GET", "/activity", nil, ds(nil))
+	if !strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
+		t.Fatalf("content type %q", resp.Header.Get("Content-Type"))
+	}
+	for _, want := range []string{"datastar-patch-elements", `id="page-title"`, `id="sidebar"`, `id="main"`, `id="bottomnav"`, "Activity · Vault"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("nav patch missing %q", want)
+		}
+	}
+	for _, never := range []string{"<html", "<head>", "datastar.js", "app.css"} {
+		if strings.Contains(out, never) {
+			t.Errorf("nav patch must not resend %q", never)
+		}
+	}
+	// A missing page still patches (200): Datastar would retry an error status.
+	resp, out = e.do("GET", "/w/nope", nil, ds(nil))
+	if resp.StatusCode != 200 || !strings.Contains(out, "doesn") {
+		t.Fatalf("missing wallet via nav: %d", resp.StatusCode)
+	}
+	if resp, _ := e.do("GET", "/w/nope", nil, nil); resp.StatusCode != 404 {
+		t.Fatalf("missing wallet via full load: %d", resp.StatusCode)
+	}
+	// The overview keeps the chart range the client had picked.
+	e.reg.Upsert(sources.Def{ID: "m", Type: sources.TypeManual, Label: "M", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
+	e.ref.Force(context.Background())
+	sig := url.QueryEscape(`{"pf":"all","range":"1M"}`)
+	if _, out := e.do("GET", "/?datastar="+sig, nil, ds(nil)); !strings.Contains(out, `class="seg__btn seg--on" aria-pressed="true" data-on:click="$range = &#39;1M&#39;`) {
+		t.Fatal("overview nav should render the range from the client's signal")
+	}
+	// Pages outside the app shell reload instead of patching into it.
+	if _, out := e.do("GET", "/sources/new", nil, ds(nil)); !strings.Contains(out, "location.reload()") {
+		t.Fatal("add-source flow must reload on navigation")
+	}
+}
