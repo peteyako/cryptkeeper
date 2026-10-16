@@ -20,9 +20,9 @@ tasks:
       - go run . serve -config config.yaml
 
   dev:
-    desc: Live reload while editing templates (templ watch + proxy)
+    desc: Auto-rebuild and restart on changes with air (app on :8787, browser-reloading proxy on :8788)
     cmds:
-      - go tool templ generate --watch --proxy="http://localhost:8787" --cmd="go run . serve -config config.yaml"
+      - go tool air
 
   preview:
     desc: Serve every screen with demo data on http://localhost:8790

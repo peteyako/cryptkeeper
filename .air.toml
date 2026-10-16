@@ -1,0 +1,39 @@
+# air (https://github.com/air-verse/air) rebuilds and restarts Vault when Go, templ, CSS or JS
+# files change. Run it with `task dev` (or `go tool air`).
+#
+#   http://localhost:8787  the app itself
+#   http://localhost:8788  the same app through air's proxy, which also reloads the browser
+#                          after each rebuild
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # templ files compile to *_templ.go first; those generated files are excluded from the
+  # watch below so generating them doesn't trigger a second rebuild.
+  pre_cmd = ["go tool templ generate"]
+  cmd = "go build -o ./tmp/vault ."
+  entrypoint = ["./tmp/vault"]
+  args_bin = ["serve", "-config", "config.yaml"]
+  include_ext = ["go", "templ", "css", "js", "webmanifest"]
+  exclude_dir = ["tmp", "data", "dist", "docs", ".task", ".git", "testdata"]
+  exclude_regex = ["_test\\.go$", "_templ\\.go$"]
+  delay = 300
+  # Vault shuts down gracefully on SIGINT (closes SSE streams, finishes the request).
+  send_interrupt = true
+  kill_delay = "3s"
+  stop_on_error = true
+
+[proxy]
+  enabled = true
+  proxy_port = 8788
+  app_port = 8787
+
+[log]
+  main_only = false
+  time = false
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false

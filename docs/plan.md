@@ -386,7 +386,7 @@ portfolios:
   - Every browser API guarded by truthiness.
 
 ## Deployment
-- `task generate|dev|run|build` (go-task; was a Makefile). `task dev` runs templ watch + proxy. Cross-compiles for linux/amd64 and arm64.
+- `task generate|dev|run|build` (go-task; was a Makefile). `task dev` runs air (rebuild + restart; browser reload via its proxy on :8788). Cross-compiles for linux/amd64 and arm64.
 - Listens on `0.0.0.0:8787`.
 - **Docker:** `golang:1.26-alpine` (templ generate + build, `CGO_ENABLED=0`) → distroless. Mounts `config.yaml`, `.env` and `data/`. `HEALTHCHECK` runs `crypto-portfolio healthcheck`. Works with podman compose.
 - **README:**

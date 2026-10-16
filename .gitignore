@@ -5,6 +5,7 @@
 /wallets/
 # build output
 /crypto-portfolio
+/tmp/
 /dist/
 *.test
 # OS cruft

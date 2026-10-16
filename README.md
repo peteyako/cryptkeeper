@@ -210,7 +210,7 @@ Solana RPC and spam settings.
 
 ```sh
 task --list       # everything available
-task dev          # templ watch + live reload
+task dev          # air: rebuild + restart on change; :8788 also reloads the browser
 task preview      # every screen with demo data on :8790
 task test         # go test -race ./...
 task check        # generate (no drift) + vet + test
