@@ -18,10 +18,13 @@ templ Form8949Doc(r report.YearReport) {
 }
 
 // Form8949Pages renders every Form 8949 page of the year: one block per box, split into
-// pages of 11 rows (the 2025 revision), each with its own totals row. Reused by the CPA report.
+// pages of 11 rows (the 2025 revision), each with its own totals row. Reused by the CPA
+// report. A row the forms cannot place shows the error instead of a silently short form.
 templ Form8949Pages(r report.YearReport) {
-	{{ parts := report.Form8949(r) }}
-	if len(parts) == 0 {
+	{{ parts, err := report.Form8949(r) }}
+	if err != nil {
+		<p role="alert"><strong>{ err.Error() }</strong></p>
+	} else if len(parts) == 0 {
 		<p>No disposals in { strconv.Itoa(r.Year) }.</p>
 	}
 	for _, part := range parts {
@@ -73,6 +76,10 @@ templ Form8949Pages(r report.YearReport) {
 
 // ScheduleDTable is the Schedule D line totals of the digital-asset boxes.
 templ ScheduleDTable(r report.YearReport) {
+	{{ lines, err := report.ScheduleD(r) }}
+	if err != nil {
+		<p role="alert"><strong>{ err.Error() }</strong></p>
+	}
 	<table>
 		<thead>
 			<tr>
@@ -85,7 +92,7 @@ templ ScheduleDTable(r report.YearReport) {
 			</tr>
 		</thead>
 		<tbody>
-			for _, l := range report.ScheduleD(r) {
+			for _, l := range lines {
 				<tr>
 					<td>{ l.Line }</td>
 					<td>{ l.Box }</td>

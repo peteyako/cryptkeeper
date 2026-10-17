@@ -42,20 +42,27 @@ func (e *engine) index(txs []core.Tx) {
 //     the lots moved (the pair was linked after the close, the prior year is a Koinly
 //     import, or the other half was ignored as spam) and the half is unpaired, as below.
 //
-// A half whose peer is not in Input.Txs, failed, or is not linked back changes no lots and
-// raises IssueTransferUnpaired per leg.
+// A half whose peer is not in Input.Txs, failed, or is not linked back (see unpaired) is
+// listed in Result.Unpaired. Untagged, it changes no lots and raises IssueTransferUnpaired per
+// leg; tagged, the tag applies as on a receive or send (see taggedMove).
 func (e *engine) transfer(tx core.Tx) {
 	if e.paired[tx.ID] {
 		return
 	}
-	peer, ok := e.peers[tx.PeerID]
-	before := ok && peer.Time.Before(e.in.From)
-	if !ok || peer.ID == tx.ID || peer.PeerID != tx.ID || (before && !e.in.PairedBeforeFrom[tx.ID]) {
-		for _, v := range e.legs(tx) {
+	if e.unpaired(tx) {
+		e.out.Unpaired = append(e.out.Unpaired, tx.ID)
+		legs := e.legs(tx)
+		if tag, ok := e.tagOf(tx); ok {
+			e.taggedMove(tx, tag, legs)
+			return
+		}
+		for _, v := range legs {
 			e.issue(IssueTransferUnpaired, tx, v.AssetKey, v.Amount)
 		}
 		return
 	}
+	peer := e.peers[tx.PeerID]
+	before := peer.Time.Before(e.in.From)
 	e.paired[tx.ID], e.paired[peer.ID] = true, true
 	if before {
 		return
@@ -92,6 +99,18 @@ func (e *engine) transfer(tx core.Tx) {
 			e.settle(peer, v, noteFee)
 		}
 	}
+}
+
+// unpaired reports whether tx, a transfer half not yet processed, has no usable peer: the
+// peer is not in Input.Txs, failed, is tx itself or is not linked back, or is before From
+// without tx in Input.PairedBeforeFrom. A failed half is never unpaired: it only pays its fee.
+func (e *engine) unpaired(tx core.Tx) bool {
+	if tx.PeerID == "" || tx.Status == core.TxFailed || e.paired[tx.ID] {
+		return false
+	}
+	peer, ok := e.peers[tx.PeerID]
+	before := ok && peer.Time.Before(e.in.From)
+	return !ok || peer.ID == tx.ID || peer.PeerID != tx.ID || (before && !e.in.PairedBeforeFrom[tx.ID])
 }
 
 // move carries one asset from the sending half of a transfer (leg out < 0 of tx from) to

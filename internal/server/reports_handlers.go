@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -222,23 +224,51 @@ func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchReports(sse *datastar.ServerSentEventGenerator, r *http.Request, mutate func(*templates.ReportsPage)) {
+	r = r.WithContext(s.withActivity(r.Context()))
 	p := s.reportsPage(r)
 	if mutate != nil {
 		mutate(&p)
 	}
+	s.patchTaxSection(sse, r, &p)
 	_ = sse.PatchElementTempl(templates.PnLTable(p))
 	_ = sse.PatchElementTempl(templates.CSVResultView(p.Import))
+}
+
+// csvImportLimit is the biggest CSV the importer reads; multipartSlack covers the multipart
+// framing around the file in the request body.
+const (
+	csvImportLimit = 8 << 20
+	multipartSlack = 1 << 20
+	csvTooBig      = "That file is too large to import (the limit is 8 MB)."
+)
+
+// uploadErrMsg is the message for a failed upload parse: tooBig when the body hit its size
+// limit, else fallback.
+func uploadErrMsg(err error, fallback, tooBig string) string {
+	var mbe *http.MaxBytesError
+	if errors.As(err, &mbe) {
+		return tooBig
+	}
+	return fallback
 }
 
 // csvImport parses a Coinbase or Kraken CSV export into activity under a pseudo-source.
 func (s *Server) csvImport(w http.ResponseWriter, r *http.Request) {
 	outcome := templates.ImportOutcome{}
+	r.Body = http.MaxBytesReader(w, r.Body, csvImportLimit+multipartSlack)
+	var raw []byte
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		outcome.Message = "Choose a CSV file to import."
+		outcome.Message = uploadErrMsg(err, "Choose a CSV file to import.", csvTooBig)
 	} else if file, _, err := r.FormFile("file"); err != nil {
 		outcome.Message = "Choose a CSV file to import."
 	} else {
-		defer file.Close()
+		raw, _ = io.ReadAll(io.LimitReader(file, csvImportLimit+1))
+		file.Close()
+		if len(raw) > csvImportLimit {
+			outcome.Message = csvTooBig
+		}
+	}
+	if outcome.Message == "" {
 		var txs []core.Tx
 		var perr error
 		skipped := 0
@@ -247,10 +277,10 @@ func (s *Server) csvImport(w http.ResponseWriter, r *http.Request) {
 		switch src {
 		case "kraken":
 			opts.SourceID = "kraken-csv"
-			txs, perr = costbasis.ParseKrakenLedgersCSV(io.LimitReader(file, 8<<20), opts)
+			txs, perr = costbasis.ParseKrakenLedgersCSV(bytes.NewReader(raw), opts)
 		default:
 			opts.SourceID = "coinbase-csv"
-			txs, perr = costbasis.ParseCoinbaseCSV(io.LimitReader(file, 8<<20), opts)
+			txs, perr = costbasis.ParseCoinbaseCSV(bytes.NewReader(raw), opts)
 		}
 		switch {
 		case perr != nil:

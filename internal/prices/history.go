@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/httpx"
 )
@@ -24,6 +26,9 @@ const (
 
 	histUnknownFor = 6 * time.Hour
 	histMaxCovered = 64
+	// histFetchTimeout bounds a shared windowed fetch, which runs detached from the request
+	// of whichever caller started it.
+	histFetchTimeout = 60 * time.Second
 )
 
 // Historical returns the closing USD price of symbol for the UTC day containing day.
@@ -48,7 +53,7 @@ func (s *Service) Historical(ctx context.Context, symbol string, day time.Time) 
 	case d.After(today):
 		return 0, false, nil
 	case d.Equal(today):
-		return s.histResolveToday(ctx, sym, today, now, func(ctx context.Context) (float64, bool, bool, error) {
+		return s.histResolveToday(ctx, sym, "", today, now, func(ctx context.Context) (float64, bool, bool, error) {
 			candles, err := s.fetchCandles(ctx, sym, today, today)
 			if err != nil {
 				var se *httpx.StatusError
@@ -72,7 +77,8 @@ func (s *Service) Historical(ctx context.Context, symbol string, day time.Time) 
 
 // histResolve is the lookup shared by Historical and HistoricalMint: the price_history row
 // for asset, else (unless d is before oldest, when non-zero) the remembered misses under
-// key, else one singleflighted windowed fetch whose stored window answers d.
+// key, else one singleflighted windowed fetch whose stored window answers d. The shared
+// fetch runs on its own context, so a caller that gives up does not fail the others.
 func (s *Service) histResolve(ctx context.Context, key, asset string, d, oldest, now time.Time,
 	fetch func(ctx context.Context) (*histWindow, error)) (float64, bool, error) {
 	if usd, ok := s.histDB(ctx, asset, d); ok {
@@ -84,20 +90,31 @@ func (s *Service) histResolve(ctx context.Context, key, asset string, d, oldest,
 	if s.histKnownMissing(key, d, now) {
 		return 0, false, nil
 	}
-	run := func() (*histWindow, error) {
+	run := func(ctx context.Context) (*histWindow, error) {
 		// Another caller may have stored the day while this one waited.
 		if usd, ok := s.histDB(ctx, asset, d); ok {
 			return &histWindow{first: d, last: d, closes: map[string]float64{d.Format(dayFormat): usd}}, nil
 		}
 		return fetch(ctx)
 	}
-	v, err, _ := s.sfHist.Do(key, func() (any, error) { return run() })
-	if err != nil {
-		return 0, false, err
+	ch := s.sfHist.DoChan(key, func() (any, error) {
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), histFetchTimeout)
+		defer cancel()
+		return run(fctx)
+	})
+	var res singleflight.Result
+	select {
+	case <-ctx.Done():
+		return 0, false, ctx.Err()
+	case res = <-ch:
 	}
-	w := v.(*histWindow)
+	if res.Err != nil {
+		return 0, false, res.Err
+	}
+	w := res.Val.(*histWindow)
 	if !w.covers(d) { // joined another caller's fetch for a distant day
-		if w, err = run(); err != nil {
+		var err error
+		if w, err = run(ctx); err != nil {
 			return 0, false, err
 		}
 	}
@@ -107,11 +124,20 @@ func (s *Service) histResolve(ctx context.Context, key, asset string, d, oldest,
 
 // histResolveToday answers a still-forming day from fetch, which reports the price, whether
 // there is one, and whether the upstream does not know the asset at all (remembered as a miss
-// under key). Nothing is stored.
-func (s *Service) histResolveToday(ctx context.Context, key string, today, now time.Time,
+// under key). Nothing is stored, but an answer is kept in memory for todayTTL, per key and
+// variant (which of the day's prices fetch picks), so a page that prices many assets, or
+// renders again, does not ask the upstream each time.
+func (s *Service) histResolveToday(ctx context.Context, key, variant string, today, now time.Time,
 	fetch func(ctx context.Context) (usd float64, ok, unknown bool, err error)) (float64, bool, error) {
 	if s.histKnownMissing(key, today, now) {
 		return 0, false, nil
+	}
+	ck := key + "|" + variant
+	s.mu.Lock()
+	e, hit := s.todayCache[ck]
+	s.mu.Unlock()
+	if hit && now.Before(e.until) && e.day.Equal(today) {
+		return e.usd, e.ok, nil
 	}
 	usd, ok, unknown, err := fetch(ctx)
 	if err != nil {
@@ -120,7 +146,20 @@ func (s *Service) histResolveToday(ctx context.Context, key string, today, now t
 	if unknown {
 		s.markUnknown(key, now)
 	}
+	s.mu.Lock()
+	s.todayCache[ck] = todayEntry{usd: usd, ok: ok, day: today, until: now.Add(todayTTL)}
+	s.mu.Unlock()
 	return usd, ok, nil
+}
+
+// todayTTL is how long an answer for a still-forming day is reused.
+const todayTTL = 5 * time.Minute
+
+type todayEntry struct {
+	usd   float64
+	ok    bool
+	day   time.Time
+	until time.Time
 }
 
 // histWindow is the outcome of one candle fetch: closes by "YYYY-MM-DD" for the UTC days
@@ -162,8 +201,9 @@ func (s *Service) histFetch(ctx context.Context, sym string, d, today, now time.
 			closes[cd.Format(dayFormat)] = c.close
 		}
 	}
-	s.histStore(ctx, sym, closes)
-	s.markCovered(sym, first, last)
+	if s.histStore(ctx, sym, closes) == nil {
+		s.markCovered(sym, first, last) // only a stored window is known to have no other days
+	}
 	return &histWindow{first: first, last: last, closes: closes}, nil
 }
 
@@ -208,34 +248,35 @@ func (s *Service) histDB(ctx context.Context, sym string, d time.Time) (float64,
 	return usd, positive(usd)
 }
 
-func (s *Service) histStore(ctx context.Context, sym string, closes map[string]float64) {
+// histStore writes closes in one transaction; a failure is logged and returned.
+func (s *Service) histStore(ctx context.Context, sym string, closes map[string]float64) (err error) {
 	if len(closes) == 0 {
-		return
+		return nil
 	}
+	defer func() {
+		if err != nil {
+			s.log.Warn("prices: store price_history failed", "asset", sym, "err", err)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		s.log.Warn("prices: store price_history failed", "asset", sym, "err", err)
-		return
+		return err
 	}
 	defer tx.Rollback()
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO price_history (asset, day, usd) VALUES (?, ?, ?)
 		ON CONFLICT(asset, day) DO UPDATE SET usd = excluded.usd`)
 	if err != nil {
-		s.log.Warn("prices: store price_history failed", "asset", sym, "err", err)
-		return
+		return err
 	}
 	defer stmt.Close()
 	for day, usd := range closes {
 		if _, err := stmt.ExecContext(ctx, sym, day, usd); err != nil {
-			s.log.Warn("prices: store price_history failed", "asset", sym, "err", err)
-			return
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		s.log.Warn("prices: store price_history failed", "asset", sym, "err", err)
-	}
+	return tx.Commit()
 }
 
 // --- remembered misses, so long activity lists do not re-ask for the same gaps ---

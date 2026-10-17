@@ -25,6 +25,27 @@ var taxDownloads = []struct{ Label, Path string }{
 	{"IRS forms PDF", "irs-forms.pdf"},
 }
 
+// taxDownloadsFor is the downloads a year offers: a Koinly year has no transaction history
+// (CryptKeep never replayed it), so its link is left out.
+func taxDownloadsFor(r report.YearReport) []struct{ Label, Path string } {
+	if r.Source != "koinly" {
+		return taxDownloads
+	}
+	out := make([]struct{ Label, Path string }, 0, len(taxDownloads))
+	for _, d := range taxDownloads {
+		if d.Path != "transactions.csv" {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// txfNote warns that the TXF file can't say "digital asset".
+const txfNote = "TurboTax TXF has no digital-asset codes: its rows map to the securities boxes A–F (G→A … L→F). Check them in TurboTax Desktop, or prefer the TurboTax CSV."
+
+// writeOffDeleteSubmit asks first, then deletes the write-off the form names.
+const writeOffDeleteSubmit = `confirm('Delete this write-off? The parked units it disposed of come back.') && @post(el.action, {contentType: 'form'})`
+
 func taxDownloadHref(year int, path string) string {
 	return "/reports/tax/" + strconv.Itoa(year) + "/" + path
 }

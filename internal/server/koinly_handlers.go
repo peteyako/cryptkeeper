@@ -392,7 +392,10 @@ func (s *Server) koinlyWallets(ctx context.Context, addresses bool) []koinly.Wal
 // knownAssets is every asset CryptKeep has seen, from the snapshot's rows and the activity
 // legs, without spam, sorted by symbol. A snapshot row's name wins over an activity leg.
 func (s *Server) knownAssets(st koinlyState) []koinly.AssetInfo {
-	spam := spamSet(s.Cfg.Solana.HideMints, st.snap)
+	spam := spamSet(s.Cfg.Solana.HideMints)
+	for k := range quietSet(st.snap, spam) {
+		spam[k] = true // auto-hidden tokens are no mapping choice either
+	}
 	at := map[string]int{}
 	var out []koinly.AssetInfo
 	add := func(key, sym, name string) {
@@ -556,10 +559,13 @@ func (s *Server) koinlyDiscard(w http.ResponseWriter, r *http.Request) {
 
 // koinlyAccept closes the draft's year: its closing lots are the reconciled opening lots,
 // its disposals and income are Koinly's rows verbatim. The mappings go to tax.yaml, the
-// draft is deleted and the browser goes back to Reports.
+// draft is deleted and the browser goes back to Reports. Like a close, it holds closeMu, so
+// it never races a close or reopen of the years (lock order: draftMu, then closeMu).
 func (s *Server) koinlyAccept(w http.ResponseWriter, r *http.Request) {
 	s.draftMu.Lock()
+	s.closeMu.Lock()
 	msg := s.koinlyClose(r.Context())
+	s.closeMu.Unlock()
 	s.draftMu.Unlock()
 	if msg != "" {
 		s.patchKoinly(w, r, templates.ImportOutcome{}, templates.ImportOutcome{Message: msg})
@@ -574,7 +580,10 @@ func (s *Server) koinlyAccept(w http.ResponseWriter, r *http.Request) {
 }
 
 // koinlyClose does the accept: it returns why it refused, or "" once the year is closed
-// and the draft deleted. The caller holds s.draftMu.
+// and the draft deleted. The year is saved first (a refused save writes nothing), then the
+// mappings; should those fail, the year stays closed and the draft is kept so Accept can be
+// retried (re-importing the latest closed year replaces it). The caller holds s.draftMu and
+// s.closeMu.
 func (s *Server) koinlyClose(ctx context.Context) string {
 	d, ok, err := s.loadDraft(ctx)
 	switch {
@@ -588,6 +597,14 @@ func (s *Server) koinlyClose(ctx context.Context) string {
 		return rev.blocked
 	}
 	op := rev.op
+	y := tax.Year{
+		Year: d.Year, Source: "koinly", ClosedAt: s.Now().UTC(), Timezone: s.taxLoc().String(),
+		Summary: tax.Summarize(d.Gains, d.Income), Disposals: d.Gains, Income: d.Income,
+		ClosingLots: op.Lots, ClosingParked: op.Parked,
+	}
+	if err := s.TaxYears.Save(y); err != nil {
+		return fmt.Sprintf("Couldn't close %d: %v", d.Year, err)
+	}
 	names := koinly.WalletNames(d.Txns, d.Gains)
 	err = s.TaxSettings.Update(func(t *tax.Settings) {
 		if t.WalletMap == nil {
@@ -608,15 +625,8 @@ func (s *Server) koinlyClose(ctx context.Context) string {
 		}
 	})
 	if err != nil {
-		return "Nothing was saved: " + err.Error()
-	}
-	y := tax.Year{
-		Year: d.Year, Source: "koinly", ClosedAt: s.Now(),
-		Summary: tax.Summarize(d.Gains, d.Income), Disposals: d.Gains, Income: d.Income,
-		ClosingLots: op.Lots, ClosingParked: op.Parked,
-	}
-	if err := s.TaxYears.Save(y); err != nil {
-		return fmt.Sprintf("Couldn't close %d: %v", d.Year, err)
+		s.invalidateTax() // the year is closed all the same
+		return fmt.Sprintf("%d is closed, but the wallet and asset mappings couldn't be saved: %v. Accept again to save them.", d.Year, err)
 	}
 	if err := s.DB.DeleteKV(ctx, koinlyDraftKey); err != nil {
 		s.Log.Warn("koinly import: delete draft", "err", err)

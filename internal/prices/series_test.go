@@ -30,9 +30,10 @@ func TestSeriesDailyFromCandles(t *testing.T) {
 
 func TestSeriesUsesMintForSPL(t *testing.T) {
 	e := newEnv(t)
+	today := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
 	m := map[string]float64{}
 	for i := 0; i < 10; i++ {
-		d := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -i)
+		d := today.AddDate(0, 0, -i)
 		m[d.Format(dayFmt)] = 0.1 * float64(10-i)
 	}
 	e.fk.cg["MintX"] = m
@@ -48,8 +49,16 @@ func TestSeriesUsesMintForSPL(t *testing.T) {
 			t.Fatalf("not ascending: %v", pts)
 		}
 	}
-	if !near(pts[0].USD, m[pts[0].Day.Format(dayFmt)]) {
-		t.Errorf("first point %v does not match series", pts[0])
+	// A day's point is its close: CoinGecko's price at the next 00:00 UTC, like a Coinbase
+	// candle's close; today's is the newest price.
+	for _, p := range pts {
+		next := p.Day.AddDate(0, 0, 1)
+		if p.Day.Equal(today) {
+			next = today
+		}
+		if !near(p.USD, m[next.Format(dayFmt)]) {
+			t.Errorf("point %s = %v, want %v (the price at %s 00:00)", p.Day.Format(dayFmt), p.USD, m[next.Format(dayFmt)], next.Format(dayFmt))
+		}
 	}
 }
 

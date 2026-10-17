@@ -820,6 +820,33 @@ func TestValuerFallsBackToMint(t *testing.T) {
 	}
 }
 
+func TestValuerSkipsHiddenMints(t *testing.T) {
+	v := &fakeMintValuer{mintPrice: func(string, time.Time) (float64, bool, error) { return 0.5, true, nil }}
+	v.price = func(string, time.Time) (float64, bool, error) { return 0, false, nil }
+	spam := mk("src", "spam", t0, "spl:SPAM", 1000)
+	spam.Legs[0].Mint = "SPAM"
+	kept := mk("src", "kept", t0, "spl:M", 4)
+	kept.Legs[0].Mint = "M"
+	s := newSyncer(t, entry("src", doneWith(spam, kept)))
+	s.Valuer = v
+	s.SkipMints = []string{"SPAM"}
+	if _, err := s.Store.Upsert(context.Background(), []core.Tx{spam}); err != nil { // already stored: revalue sees it too
+		t.Fatal(err)
+	}
+	syncOnce(t, s)
+	syncOnce(t, s)
+	for _, call := range v.mintCalled() {
+		if strings.HasPrefix(call, "SPAM@") {
+			t.Fatalf("a hidden mint was priced: %v", v.mintCalled())
+		}
+	}
+	if legs, _ := usdOf(t, s.Store, "src:spam"); legs[0] != nil {
+		t.Errorf("hidden mint valued: %v", *legs[0])
+	}
+	legs, _ := usdOf(t, s.Store, "src:kept")
+	wantUSD(t, "kept", legs[0], 2)
+}
+
 func TestValuerSymbolFirst(t *testing.T) {
 	v := &fakeMintValuer{mintPrice: func(string, time.Time) (float64, bool, error) {
 		t.Fatal("mint valuer called although the symbol priced the leg")

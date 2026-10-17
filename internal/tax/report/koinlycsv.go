@@ -143,7 +143,16 @@ func WriteHoldings(w io.Writer, r YearReport) error {
 		value += h.ValueUSD
 	}
 	recs = append(recs, []string{"Total", "-", money(cost), money(value), "-"})
-	return writeTitled(w, fmt.Sprintf("Balances as at 12/31/%d 23:59", r.Year),
+	// As at the report's date: Dec 31 23:59 for a finished year, now for the year in progress.
+	asOf := r.AsOf
+	if asOf.IsZero() {
+		loc := r.Loc
+		if loc == nil {
+			loc = time.UTC
+		}
+		asOf = yearEnd(r.Year, loc)
+	}
+	return writeTitled(w, "Balances as at "+koinlyTime(asOf, r.Loc),
 		[]string{"Asset", "Quantity", "Cost (USD)", "Value (USD)", "Description"}, recs)
 }
 
@@ -198,6 +207,16 @@ func safeText(s string) string {
 // comes from the tx's income row (reward/income/airdrop) or gift/lost row; a gifts/lost row
 // whose Note is "lost" is Lost, any other is Gift. Failed txs are skipped.
 func WriteTransactions(w io.Writer, year int, txs []core.Tx, res tax.Result, rs Resolver, loc *time.Location) error {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return WriteTransactionsRange(w, year, time.Date(year, 1, 1, 0, 0, 0, 0, loc), time.Date(year+1, 1, 1, 0, 0, 0, 0, loc), txs, res, rs, loc)
+}
+
+// WriteTransactionsRange is WriteTransactions for the txs dated in [from, to) rather than in
+// the calendar year: the first open year after a year closed in another timezone starts at
+// that close's midnight (see tax.OpenYearStart), as the engine's replay does.
+func WriteTransactionsRange(w io.Writer, year int, from, to time.Time, txs []core.Tx, res tax.Result, rs Resolver, loc *time.Location) error {
 	if loc == nil {
 		loc = time.UTC
 	}
@@ -264,7 +283,7 @@ func WriteTransactions(w io.Writer, year int, txs []core.Tx, res tax.Result, rs 
 			peer.Status != core.TxFailed && idx[peer.ID] < i {
 			continue
 		}
-		if tx.Time.In(loc).Year() != year {
+		if tx.Time.Before(from) || !tx.Time.Before(to) {
 			continue
 		}
 		emitted[tx.ID] = true

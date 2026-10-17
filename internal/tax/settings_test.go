@@ -28,7 +28,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 		ManualLots: []Lot{{Wallet: "cold", Asset: "BTC", Amount: 1, CostUSD: 100, Acquired: at(2020, 1, 2, 3)}},
 		Tags:       map[string]TagEntry{"a": {Tag: TagGift, Note: "to mum"}},
 		Prices:     map[string]float64{"k": 1.5},
-		WalletBox:  map[string]string{"cold": "C"},
+		WalletBox:  map[string]string{"cold": "H"},
 	}
 	if err := s.Set(want); err != nil {
 		t.Fatal(err)

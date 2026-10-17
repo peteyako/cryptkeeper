@@ -29,15 +29,20 @@ func (s *Server) patchReview(w http.ResponseWriter, r *http.Request, errMsg stri
 	p := s.reportsPage(r)
 	p.Review.Err = errMsg
 	sse := datastar.NewSSE(w, r)
-	// The Tax section holds the review panel (its tab for the latest open year) and the
-	// tiles and counts the action just changed, so it is re-rendered whole.
+	s.patchTaxSection(sse, r, &p)
+	_ = sse.PatchElementTempl(templates.PnLTable(p))
+}
+
+// patchTaxSection re-renders the Tax section on its review tab with p's review panel. The
+// section holds the review panel (its tab for the latest open year) and the tiles and counts
+// a change just moved, so it is re-rendered whole. r must carry the activity (withActivity).
+func (s *Server) patchTaxSection(sse *datastar.ServerSentEventGenerator, r *http.Request, p *templates.ReportsPage) {
 	tp := s.taxPage(r.Context(), 0, "review", 1, &p.Review)
 	_ = sse.PatchElementTempl(templates.TaxSection(tp))
 	if !tp.ReviewTab {
 		// Latest year closed: no review tab, but the refusal still goes to the panel.
 		_ = sse.PatchElementTempl(templates.ReviewPanel(p.Review))
 	}
-	_ = sse.PatchElementTempl(templates.PnLTable(p))
 }
 
 // readForm parses the POST body; on failure it patches the refusal and reports false.
@@ -91,9 +96,10 @@ func (s *Server) activityByID(r *http.Request) (map[string]core.Tx, bool) {
 	return m, true
 }
 
-// tagRefusal is why tag may not be set on tx for asset ("" when it may). An empty tag
-// removes the tag and is always fine (but a closed year still refuses it).
-func (s *Server) tagRefusal(tx core.Tx, asset string, tag tax.Tag, current tax.Tag) string {
+// tagRefusal is why tag may not be set on tx for asset ("" when it may); unpaired says tx is
+// a transfer half with no usable peer (tax.Result.Unpaired). An empty tag removes the tag and
+// is always fine (but a closed year still refuses it).
+func (s *Server) tagRefusal(tx core.Tx, asset string, tag tax.Tag, current tax.Tag, unpaired bool) string {
 	if m := s.closedMsg(tx.Time); m != "" {
 		return m
 	}
@@ -101,7 +107,7 @@ func (s *Server) tagRefusal(tx core.Tx, asset string, tag tax.Tag, current tax.T
 		return ""
 	}
 	dir := assetDirection(tx, asset)
-	if !slices.Contains(reviewTagOptions(tx, dir, current), string(tag)) {
+	if !slices.Contains(reviewTagOptions(tx, dir, current, unpaired), string(tag)) {
 		what := map[string]string{"in": "receive", "out": "send"}[dir]
 		if what == "" {
 			what = "transaction"
@@ -134,7 +140,13 @@ func (s *Server) taxTag(w http.ResponseWriter, r *http.Request) {
 	if s.TaxSettings != nil {
 		current = s.TaxSettings.Get().Tags[id].Tag
 	}
-	if m := s.tagRefusal(tx, asset, tag, current); m != "" {
+	unpaired := false
+	if tx.PeerID != "" {
+		if res, ok := s.taxResult(r.Context()); ok {
+			_, unpaired = slices.BinarySearch(res.Unpaired, id)
+		}
+	}
+	if m := s.tagRefusal(tx, asset, tag, current, unpaired); m != "" {
 		s.patchReview(w, r, m)
 		return
 	}
@@ -179,7 +191,8 @@ func (s *Server) taxTagBulk(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		seen[is.TxID] = true
-		if m := s.tagRefusal(tx, asset, tag, current[is.TxID].Tag); m != "" {
+		_, unpaired := slices.BinarySearch(res.Unpaired, is.TxID)
+		if m := s.tagRefusal(tx, asset, tag, current[is.TxID].Tag, unpaired); m != "" {
 			if refused == 0 {
 				firstMsg = m
 			}
@@ -315,15 +328,25 @@ func (s *Server) taxWriteOff(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// taxWriteOffDelete removes the write-off at index i. The form also names it (wallet, asset,
+// date and amount, see writeOffAt); when the write-off now at i is another one (the list
+// changed since the page was drawn), nothing is deleted.
 func (s *Server) taxWriteOffDelete(w http.ResponseWriter, r *http.Request) {
+	if !s.readForm(w, r) {
+		return
+	}
 	i, err := strconv.Atoi(chi.URLParam(r, "i"))
 	if err != nil {
 		s.patchReview(w, r, "That write-off no longer exists.")
 		return
 	}
+	wallet, asset, at, amount := r.PostFormValue("wallet"), r.PostFormValue("asset"), r.PostFormValue("at"), r.PostFormValue("amount")
 	s.reviewSave(w, r, func(st *tax.Settings) string {
 		if i < 0 || i >= len(st.WriteOffs) {
 			return "That write-off no longer exists."
+		}
+		if wo := st.WriteOffs[i]; wo.Wallet != wallet || wo.Asset != asset || writeOffAt(wo) != at || writeOffAmount(wo) != amount {
+			return "The write-offs changed; reload and try again."
 		}
 		if m := s.closedMsg(st.WriteOffs[i].Date); m != "" {
 			return m

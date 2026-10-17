@@ -59,7 +59,7 @@ type fakeChain struct {
 	mintInfo   map[string]map[string]any // mint -> getAccountInfo(jsonParsed) value
 	metaAccts  map[string][]byte         // metaplex PDA -> raw account data
 	stake      []fakeStakeAcct
-	stakeFail  string // "", "rpc" (JSON-RPC error object) or "http" (HTTP 403)
+	stakeFail  string // "", "rpc" (JSON-RPC error object), "http" (HTTP 403) or "down" (HTTP 503)
 	// Staking rewards: getEpochInfo answers epoch (epoch k starts at slot k*fakeSlotsPerEpoch);
 	// getInflationReward answers from rewards (epoch -> stake pubkey -> lamports) with
 	// effectiveSlot = rewardSlot(epoch); getBlockTime answers from slotTimes (slot -> unix time),
@@ -68,6 +68,8 @@ type fakeChain struct {
 	rewards   map[uint64]map[string]uint64
 	slotTimes map[uint64]int64
 	skipped   map[uint64]bool
+	effOffset map[uint64]uint64 // epoch -> effectiveSlot past rewardSlot(epoch) (see undatedReward)
+	nullTimes map[uint64]bool   // slots whose getBlockTime answers null
 	// rewardErrBelow makes getInflationReward answer rewardErrCode for epochs below it;
 	// rewardErrAt makes it answer the given code for single epochs.
 	rewardErrBelow uint64
@@ -135,6 +137,18 @@ func (f *fakeChain) setRewardErr(epoch uint64, code int) {
 		return
 	}
 	f.rewardErrAt[epoch] = code
+}
+
+// undatedReward moves epoch's effective slot a few slots past the start of the next epoch (as
+// with partitioned rewards) and gives it no block time: getBlockTime answers null for it.
+func (f *fakeChain) undatedReward(epoch uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.effOffset == nil {
+		f.effOffset, f.nullTimes = map[uint64]uint64{}, map[uint64]bool{}
+	}
+	f.effOffset[epoch] = 7
+	f.nullTimes[rewardSlot(epoch)+7] = true
 }
 
 // skipSlot makes getBlockTime answer "slot was skipped" for slot.
@@ -452,6 +466,10 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprint(w, `{"jsonrpc":"2.0","error":{"code":-32602,"message":"Indexed requests require a personal token"},"id":1}`)
 			return
+		case "down":
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, `{"error":"unavailable"}`)
+			return
 		}
 		res := []any{}
 		for _, s := range stake {
@@ -505,7 +523,7 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 		for i, k := range keys {
 			if amt, ok := f.rewards[e][k]; ok {
 				out[i] = map[string]any{
-					"epoch": e, "effectiveSlot": rewardSlot(e), "amount": amt,
+					"epoch": e, "effectiveSlot": rewardSlot(e) + f.effOffset[e], "amount": amt,
 					"postBalance": 1_000_000_000 + amt, "commission": 7,
 				}
 			}
@@ -524,8 +542,12 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		at, ok := f.slotTimes[slot]
-		skipped := f.skipped[slot]
+		skipped, null := f.skipped[slot], f.nullTimes[slot]
 		f.mu.Unlock()
+		if null {
+			rpcReply(w, nil)
+			return
+		}
 		if skipped {
 			rpcErrorReply(w, -32007, fmt.Sprintf("Slot %d was skipped, or missing due to ledger jump to recent snapshot", slot))
 			return

@@ -164,16 +164,30 @@ func (s *Server) sealExport(raw []byte, name string) ([]byte, string, error) {
 	return sealed, name + "-encrypted", err
 }
 
+// backupRestoreLimit is the biggest backup file a restore reads. A larger one is refused
+// rather than read cut off, which would restore only part of it.
+const (
+	backupRestoreLimit = 64 << 20
+	backupTooBig       = "That file is too large to restore (the limit is 64 MB), so nothing was restored."
+)
+
 // backupImport restores a backup (or an older sources or portfolios export).
 func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 	outcome := templates.ImportOutcome{}
+	r.Body = http.MaxBytesReader(w, r.Body, backupRestoreLimit+multipartSlack)
+	var raw []byte
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		outcome.Message = "Choose a backup file to restore."
+		outcome.Message = uploadErrMsg(err, "Choose a backup file to restore.", backupTooBig)
 	} else if file, _, err := r.FormFile("file"); err != nil {
 		outcome.Message = "Choose a backup file to restore."
 	} else {
-		raw, _ := io.ReadAll(io.LimitReader(file, 4<<20))
+		raw, _ = io.ReadAll(io.LimitReader(file, backupRestoreLimit+1))
 		file.Close()
+		if len(raw) > backupRestoreLimit {
+			outcome.Message = backupTooBig
+		}
+	}
+	if outcome.Message == "" {
 		raw, err := s.Box.OpenFile(raw)
 		var res backup.Result
 		if err == nil {

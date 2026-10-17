@@ -3,6 +3,7 @@ package portfolio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -25,11 +26,11 @@ func bfSnap() Snapshot {
 	}
 }
 
-func bfPrice(_ context.Context, key, _ string, _ time.Time) (float64, bool) {
+func bfPrice(_ context.Context, key, _ string, _ time.Time) (float64, bool, error) {
 	if key == "SOL" {
-		return 50, true
+		return 50, true, nil
 	}
-	return 0, false
+	return 0, false, nil
 }
 
 func bfRows(t *testing.T, h *History) map[int64]historyRow {
@@ -56,7 +57,7 @@ func bfRows(t *testing.T, h *History) map[int64]historyRow {
 
 func TestBackfillWritesDailyRows(t *testing.T) {
 	h := &History{DB: openDB(t)}
-	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, bfPrice)
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice)
 	if err != nil || n != 8 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -76,7 +77,7 @@ func TestBackfillWritesDailyRows(t *testing.T) {
 func TestBackfillRollsBackActivity(t *testing.T) {
 	h := &History{DB: openDB(t)}
 	txs := []core.Tx{{SourceID: "w", Time: bfNow.AddDate(0, 0, -2), Legs: []core.Leg{{AssetKey: "SOL", Amount: 3}}}}
-	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), txs, bfPrice); err != nil {
+	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), txs, nil, bfPrice); err != nil {
 		t.Fatal(err)
 	}
 	rows := bfRows(t, h)
@@ -93,10 +94,10 @@ func TestBackfillRollsBackActivity(t *testing.T) {
 
 func TestBackfillIdempotent(t *testing.T) {
 	h := &History{DB: openDB(t)}
-	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, bfPrice); err != nil {
+	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice); err != nil {
 		t.Fatal(err)
 	}
-	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, bfPrice)
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice)
 	if err != nil || n != 0 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -108,7 +109,7 @@ func TestBackfillKeepsRecordedRows(t *testing.T) {
 	if _, err := h.DB.Exec(`INSERT INTO history (ts, prices, amounts) VALUES (?, '{"SOL":1}', '{"w":{"SOL":1}}')`, rec.Unix()); err != nil {
 		t.Fatal(err)
 	}
-	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, bfPrice)
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice)
 	if err != nil || n != 5 { // Oct 8..12
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -123,7 +124,7 @@ func TestBackfillKeepsRecordedRows(t *testing.T) {
 
 func TestBackfillPriceFallback(t *testing.T) {
 	h := &History{DB: openDB(t)}
-	if _, err := h.Backfill(context.Background(), 2, bfNow, bfSnap(), nil, bfPrice); err != nil {
+	if _, err := h.Backfill(context.Background(), 2, bfNow, bfSnap(), nil, nil, bfPrice); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range bfRows(t, h) {
@@ -136,7 +137,7 @@ func TestBackfillPriceFallback(t *testing.T) {
 func TestBackfillMakesSeriesStartEarlier(t *testing.T) {
 	h := &History{DB: openDB(t)}
 	snap := bfSnap()
-	if _, err := h.Backfill(context.Background(), 7, bfNow, snap, nil, bfPrice); err != nil {
+	if _, err := h.Backfill(context.Background(), 7, bfNow, snap, nil, nil, bfPrice); err != nil {
 		t.Fatal(err)
 	}
 	pts, err := h.Series(context.Background(), bfNow.AddDate(0, 0, -7), nil, &snap)
@@ -163,7 +164,7 @@ func TestBackfillRollbackRules(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			h := &History{DB: openDB(t)}
 			c.tx.SourceID, c.tx.Time = "w", at
-			if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), []core.Tx{c.tx}, bfPrice); err != nil {
+			if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), []core.Tx{c.tx}, nil, bfPrice); err != nil {
 				t.Fatal(err)
 			}
 			rows := bfRows(t, h)
@@ -185,7 +186,7 @@ func TestBackfillMakesChangeValid(t *testing.T) {
 		h := &History{DB: openDB(t)}
 		snap := bfSnap()
 		snap.UpdatedAt = now
-		if _, err := h.Backfill(context.Background(), 7, now, snap, nil, bfPrice); err != nil {
+		if _, err := h.Backfill(context.Background(), 7, now, snap, nil, nil, bfPrice); err != nil {
 			t.Fatal(err)
 		}
 		pts, err := h.Series(context.Background(), RangeStart("1W", now), nil, &snap)
@@ -219,20 +220,20 @@ func TestBackfillCancelledWritesNothing(t *testing.T) {
 	h := &History{DB: openDB(t)}
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
-	price := func(c context.Context, key, mint string, d time.Time) (float64, bool) {
+	price := func(c context.Context, key, mint string, d time.Time) (float64, bool, error) {
 		calls++
 		if calls == 3 {
 			cancel()
 		}
 		return bfPrice(c, key, mint, d)
 	}
-	if _, err := h.Backfill(ctx, 7, bfNow, bfSnap(), nil, price); err == nil {
+	if _, err := h.Backfill(ctx, 7, bfNow, bfSnap(), nil, nil, price); err == nil {
 		t.Fatal("want error")
 	}
 	if n := len(bfRows(t, h)); n != 0 {
 		t.Fatalf("rows after cancel = %d", n)
 	}
-	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, bfPrice)
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice)
 	if err != nil || n != 8 {
 		t.Fatalf("rerun n=%d err=%v", n, err)
 	}
@@ -240,8 +241,8 @@ func TestBackfillCancelledWritesNothing(t *testing.T) {
 
 func TestBackfillRejectsBadPrices(t *testing.T) {
 	h := &History{DB: openDB(t)}
-	bad := func(context.Context, string, string, time.Time) (float64, bool) { return math.NaN(), true }
-	if _, err := h.Backfill(context.Background(), 1, bfNow, bfSnap(), nil, bad); err != nil {
+	bad := func(context.Context, string, string, time.Time) (float64, bool, error) { return math.NaN(), true, nil }
+	if _, err := h.Backfill(context.Background(), 1, bfNow, bfSnap(), nil, nil, bad); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range bfRows(t, h) {
@@ -256,15 +257,114 @@ func TestBackfillPriceFnMayUseTheDB(t *testing.T) {
 	h.DB.SetMaxOpenConns(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	price := func(c context.Context, key, mint string, d time.Time) (float64, bool) {
+	price := func(c context.Context, key, mint string, d time.Time) (float64, bool, error) {
 		var one int
 		if err := h.DB.QueryRowContext(c, `SELECT 1`).Scan(&one); err != nil {
-			return 0, false
+			return 0, false, nil
 		}
 		return bfPrice(c, key, mint, d)
 	}
-	n, err := h.Backfill(ctx, 7, bfNow, bfSnap(), nil, price)
+	n, err := h.Backfill(ctx, 7, bfNow, bfSnap(), nil, nil, price)
 	if err != nil || n != 8 {
 		t.Fatalf("n=%d err=%v", n, err)
+	}
+}
+
+func TestBackfillRefusesWalletNotSyncing(t *testing.T) {
+	for _, st := range []Status{StatusError, StatusPending} {
+		h := &History{DB: openDB(t)}
+		snap := bfSnap()
+		snap.Wallets = append(snap.Wallets, WalletView{ID: "cb", Label: "Invented Exchange", Status: st}) // no rows to roll back from
+		send := core.Tx{ID: "s", SourceID: "cb", Time: bfNow.AddDate(0, 0, -1), Kind: core.TxSend, Status: core.TxConfirmed,
+			Legs: []core.Leg{{AssetKey: "SOL", Amount: -3}}}
+		_, err := h.Backfill(context.Background(), 7, bfNow, snap, []core.Tx{send}, nil, bfPrice)
+		var ns *NotSyncedError
+		if !errors.As(err, &ns) || ns.Label != "Invented Exchange" {
+			t.Fatalf("%s: err = %v, want a NotSyncedError naming the wallet", st, err)
+		}
+		if n := len(bfRows(t, h)); n != 0 {
+			t.Fatalf("%s: %d rows written without the wallet", st, n)
+		}
+	}
+}
+
+func TestBackfillPriceErrorWritesNothing(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	boom := errors.New("upstream 503")
+	price := func(_ context.Context, key, _ string, d time.Time) (float64, bool, error) {
+		if key == "SOL" && d.Equal(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)) {
+			return 0, false, boom
+		}
+		return 50, true, nil
+	}
+	_, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, price)
+	var pe *PriceError
+	if !errors.As(err, &pe) || !errors.Is(err, boom) || pe.Asset != "SOL" {
+		t.Fatalf("err = %v, want a PriceError for SOL", err)
+	}
+	if n := len(bfRows(t, h)); n != 0 {
+		t.Fatalf("%d rows written with a fallback price", n)
+	}
+}
+
+func TestBackfillLooksUpOnlyWritableDays(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	rec := bfNow.AddDate(0, 0, -3) // Oct 13 15:00: only Oct 8..12 can be written
+	if _, err := h.DB.Exec(`INSERT INTO history (ts, prices, amounts) VALUES (?, '{"SOL":1}', '{"w":{"SOL":1}}')`, rec.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	var asked []time.Time
+	price := func(c context.Context, key, mint string, d time.Time) (float64, bool, error) {
+		asked = append(asked, d)
+		return bfPrice(c, key, mint, d)
+	}
+	if n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, price); err != nil || n != 5 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	for _, d := range asked {
+		if !d.Before(time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)) {
+			t.Fatalf("priced %s, a day that cannot be written", d.Format(time.DateOnly))
+		}
+	}
+
+	// Nothing writable at all: no lookups.
+	asked = nil
+	if n, err := h.Backfill(context.Background(), 2, bfNow, bfSnap(), nil, nil, price); err != nil || n != 0 || len(asked) != 0 {
+		t.Fatalf("n=%d err=%v lookups=%d", n, err, len(asked))
+	}
+}
+
+func TestBackfillSkipsZeroAmounts(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	// All 5 X arrived on Oct 15: on Oct 14 and before there was none.
+	txs := []core.Tx{{SourceID: "w", Time: bfNow.AddDate(0, 0, -1), Legs: []core.Leg{{AssetKey: "spl:X", Mint: "X", Amount: 5}}}}
+	var askedX []string
+	price := func(c context.Context, key, mint string, d time.Time) (float64, bool, error) {
+		if key == "spl:X" {
+			askedX = append(askedX, d.Format(time.DateOnly))
+		}
+		return bfPrice(c, key, mint, d)
+	}
+	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), txs, nil, price); err != nil {
+		t.Fatal(err)
+	}
+	if len(askedX) != 1 || askedX[0] != "2026-10-15" {
+		t.Errorf("X priced on %v, want only 2026-10-15", askedX)
+	}
+	if _, held := bfRows(t, h)[eod(time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC))].Amounts["w"]["spl:X"]; held {
+		t.Error("a zero amount was written")
+	}
+}
+
+func TestBackfillHonoursPositionTags(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	// A send into the user's own position, tagged as a position move: SOL stays held.
+	send := core.Tx{ID: "p", SourceID: "w", Time: bfNow.AddDate(0, 0, -1), Kind: core.TxSend, Legs: []core.Leg{{AssetKey: "SOL", Amount: -4}}}
+	isPosition := func(id string) bool { return id == "p" }
+	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), []core.Tx{send}, isPosition, bfPrice); err != nil {
+		t.Fatal(err)
+	}
+	if got := bfRows(t, h)[eod(time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC))].Amounts["w"]["SOL"]; !near(got, 10) {
+		t.Errorf("Oct 14 SOL = %v, want 10 (a tagged position move keeps its units)", got)
 	}
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"sort"
+	"strconv"
 	"time"
 
 	"crypto-portfolio/internal/core"
@@ -33,18 +34,21 @@ var reviewTitles = []struct {
 	{tax.IssuePositionExcess, "Position returned more than went in"},
 	{tax.IssueTransferUnpaired, "Unpaired transfers"},
 	{tax.IssueWriteOffExceedsParked, "Write-off exceeds parked"},
+	{tax.IssueUndatedLot, "Manual lots without a date"},
 }
 
 // reviewTagOptions are the tags a user may pick for tx: the receive set for "in", the send
-// set for "out". Kinds other than receive, send, other and position (and any tx with a
-// PeerID) get none: the engine ignores tags on them. position-gain is offered on a receive
-// that is a position move (a position tx, or one tagged position).
-func reviewTagOptions(tx core.Tx, direction string, current tax.Tag) []string {
-	if tx.PeerID != "" {
-		return nil
-	}
-	switch tx.Kind {
-	case core.TxReceive, core.TxSend, core.TxOther, core.TxPosition:
+// set for "out". Kinds other than receive, send, other and position get none: the engine
+// ignores tags on them. A tx with a PeerID gets them only when unpaired (its peer is missing:
+// tax.Result.Unpaired), whatever its kind, as the engine then honours its tag. position-gain
+// is offered on a receive that is a position move (a position tx, or one tagged position).
+func reviewTagOptions(tx core.Tx, direction string, current tax.Tag, unpaired bool) []string {
+	switch {
+	case tx.PeerID != "":
+		if !unpaired {
+			return nil
+		}
+	case tx.Kind == core.TxReceive, tx.Kind == core.TxSend, tx.Kind == core.TxOther, tx.Kind == core.TxPosition:
 	default:
 		return nil
 	}
@@ -77,6 +81,11 @@ func assetDirection(tx core.Tx, asset string) string {
 	}
 	return ""
 }
+
+// writeOffAt and writeOffAmount identify a write-off to its delete form: exact text forms
+// of its date and amount, compared as strings.
+func writeOffAt(w tax.WriteOff) string     { return w.Date.UTC().Format(time.RFC3339Nano) }
+func writeOffAmount(w tax.WriteOff) string { return strconv.FormatFloat(w.Amount, 'g', -1, 64) }
 
 // symbolNames resolves asset keys to symbols: the latest snapshot first, then the legs of
 // activity seen, then the short form of a Solana mint.
@@ -163,6 +172,12 @@ func (s *Server) reviewPage(ctx context.Context) templates.ReviewPage {
 	}
 	p.Close = s.idleCloseCard(p.OpenYear, openOK)
 
+	res, resOK := s.taxResult(ctx)
+	unpaired := make(map[string]bool, len(res.Unpaired))
+	for _, id := range res.Unpaired {
+		unpaired[id] = true
+	}
+
 	item := func(id, wallet, asset string, amount float64, at time.Time, kind tax.IssueKind) templates.ReviewItem {
 		it := templates.ReviewItem{
 			TxID: id, WalletLabel: label(wallet), Time: at.In(loc).Format("2006-01-02 15:04"),
@@ -199,11 +214,11 @@ func (s *Server) reviewPage(ctx context.Context) templates.ReviewPage {
 				it.PriceKey = tax.FeePriceKey(id)
 			}
 		}
-		it.TagOptions = reviewTagOptions(tx, it.Direction, settings.Tags[id].Tag)
+		it.TagOptions = reviewTagOptions(tx, it.Direction, settings.Tags[id].Tag, unpaired[id])
 		return it
 	}
 
-	if res, ok := s.taxResult(ctx); ok {
+	if resOK {
 		type gkey struct {
 			kind  tax.IssueKind
 			asset string
@@ -243,8 +258,9 @@ func (s *Server) reviewPage(ctx context.Context) templates.ReviewPage {
 
 	for i, w := range settings.WriteOffs {
 		p.WriteOffs = append(p.WriteOffs, templates.WriteOffRow{
-			Index: i, WalletLabel: label(w.Wallet), Symbol: names.of(w.Asset),
+			Index: i, Wallet: w.Wallet, Asset: w.Asset, WalletLabel: label(w.Wallet), Symbol: names.of(w.Asset),
 			Amount: w.Amount, Date: w.Date.In(loc).Format("2006-01-02"), ProceedsUSD: w.ProceedsUSD, Note: w.Note,
+			At: writeOffAt(w), AmountKey: writeOffAmount(w),
 		})
 	}
 

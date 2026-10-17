@@ -264,7 +264,7 @@ func TestTaxDownloadRoutes(t *testing.T) {
 	for path, first := range map[string]string{
 		"capital-gains.csv": "Capital gains report 2026\n\nDate Sold,Date Acquired,Asset,Amount,Cost (USD),Proceeds (USD),Gain / loss,Notes,Wallet Name,Holding period",
 		"income.csv":        "Income report 2026\n\nDate,Asset,Amount,Value (USD),Type,Description,Wallet Name",
-		"holdings.csv":      "Balances as at 12/31/2026 23:59\n\nAsset,Quantity,Cost (USD),Value (USD),Description",
+		"holdings.csv":      "Balances as at 10/16/2026 12:00\n\nAsset,Quantity,Cost (USD),Value (USD),Description", // the open year: as at now
 		"transactions.csv":  "Transaction report 2026\n\nDate,Type,Tag,Sending Wallet",
 		"other-gains.csv":   "Other gains report 2026\n\nDate,Asset,Amount,Value (USD),Type,Wallet Name",
 		"turbotax.csv":      "Currency Name,Purchase Date,Cost Basis,Date Sold,Proceeds",

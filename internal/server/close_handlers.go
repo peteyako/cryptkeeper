@@ -1,14 +1,18 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
 
+	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/web/templates"
 )
@@ -76,9 +80,9 @@ func (s *Server) taxCloseCancel(w http.ResponseWriter, r *http.Request) {
 
 const noTaxData = "Tax data isn't available"
 
-// outsideYear reports whether any frozen row falls outside [Jan 1 y, Jan 1 y+1) in loc.
-func outsideYear(res tax.Result, y int, loc *time.Location) bool {
-	from, to := time.Date(y, 1, 1, 0, 0, 0, 0, loc), time.Date(y+1, 1, 1, 0, 0, 0, 0, loc)
+// outsideYear reports whether any frozen row falls outside the year's [from, to) (see
+// openYearRange).
+func outsideYear(res tax.Result, from, to time.Time) bool {
 	out := func(t time.Time) bool { return t.Before(from) || !t.Before(to) }
 	for _, d := range res.Disposals {
 		if out(d.Sold) {
@@ -141,23 +145,24 @@ func (s *Server) taxClose(w http.ResponseWriter, r *http.Request) {
 		s.patchReview(w, r, "Still syncing; try again in a minute.")
 		return
 	}
-	wantFrom := time.Time{}
-	if hasLast {
-		wantFrom = time.Date(y, 1, 1, 0, 0, 0, 0, loc)
-	}
-	if !in.From.Equal(wantFrom) {
+	if !in.From.Equal(tax.OpenYearStart(last, hasLast, loc)) {
 		s.patchReview(w, r, "The closed years changed while closing; reload and try again.")
 		return
 	}
-	in.To = time.Date(y+1, 1, 1, 0, 0, 0, 0, loc)
+	from, to := s.openYearRange(y)
+	if pending := pendingIn(in.Txs, from, to); len(pending) > 0 {
+		s.patchReview(w, r, s.pendingRefusal(y, pending))
+		return
+	}
+	in.To = to
 	res := tax.Compute(in)
-	if outsideYear(res, y, loc) {
+	if outsideYear(res, from, to) {
 		s.patchReview(w, r, fmt.Sprintf("unexpected rows outside %d; nothing saved", y))
 		return
 	}
 	issues := 0
 	for _, is := range res.Issues {
-		if is.Time.In(loc).Year() == y {
+		if !is.Time.Before(from) && is.Time.Before(to) {
 			issues++
 		}
 	}
@@ -170,7 +175,7 @@ func (s *Server) taxClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = s.TaxYears.Save(tax.Year{
-		Year: y, Source: "cryptkeep", ClosedAt: s.Now().UTC(),
+		Year: y, Source: "cryptkeep", ClosedAt: s.Now().UTC(), Timezone: loc.String(),
 		Summary:   tax.Summarize(res.Disposals, res.Income),
 		Disposals: res.Disposals, Income: res.Income, GiftsLost: res.GiftsLost,
 		ClosingLots: res.Lots, ClosingParked: res.Parked, OpenIssues: issues,
@@ -182,6 +187,38 @@ func (s *Server) taxClose(w http.ResponseWriter, r *http.Request) {
 	}
 	s.invalidateTax()
 	s.patchReview(w, r, "")
+}
+
+// pendingIn is the txs in [from, to) still pending, by time: a year can't be closed on
+// figures that may still change.
+func pendingIn(txs []core.Tx, from, to time.Time) []core.Tx {
+	var out []core.Tx
+	for _, tx := range txs {
+		if tx.Status == core.TxPending && !tx.Time.Before(from) && tx.Time.Before(to) {
+			out = append(out, tx)
+		}
+	}
+	slices.SortFunc(out, func(a, b core.Tx) int { return cmp.Or(a.Time.Compare(b.Time), strings.Compare(a.ID, b.ID)) })
+	return out
+}
+
+// pendingRefusal names the pending txs (the first few) that keep year y open.
+func (s *Server) pendingRefusal(y int, pending []core.Tx) string {
+	const shown = 5
+	labels, _ := s.sourceLabels()
+	var parts []string
+	for _, tx := range pending[:min(len(pending), shown)] {
+		wallet := cmp.Or(labels[tx.SourceID], tx.SourceID)
+		parts = append(parts, fmt.Sprintf("%s %s (%s)", tx.Time.In(s.taxLoc()).Format("2006-01-02 15:04"), wallet, tx.ID))
+	}
+	if n := len(pending) - shown; n > 0 {
+		parts = append(parts, fmt.Sprintf("and %d more", n))
+	}
+	what := "1 transaction is still pending"
+	if len(pending) > 1 {
+		what = fmt.Sprintf("%d transactions are still pending", len(pending))
+	}
+	return fmt.Sprintf("Can't close %d: %s: %s. Close it once they have confirmed or failed.", y, what, strings.Join(parts, "; "))
 }
 
 func (s *Server) taxReopen(w http.ResponseWriter, r *http.Request) {

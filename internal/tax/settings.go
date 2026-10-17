@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,7 +32,7 @@ type Settings struct {
 	ManualLots []Lot               `yaml:"manualLots,omitempty"` //
 	Tags       map[string]TagEntry `yaml:"tags,omitempty"`       // by Tx.ID
 	Prices     map[string]float64  `yaml:"prices,omitempty"`     // PriceKey / FeePriceKey → USD
-	WalletBox  map[string]string   `yaml:"walletBox,omitempty"`  // source ID → 8949 box letter
+	WalletBox  map[string]string   `yaml:"walletBox,omitempty"`  // source ID or Koinly wallet name → short-term 8949 box G, H or I
 	WriteOffs  []WriteOff          `yaml:"writeOffs,omitempty"`  // parked units written off
 }
 
@@ -45,7 +46,8 @@ func ParseSettings(raw []byte) (Settings, error) {
 	return s.normalized()
 }
 
-// normalized returns a validated deep copy with Version set.
+// normalized returns a validated deep copy with Version set and the walletBox letters in
+// upper case.
 func (s Settings) normalized() (Settings, error) {
 	switch s.Version {
 	case 0, settingsVersion:
@@ -89,6 +91,13 @@ func (s Settings) normalized() (Settings, error) {
 		}
 	}
 	out := s.clone()
+	for w, box := range out.WalletBox {
+		box = strings.ToUpper(strings.TrimSpace(box))
+		if box != "G" && box != "H" && box != "I" {
+			return Settings{}, fmt.Errorf("tax.yaml: walletBox[%s]: %q is not a Form 8949 box; use G, H or I (the short-term letter; long-term rows go to J, K or L)", w, out.WalletBox[w])
+		}
+		out.WalletBox[w] = box
+	}
 	out.Version = settingsVersion
 	return out, nil
 }

@@ -69,12 +69,22 @@ templ ReviewPanel(p ReviewPage) {
 						<li class="review__row">
 							<span class="muted-text">{ w.Date }</span>
 							<span>{ w.WalletLabel }</span>
-							<span class="num">{ CoinAmount(w.Amount, w.Symbol) } { w.Symbol }</span>
-							<span class="muted-text num">{ "proceeds $" + strconv.FormatFloat(w.ProceedsUSD, 'f', 2, 64) }</span>
+							<span class="num">
+								@FigCoin(w.Amount, w.Symbol)
+							</span>
+							<span class="muted-text num">
+								@FigText("proceeds "+Fiat(w.ProceedsUSD), "proceeds $ ••••")
+							</span>
 							if w.Note != "" {
 								<span class="muted-text">{ w.Note }</span>
 							}
-							<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/writeoff/"+strconv.Itoa(w.Index)+"/delete") }>Delete</button>
+							<form class="review__form" method="post" action={ "/reports/tax/writeoff/" + strconv.Itoa(w.Index) + "/delete" } data-on:submit={ writeOffDeleteSubmit }>
+								<input type="hidden" name="wallet" value={ w.Wallet }/>
+								<input type="hidden" name="asset" value={ w.Asset }/>
+								<input type="hidden" name="at" value={ w.At }/>
+								<input type="hidden" name="amount" value={ w.AmountKey }/>
+								<button class="btn btn--ghost" type="submit" aria-label={ "Delete the " + w.Symbol + " write-off of " + w.Date }>Delete</button>
+							</form>
 						</li>
 					}
 				</ul>
@@ -160,7 +170,7 @@ templ reviewItem(it ReviewItem) {
 			<form class="review__form" method="post" action="/reports/tax/tag" data-on:submit={ reviewFormSubmit } data-on:change={ reviewFormSubmit }>
 				<input type="hidden" name="tx" value={ it.TxID }/>
 				<input type="hidden" name="asset" value={ it.Asset }/>
-				<select class="input" name="tag" aria-label="Tag">
+				<select class="input" name="tag" aria-label={ "Tag for " + it.Symbol + " on " + it.Time }>
 					<option value="">No tag</option>
 					for _, o := range it.TagOptions {
 						<option value={ o } selected?={ o == it.Tag }>{ o }</option>

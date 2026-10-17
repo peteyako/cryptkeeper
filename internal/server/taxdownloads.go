@@ -68,12 +68,15 @@ func (s *Server) taxBundleFor(w http.ResponseWriter, r *http.Request) (*taxBundl
 
 func (b *taxBundle) koinly() bool { return b.rep.Source == "koinly" }
 
-// transactions writes the Koinly-format transaction history (CryptKeep years only).
+// transactions writes the Koinly-format transaction history (CryptKeep years only) of the
+// activity the engine replays: taxActivity (no CSV duplicate of a synced trade, CSV rows in
+// their exchange's wallet) without what it ignores as spam.
 func (b *taxBundle) transactions(w io.Writer) error {
-	txs, err := b.s.allActivity(b.ctx)
+	txs, err := b.s.taxActivity(b.ctx)
 	if err != nil {
 		return err
 	}
+	txs = b.s.withoutSpam(txs)
 	res := tax.Result{Income: b.rep.Income}
 	for _, row := range b.rep.Rows {
 		res.Disposals = append(res.Disposals, row.Disposal)
@@ -81,7 +84,11 @@ func (b *taxBundle) transactions(w io.Writer) error {
 	for _, row := range b.rep.GiftsLost {
 		res.GiftsLost = append(res.GiftsLost, row.Disposal)
 	}
-	return report.WriteTransactions(w, b.year, txs, res, b.rs, b.rep.Loc)
+	if b.rep.Closed {
+		return report.WriteTransactions(w, b.year, txs, res, b.rs, b.rep.Loc)
+	}
+	from, to := b.s.openYearRange(b.year) // the engine's range, not the calendar year
+	return report.WriteTransactionsRange(w, b.year, from, to, txs, res, b.rs, b.rep.Loc)
 }
 
 // irsOptions are the IRS form filler's options: newer revisions cached under <data>/irs,
@@ -90,8 +97,11 @@ func (s *Server) irsOptions() irs.Options {
 	return irs.Options{FormsDir: filepath.Join(s.DataDir, "irs"), HTTPClient: s.HTTPClient}
 }
 
+// fillIRSForms fills the IRS PDFs; tests replace it to make the fill fail.
+var fillIRSForms = irs.FillFormsContext
+
 func (b *taxBundle) irsForms(w io.Writer) error {
-	return irs.FillFormsContext(b.ctx, b.rep, w, b.s.irsOptions())
+	return fillIRSForms(b.ctx, b.rep, w, b.s.irsOptions())
 }
 
 func (b *taxBundle) txf(w io.Writer) error { return report.WriteTXF(w, b.rep, b.s.Now()) }
@@ -204,7 +214,8 @@ func (s *Server) taxReport(w http.ResponseWriter, r *http.Request) {
 }
 
 // taxZip bundles every report of the year, named like Koinly's files with a cryptkeep_<year>_
-// prefix.
+// prefix. The IRS forms are optional: when they can't be filled the zip goes out without
+// them, with a NOTE.txt saying why.
 func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
 	b, cancel, ok := s.taxBundleFor(w, r)
 	if !ok {
@@ -212,32 +223,57 @@ func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 	entries := []struct {
-		name  string
-		write func(io.Writer) error
-		skip  bool
+		name     string
+		write    func(io.Writer) error
+		skip     bool
+		optional string // what the file is, for the note when it fails; "" = required
 	}{
-		{"capital_gains_report.csv", func(w io.Writer) error { return report.WriteGains(w, b.rep) }, false},
-		{"income_report.csv", func(w io.Writer) error { return report.WriteIncome(w, b.rep, b.rs) }, false},
-		{"other_gains_report.csv", func(w io.Writer) error { return report.WriteOtherGains(w, b.rep) }, false},
-		{"end_of_year_holdings_report.csv", func(w io.Writer) error { return report.WriteHoldings(w, b.rep) }, false},
-		{"transaction_history.csv", b.transactions, b.koinly()},
-		{"turbotax_online.csv", func(w io.Writer) error { return report.WriteTurboTaxCSV(w, b.rep) }, false},
-		{"turbotax.txf", b.txf, false},
-		{"irs_reports_form_8949_schedule_d.pdf", b.irsForms, false},
-		{"complete_tax_report.html", b.html, false},
+		{"capital_gains_report.csv", func(w io.Writer) error { return report.WriteGains(w, b.rep) }, false, ""},
+		{"income_report.csv", func(w io.Writer) error { return report.WriteIncome(w, b.rep, b.rs) }, false, ""},
+		{"other_gains_report.csv", func(w io.Writer) error { return report.WriteOtherGains(w, b.rep) }, false, ""},
+		{"end_of_year_holdings_report.csv", func(w io.Writer) error { return report.WriteHoldings(w, b.rep) }, false, ""},
+		{"transaction_history.csv", b.transactions, b.koinly(), ""},
+		{"turbotax_online.csv", func(w io.Writer) error { return report.WriteTurboTaxCSV(w, b.rep) }, false, ""},
+		{"turbotax.txf", b.txf, false, ""},
+		{"irs_reports_form_8949_schedule_d.pdf", b.irsForms, false, "The IRS forms PDF (Form 8949 and Schedule D)"},
+		{"complete_tax_report.html", b.html, false, ""},
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
+	var notes []string
 	for _, e := range entries {
 		if e.skip {
 			continue
 		}
-		f, err := zw.Create(fmt.Sprintf("cryptkeep_%d_%s", b.year, e.name))
+		name := fmt.Sprintf("cryptkeep_%d_%s", b.year, e.name)
+		write := e.write
+		if e.optional != "" {
+			// Filled aside first, so a failure leaves no partial file in the zip.
+			var part bytes.Buffer
+			if ferr := e.write(&part); ferr != nil {
+				s.Log.Warn("tax zip: left out", "entry", e.name, "err", ferr)
+				notes = append(notes, fmt.Sprintf("%s could not be made, so %s is not in this zip: %v\n", e.optional, name, ferr))
+				continue
+			}
+			write = func(w io.Writer) error { _, err := w.Write(part.Bytes()); return err }
+		}
+		f, err := zw.Create(name)
 		if err == nil {
-			err = e.write(f)
+			err = write(f)
 		}
 		if err != nil {
 			s.Log.Warn("tax zip", "entry", e.name, "err", err)
+			http.Error(w, "The export failed.", http.StatusInternalServerError)
+			return
+		}
+	}
+	if len(notes) > 0 {
+		f, err := zw.Create(fmt.Sprintf("cryptkeep_%d_NOTE.txt", b.year))
+		if err == nil {
+			_, err = io.WriteString(f, strings.Join(notes, "")+
+				"\nEvery other file is complete. Download the file again from the Tax section later, or copy the figures from the Form 8949 and Schedule D pages of complete_tax_report.html.\n")
+		}
+		if err != nil {
 			http.Error(w, "The export failed.", http.StatusInternalServerError)
 			return
 		}
@@ -294,6 +330,10 @@ func (s *Server) taxReportView(b *taxBundle) templates.TaxReportView {
 		return w
 	}
 	v := templates.TaxReportView{Report: rep, Generated: s.Now().In(loc).Format("01/02/2006"), Method: s.taxMethod(rep)}
+	var err error
+	if v.Short, v.Long, err = report.Totals(rep); err != nil {
+		v.TotalsErr = err.Error()
+	}
 	for _, in := range rep.Income {
 		sym := in.Asset
 		if rs.Symbol != nil {

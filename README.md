@@ -143,7 +143,14 @@ activity (including Solana position moves and staking rewards), plus:
 
 - **Manual lots** for history the APIs don't reach (in `data/tax.yaml`).
 - **CSV import** of the Coinbase *Transaction history* report and the Kraken *Ledgers* export
-  (Reports → CSV import). Re-importing the same file is safe.
+  (Reports → CSV import). Re-importing the same file is safe. Rows the live API also synced are
+  counted once. When you have exactly one Coinbase (or Kraken) source, the imported rows count
+  as that wallet's history, so older buys fund its sales; otherwise they stay in a separate CSV
+  wallet.
+
+Tokens you hide in Settings are ignored for tax. Tokens the dashboard hides on its own
+(unverified, unpriced or dust) still count in full; only an airdrop of one that arrived worth
+nothing is left off the Needs review list.
 
 Unrealized P/L per asset, realized P/L by year, and the holdings / history / P/L / activity CSV
 exports stay on the Reports page.
@@ -169,7 +176,7 @@ exports stay on the Reports page.
 ### What is stored
 
 Your choices live in `data/tax.yaml`: wallet and asset maps, manual lots, tags, prices, and
-per-wallet Form 8949 box overrides. Each closed year is frozen in `data/tax/<year>.yaml`. Both
+per-wallet Form 8949 box overrides (`walletBox`, see below). Each closed year is frozen in `data/tax/<year>.yaml`. Both
 are included in the Settings backup, so a restore brings back every closed year. Manual lots
 from an older `costbasis.yaml` are copied into `tax.yaml` once, in the `untracked` wallet; edit
 `tax.yaml` to assign wallets.
@@ -179,7 +186,7 @@ from an older `costbasis.yaml` are copied into `tax.yaml` once, in the `untracke
 The **Tax** view (Reports → Tax, pick a year) has tabs for Capital gains, Income, Year-end
 holdings and **Needs review**. Needs review appears only while the year is open. It lists what a human must decide, with controls to:
 
-- **Tag** a transaction (e.g. purchase, sale, income, airdrop, gift received, gift, lost, own wallet, position, position gain, spam), singly or in bulk.
+- **Tag** a transaction (e.g. purchase, sale, income, airdrop, gift received, gift, lost, own wallet, position, position gain, spam), singly or in bulk. An *own wallet* receive takes back coins held as `untracked` first, with their dates and cost. A transfer whose other half never arrived can be tagged like a plain send or receive.
 - Set a **price** (USD) where none could be found.
 - Add a **write-off** for a worthless or lost position.
 
@@ -187,9 +194,30 @@ Every change recomputes the reports.
 
 ### Closing a year
 
-Close a year when its Needs review list is clear (or you accept what is left). A closed year is
-frozen in `data/tax/<year>.yaml` and later years start from its lots. Only the latest closed
-year can be **reopened**, which deletes its file; the next close writes a fresh one.
+Close a year when its Needs review list is clear (or you accept what is left). A year with a
+pending transaction can't be closed until it confirms or fails. A closed year is frozen in
+`data/tax/<year>.yaml` with the tax timezone it was closed in; the next year starts at midnight
+on Jan 1 in that zone, so changing the tax timezone later never counts a transaction twice or
+drops one (the Tax view says so when the zones differ). Later years start from its lots. Only
+the latest closed year can be **reopened**, which deletes its file; the next close writes a
+fresh one.
+
+### Form 8949 boxes
+
+Rows go in the digital-asset boxes: **G/H/I** for short-term (Part I), **J/K/L** for long-term
+(Part II). A Coinbase or Kraken wallet gets G (J) for a lot it bought itself on or after
+Jan 1, 2026, else H (K); every other wallet gets I (L). For a Koinly-imported year the wallet is
+a Koinly name, so only names containing "coinbase" or "kraken" count as exchanges.
+
+To override a wallet, set its short-term letter in `tax.yaml`; long-term rows follow (G→J, H→K,
+I→L). Keys are source IDs, or Koinly wallet names for a Koinly year. Only G, H and I are
+accepted (any case): anything else makes `tax.yaml` fail to load with the wallet named.
+
+```yaml
+walletBox:
+  cold: I
+  Coinbase Pro: H   # a Koinly wallet name
+```
 
 ### Downloads
 
@@ -198,12 +226,14 @@ Each year's Tax view offers:
 - **Koinly-format CSVs:** capital gains, income, year-end holdings, transaction history and
   other gains. The transaction history isn't available for Koinly-imported years (use Koinly's
   own export).
-- **TurboTax:** CSV and TXF.
+- **TurboTax:** CSV and TXF. TXF has no digital-asset codes, so its rows map to the securities
+  boxes A–F (G→A, H→B, I→C, J→D, K→E, L→F): check them in TurboTax Desktop, or prefer the CSV.
 - **Form 8949 and Schedule D**, as a printable page (print to PDF).
 - **Complete tax report** for your CPA, as a printable page.
 - **Filled IRS PDFs:** official Form 8949 and Schedule D. Name and SSN are left blank for you to
   fill in. Newer form revisions are fetched from the IRS and cached in `data/irs/`.
-- **Everything (zip)** with all of the above.
+- **Everything (zip)** with all of the above. If the IRS PDFs can't be filled, the zip comes
+  without them and a `NOTE.txt` says why.
 
 Not tax advice. Check the numbers, and the Form 8949 boxes, with a tax professional before filing.
 

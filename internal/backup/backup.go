@@ -98,7 +98,8 @@ func Export(st Stores, withSecrets bool) ([]byte, error) {
 
 func isEmptySettings(t tax.Settings) bool {
 	return len(t.WalletMap) == 0 && len(t.AssetMap) == 0 && len(t.ManualLots) == 0 &&
-		len(t.Tags) == 0 && len(t.Prices) == 0 && len(t.WalletBox) == 0
+		len(t.Tags) == 0 && len(t.Prices) == 0 && len(t.WalletBox) == 0 &&
+		len(t.WriteOffs) == 0
 }
 
 // Parse strictly decodes a backup (unknown fields are line-numbered errors) and validates
@@ -327,6 +328,14 @@ func mergeTax(cur, in tax.Settings) tax.Settings {
 			return x.Wallet == l.Wallet && x.Asset == l.Asset && x.Amount == l.Amount && x.CostUSD == l.CostUSD && x.Acquired.Equal(l.Acquired) && x.Various == l.Various && x.TxID == l.TxID && x.Flag == l.Flag
 		}) {
 			out.ManualLots = append(out.ManualLots, l)
+		}
+	}
+	out.WriteOffs = slices.Clone(cur.WriteOffs)
+	for _, w := range in.WriteOffs {
+		if !slices.ContainsFunc(out.WriteOffs, func(x tax.WriteOff) bool {
+			return x.Wallet == w.Wallet && x.Asset == w.Asset && x.Amount == w.Amount && x.Date.Equal(w.Date) && x.ProceedsUSD == w.ProceedsUSD && x.Note == w.Note
+		}) {
+			out.WriteOffs = append(out.WriteOffs, w)
 		}
 	}
 	return out

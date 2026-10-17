@@ -43,10 +43,14 @@ type fakes struct {
 	jup     map[string]jupFake            // by mint
 	history map[string]map[string]float64 // Exchange candles: symbol -> "YYYY-MM-DD" -> close
 
-	cg        map[string]map[string]float64 // CoinGecko: mint -> "YYYY-MM-DD" -> USD at 00:00 UTC
-	cgStatus  map[string]int                // mint -> forced HTTP status (e.g. 404)
-	cgHeaders []http.Header                 // headers of every CoinGecko request
-	cgKey     string                        // key the test service returns
+	cg           map[string]map[string]float64 // CoinGecko: mint -> "YYYY-MM-DD" (00:00 UTC) or "YYYY-MM-DDTHH:MM" -> USD
+	cgStatus     map[string]int                // mint -> forced HTTP status (e.g. 404)
+	cgRetryAfter string                        // Retry-After header sent with a forced status
+	cgHeaders    []http.Header                 // headers of every CoinGecko request
+	cgKey        string                        // key the test service returns
+
+	candleIn   chan struct{} // when non-nil, receives a value as each candles request arrives
+	candleHold chan struct{} // when non-nil, the candles handler blocks until closed
 
 	delisted map[string]bool // Exchange products reporting status "delisted"; others 404 (unknown)
 	bad      map[string]bool // spot symbols answering 200 with garbage
@@ -230,7 +234,14 @@ func (f *fakes) handleCandles(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.candleQ = append(f.candleQ, url2{start, end})
 	days, found := f.history[sym]
+	in, hold := f.candleIn, f.candleHold
 	f.mu.Unlock()
+	if in != nil {
+		in <- struct{}{}
+	}
+	if hold != nil {
+		<-hold
+	}
 	buckets := 0
 	for d := end.UTC().Truncate(24 * time.Hour); !d.Before(start); d = d.Add(-24 * time.Hour) {
 		buckets++
@@ -456,8 +467,8 @@ func (f *fakes) handleProduct(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"id": sym + "-USD", "status": "delisted", "trading_disabled": true})
 }
 
-// handleCoinGecko serves {"prices": [[ms, usd], ...]} with one point per stored day at
-// 00:00 UTC inside [from, to].
+// handleCoinGecko serves {"prices": [[ms, usd], ...]} with one point per stored key (a day at
+// 00:00 UTC, or a day and time) inside [from, to].
 func (f *fakes) handleCoinGecko(w http.ResponseWriter, r *http.Request) {
 	done, ok := f.begin(w, "coingecko")
 	defer done()
@@ -469,8 +480,12 @@ func (f *fakes) handleCoinGecko(w http.ResponseWriter, r *http.Request) {
 	f.cgHeaders = append(f.cgHeaders, r.Header.Clone())
 	status := f.cgStatus[mint]
 	series := f.cg[mint]
+	retryAfter := f.cgRetryAfter
 	f.mu.Unlock()
 	if status != 0 {
+		if retryAfter != "" {
+			w.Header().Set("Retry-After", retryAfter)
+		}
 		http.Error(w, `{"error":"coin not found"}`, status)
 		return
 	}
@@ -479,6 +494,9 @@ func (f *fakes) handleCoinGecko(w http.ResponseWriter, r *http.Request) {
 	pts := [][2]float64{}
 	for day, usd := range series {
 		d, err := time.Parse("2006-01-02", day)
+		if err != nil {
+			d, err = time.Parse("2006-01-02T15:04", day)
+		}
 		if err != nil || d.Unix() < from || d.Unix() > to {
 			continue
 		}

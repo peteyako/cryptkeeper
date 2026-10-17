@@ -45,15 +45,19 @@ type Input struct {
 	// with its peer before From raises IssueTransferUnpaired (see transfer).
 	PairedBeforeFrom map[string]bool
 	// Manual is the manual acquisitions, applied at Acquired. An undated one (zero Acquired)
-	// applies at the start when From is zero, and is dropped like any lot before From once a
-	// year is closed.
+	// applies at the start of the replay when From is zero (dated at the first replayed tx,
+	// with IssueUndatedLot), and is dropped like any lot before From once a year is closed.
 	Manual []Lot
 	// Txs is the activity of every wallet, in any order: all of it, not only [From, To), so
 	// a transfer half can find its peer across the boundaries.
 	Txs    []core.Tx
 	Tags   map[string]Tag     // by Tx.ID
 	Prices map[string]float64 // PriceKey / FeePriceKey → USD
-	Spam   map[string]bool    // asset keys ignored entirely
+	Spam   map[string]bool    // asset keys ignored entirely (hidden mints)
+	// Quiet is the asset keys hidden automatically (unpriced or dust tokens): they are
+	// processed like any asset, except that a worthless receive of one opens its cost-0 lot
+	// without an issue (see movement).
+	Quiet map[string]bool
 	// WriteOffs dispose of parked units at their Date (those before From are dropped); TxID
 	// "writeoff:<index>", the index into WriteOffs.
 	WriteOffs []WriteOff
@@ -70,6 +74,9 @@ type Result struct {
 	// CarriedPeers is the sorted IDs of the transfer halves at or after To whose pair this
 	// computation processed (see transfer).
 	CarriedPeers []string
+	// Unpaired is the sorted IDs of the replayed transfer halves that found no usable peer
+	// (see transfer), tagged or not: the halves a tag applies to.
+	Unpaired []string
 }
 
 // Compute replays the open year over one FIFO queue per (wallet, asset), where the wallet
@@ -81,7 +88,9 @@ type Result struct {
 // its instant. Manual lots and write-offs at or after To are ignored. Those before From are
 // ignored too when From is set, since the opening lots and parked balances (the last closed
 // year's closing ones) already include them; an undated manual lot counts as before From.
-// With From zero (nothing closed) an undated manual lot is applied first, at the zero time.
+// With From zero (nothing closed) an undated manual lot is applied first, dated at the first
+// replayed tx (so a sale of it is short-term unless held a year past the start of the
+// history), and raises IssueUndatedLot.
 //
 // Per tx:
 //
@@ -103,14 +112,16 @@ type Result struct {
 //     Input.PairedBeforeFrom whose peer is before From changes nothing (the prior close
 //     processed the pair). A half whose peer is missing, failed or not linked back, or
 //     before From without the half in PairedBeforeFrom, changes no lots and raises
-//     IssueTransferUnpaired.
+//     IssueTransferUnpaired, unless it is tagged: a tag on such a half applies as on a
+//     receive or send (see below), by the sign of its legs.
 //   - trade / swap: each negative leg is a disposal at its value, each positive leg a lot
 //     with its value as cost.
 //   - fee: each negative leg is a disposal at its value with Note "Fee".
 //   - receive, send, reward, other and unknown kinds: each positive leg is a lot at its
 //     value, each negative leg a disposal at its value. A reward's positive leg also books
 //     Income of Type "reward"; the others raise IssueUnmatchedReceive / IssueUnmatchedSend
-//     per leg (a reward raises none). Dust legs are ignored.
+//     per leg (a reward raises none). Dust legs are ignored. A positive leg of a Quiet
+//     asset worth 0 or unvalued opens its cost-0 lot with no issue at all.
 //   - position: see position; the kind decides, whatever the tag (spam aside; a
 //     position-gain tag turns the excess into a gain).
 //   - stake, and transfer without a PeerID: no lot changes.
@@ -137,7 +148,11 @@ func Compute(in Input) Result {
 	}
 	txs := txsBefore(txsFrom(in.Txs, in.From), in.To)
 	e.index(in.Txs) // all txs: a transfer's peer may be outside [From, To)
-	events := preTxEvents(manualLots(in.Manual, in.From), in.WriteOffs, in.From, in.To)
+	start := in.From
+	if start.IsZero() && len(txs) > 0 {
+		start = txs[0].Time
+	}
+	events := preTxEvents(e.manualLots(in.Manual, start), in.WriteOffs, in.From, in.To)
 	next := 0
 	for _, tx := range txs {
 		for ; next < len(events) && !events[next].at.After(tx.Time); next++ {
@@ -208,17 +223,22 @@ func b2i(b bool) int {
 	return 0
 }
 
-// manualLots returns the manual lots that apply, by Acquired. With from zero (nothing
-// closed) that is all of them, an undated one dated from. Otherwise a lot before from, or
-// undated, is already in the opening lots and is dropped.
-func manualLots(lots []Lot, from time.Time) []Lot {
+// manualLots returns the manual lots that apply, by Acquired. With From zero (nothing
+// closed) that is all of them, an undated one dated start (the first replayed tx) with
+// IssueUndatedLot. Otherwise a lot before From, or undated, is already in the opening lots
+// and is dropped.
+func (e *engine) manualLots(lots []Lot, start time.Time) []Lot {
 	out := slices.Clone(lots)
-	if !from.IsZero() {
+	if from := e.in.From; !from.IsZero() {
 		out = slices.DeleteFunc(out, func(l Lot) bool { return l.Acquired.IsZero() || l.Acquired.Before(from) })
 	}
 	for i := range out {
 		if out[i].Acquired.IsZero() {
-			out[i].Acquired = from
+			out[i].Acquired = start
+			l := out[i]
+			e.out.Issues = append(e.out.Issues, Issue{
+				Kind: IssueUndatedLot, TxID: l.TxID, Wallet: l.Wallet, Asset: l.Asset, Amount: l.Amount, Time: start,
+			})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b Lot) int { return a.Acquired.Compare(b.Acquired) })
@@ -253,6 +273,9 @@ func newEngine(in Input) *engine {
 // skipped when the tx failed, then its fee.
 func (e *engine) apply(tx core.Tx) {
 	if tag, ok := e.tagOf(tx); ok && tag == TagSpam {
+		if tx.PeerID != "" {
+			e.out.Unpaired = append(e.out.Unpaired, tx.ID) // tagOf only tags an unpaired half
+		}
 		return // a spam tx is ignored entirely, its fee too
 	}
 	switch {
@@ -282,27 +305,45 @@ func (e *engine) byKind(tx core.Tx, legs []*valued) {
 		e.position(tx, legs, tag == TagPositionGain)
 	default: // receive, send, reward, other and any unknown kind
 		if tag, ok := e.tagOf(tx); ok {
-			switch {
-			case tag == TagPosition:
-				e.position(tx, legs, false)
-			case tag == TagPositionGain && tx.Kind != core.TxSend:
-				// position-gain means "this is a position withdrawal whose excess is a gain",
-				// so a non-position receive tagged with it is treated as that withdrawal. On
-				// a send it does not fit and falls back to the plain treatment.
-				e.position(tx, legs, true)
-			default:
-				e.tagged(tx, tag, legs)
-			}
+			e.taggedMove(tx, tag, legs)
 			return
 		}
 		e.movement(tx, legs)
 	}
 }
 
+// taggedMove applies a tag to a receive, send or other tx, or to an unpaired transfer half
+// (a send when all its legs leave the wallet).
+func (e *engine) taggedMove(tx core.Tx, tag Tag, legs []*valued) {
+	send := tx.Kind == core.TxSend || (tx.PeerID != "" && allOutgoing(legs))
+	switch {
+	case tag == TagPosition:
+		e.position(tx, legs, false)
+	case tag == TagPositionGain && !send:
+		// position-gain means "this is a position withdrawal whose excess is a gain", so a
+		// non-position receive tagged with it is treated as that withdrawal. On a send it
+		// does not fit and falls back to the plain treatment.
+		e.position(tx, legs, true)
+	default:
+		e.tagged(tx, tag, legs)
+	}
+}
+
+// allOutgoing reports whether every leg leaves the wallet.
+func allOutgoing(legs []*valued) bool {
+	for _, v := range legs {
+		if v.Amount > 0 {
+			return false
+		}
+	}
+	return len(legs) > 0
+}
+
 // movement handles an untagged receive, send, reward or other tx (a transfer half never
 // comes here: see settle) by leg sign. A positive leg is an acquisition at market
 // value (a reward also books income), a negative leg a disposal at market value. Every leg
-// raises an unmatched issue for review unless the tx is a reward. A dust leg, like a dust
+// raises an unmatched issue for review unless the tx is a reward, or the leg is a Quiet
+// asset received worth 0 or unvalued (a cost-0 lot with no issue). A dust leg, like a dust
 // fee, is ignored.
 func (e *engine) movement(tx core.Tx, legs []*valued) {
 	reward := tx.Kind == core.TxReward
@@ -315,6 +356,12 @@ func (e *engine) movement(tx core.Tx, legs []*valued) {
 				e.issue(IssueUnmatchedSend, tx, v.AssetKey, v.Amount)
 			}
 		case v.Amount > 0:
+			if !reward && e.in.Quiet[v.AssetKey] && (!v.known || v.usd == 0) {
+				// An auto-hidden token that arrived worth nothing (an airdrop): a cost-0 lot,
+				// no review item.
+				e.acquire(tx, v.AssetKey, v.Amount, 0)
+				continue
+			}
 			value := e.usd(tx, v)
 			e.acquire(tx, v.AssetKey, v.Amount, value)
 			if reward {
@@ -511,5 +558,7 @@ func (e *engine) result() Result {
 	})
 	slices.Sort(r.CarriedPeers)
 	r.CarriedPeers = slices.Compact(r.CarriedPeers)
+	slices.Sort(r.Unpaired)
+	r.Unpaired = slices.Compact(r.Unpaired)
 	return r
 }

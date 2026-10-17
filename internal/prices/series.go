@@ -14,11 +14,12 @@ type Point struct {
 	USD float64
 }
 
-// Series returns the daily USD prices of an asset for the UTC days today-days+1 .. today,
-// ascending, built from Historical / HistoricalMint (so the price_history cache bounds the
-// requests). assetKey is a symbol or "spl:<mint>"; mint is the fallback for symbols Coinbase
-// does not list. Pegged assets are 1 every day. Days with no price are omitted and per-day
-// errors are logged and skipped; only a context error is returned.
+// Series returns the daily closing USD prices of an asset for the UTC days today-days+1 ..
+// today, ascending, built from Historical / HistoricalMintClose (so the price_history cache
+// bounds the requests); today's is the latest price. assetKey is a symbol or "spl:<mint>";
+// mint is the fallback for symbols Coinbase does not list. Pegged assets are 1 every day.
+// Days with no price are omitted and per-day errors are logged and skipped; only a context
+// error is returned.
 func (s *Service) Series(ctx context.Context, assetKey, mint string, days int) ([]Point, error) {
 	key := strings.TrimSpace(assetKey)
 	today := utcDay(s.now())
@@ -45,11 +46,11 @@ func (s *Service) Series(ctx context.Context, assetKey, mint string, days int) (
 		case pegged:
 			usd, ok = 1, true
 		case splMint != "":
-			usd, ok, err = s.HistoricalMint(ctx, splMint, d)
+			usd, ok, err = s.HistoricalMintClose(ctx, splMint, d)
 		default:
 			usd, ok, err = s.Historical(ctx, key, d)
 			if err == nil && !ok && mint != "" {
-				usd, ok, err = s.HistoricalMint(ctx, mint, d)
+				usd, ok, err = s.HistoricalMintClose(ctx, mint, d)
 			}
 		}
 		if err != nil {

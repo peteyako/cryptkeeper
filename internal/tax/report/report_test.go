@@ -44,7 +44,7 @@ func TestBoxRules(t *testing.T) {
 func TestSymbolFallback(t *testing.T) {
 	y := tax.Year{Year: 2025, Disposals: []tax.Disposal{{Asset: "spl:AbCdEfGh123WxYz", Term: tax.ShortTerm, Wallet: "w"}}}
 	got := FromClosed(y, Resolver{}, time.UTC)
-	if got.Rows[0].Symbol != "AbCd…WxYz" {
+	if got.Rows[0].Symbol != "AbCd...WxYz" {
 		t.Errorf("symbol = %q", got.Rows[0].Symbol)
 	}
 }
@@ -56,10 +56,14 @@ func TestFromClosedTotals(t *testing.T) {
 		{Asset: "BTC", Wallet: "w", Term: tax.LongTerm, ProceedsUSD: 17, CostUSD: 10, GainUSD: 7},
 	}}
 	r := FromClosed(y, Resolver{}, time.UTC)
-	if b := r.Boxes["I"]; b.Gain != 6 || b.Count != 2 {
+	parts := must8949(t, r)
+	if len(parts) != 2 {
+		t.Fatalf("parts %+v", parts)
+	}
+	if b := parts[0].Total; parts[0].Box != "I" || b.Gain != 6 || b.Count != 2 {
 		t.Errorf("I = %+v", b)
 	}
-	if b := r.Boxes["L"]; b.Gain != 7 || b.Count != 1 {
+	if b := parts[1].Total; parts[1].Box != "L" || b.Gain != 7 || b.Count != 1 {
 		t.Errorf("L = %+v", b)
 	}
 }

@@ -1,6 +1,8 @@
 package prices_test
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -290,6 +292,67 @@ func TestHistoricalConcurrentSameSymbolSharesFetch(t *testing.T) {
 	}
 	if n := e.fk.count("candles"); n != 1 {
 		t.Fatalf("%d candle requests for 8 nearby days; expected the warm window to be shared", n)
+	}
+}
+
+func TestHistoricalStoreFailureNotCovered(t *testing.T) {
+	e := newEnv(t)
+	seedHistory(e.fk, "BTC", t0)
+	day := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := e.db.Exec(`DROP TABLE price_history`); err != nil {
+		t.Fatal(err)
+	}
+	if usd, ok := hist(t, e.svc, "BTC", day); !ok || usd != closeFor(day) {
+		t.Fatalf("first: %v %v", usd, ok)
+	}
+	// The window could not be stored, so it is not "fetched": the next day asks again rather
+	// than being reported as having no candle.
+	next := day.AddDate(0, 0, 1)
+	if usd, ok := hist(t, e.svc, "BTC", next); !ok || usd != closeFor(next) {
+		t.Fatalf("next day: %v %v", usd, ok)
+	}
+	if n := e.fk.count("candles"); n != 2 {
+		t.Fatalf("candle requests = %d, want 2", n)
+	}
+}
+
+func TestHistoricalFetchOutlivesCancelledCaller(t *testing.T) {
+	e := newEnv(t)
+	seedHistory(e.fk, "BTC", t0)
+	e.fk.candleIn, e.fk.candleHold = make(chan struct{}, 1), make(chan struct{})
+	day := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	c, cancel := context.WithCancel(ctx)
+	errc := make(chan error, 1)
+	go func() {
+		_, _, err := e.svc.Historical(c, "BTC", day)
+		errc <- err
+	}()
+	<-e.fk.candleIn
+	cancel()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled caller: err=%v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the cancelled caller kept waiting for the shared fetch")
+	}
+	// The fetch is shared with whoever else waits for it, so it finishes and stores the window.
+	close(e.fk.candleHold)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var n int
+		e.db.QueryRow(`SELECT COUNT(*) FROM price_history WHERE asset = 'BTC'`).Scan(&n)
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the shared fetch was abandoned with its first caller")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if usd, ok := hist(t, e.svc, "BTC", day); !ok || usd != closeFor(day) || e.fk.count("candles") != 1 {
+		t.Fatalf("after: %v %v, candle requests %d", usd, ok, e.fk.count("candles"))
 	}
 }
 

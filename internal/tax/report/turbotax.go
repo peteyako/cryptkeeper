@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"crypto-portfolio/internal/tax"
 )
 
 func shortDate(t time.Time, loc *time.Location) string {
@@ -44,7 +46,7 @@ func WriteTurboTaxCSV(w io.Writer, r YearReport) error {
 	}
 	for _, row := range r.Rows {
 		if err := cw.Write([]string{
-			row.Symbol, acquiredDate(row, r.Loc), money(row.CostUSD), shortDate(row.Sold, r.Loc), money(row.ProceedsUSD),
+			safeText(row.Symbol), acquiredDate(row, r.Loc), money(row.CostUSD), shortDate(row.Sold, r.Loc), money(row.ProceedsUSD),
 		}); err != nil {
 			return err
 		}
@@ -53,7 +55,9 @@ func WriteTurboTaxCSV(w io.Writer, r YearReport) error {
 	return cw.Error()
 }
 
-// txfCode is the TXF format 042 reference number of a row's box.
+// txfCode is the TXF format 042 reference number of a row's box. TXF has no codes for the
+// digital-asset boxes G-L, so they map to the securities boxes A-F (G→A, H→B, I→C, J→D, K→E,
+// L→F): the user checks them in TurboTax Desktop (the downloads and README say so).
 func txfCode(box string) string {
 	switch box {
 	case "G":
@@ -140,11 +144,26 @@ type Form8949Part struct {
 
 var boxOrder = []string{"G", "H", "I", "J", "K", "L"}
 
+// boxTerm is the holding period each digital-asset box takes.
+var boxTerm = map[string]tax.Term{
+	"G": tax.ShortTerm, "H": tax.ShortTerm, "I": tax.ShortTerm,
+	"J": tax.LongTerm, "K": tax.LongTerm, "L": tax.LongTerm,
+}
+
 // Form8949 groups the report's rows by box in order G..L, omitting empty boxes. A part's
-// Total is the sum of its rounded rows.
-func Form8949(r YearReport) []Form8949Part {
+// Total is the sum of its rounded rows. A row whose box is not G..L, or is a box of the
+// other part than its term, is an error: no row is ever left off the forms.
+func Form8949(r YearReport) ([]Form8949Part, error) {
 	by := map[string]*Form8949Part{}
 	for _, row := range r.Rows {
+		term := row.Term
+		if term != tax.LongTerm {
+			term = tax.ShortTerm
+		}
+		if want, ok := boxTerm[row.Box]; !ok || want != term {
+			return nil, fmt.Errorf("form 8949: the %s %s row sold %s in %s has box %q, not a %s-term digital-asset box (G-L); check walletBox in tax.yaml",
+				amountText(row.Amount), row.Symbol, shortDate(row.Sold, r.Loc), row.WalletLabel, row.Box, term)
+		}
 		p := by[row.Box]
 		if p == nil {
 			p = &Form8949Part{Box: row.Box, Long: row.Box >= "J"}
@@ -165,7 +184,7 @@ func Form8949(r YearReport) []Form8949Part {
 			out = append(out, *p)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // Pages splits a part into form pages of at most perPage rows.
@@ -213,10 +232,14 @@ var scheduleDLines = []struct{ line, box string }{
 
 // ScheduleD returns the six Schedule D lines for the digital-asset boxes, always all
 // present, with adjustments 0. Each line is its box's Form 8949 total, which is the sum of
-// that box's page totals.
-func ScheduleD(r YearReport) []ScheduleDLine {
+// that box's page totals. It fails as Form8949 does.
+func ScheduleD(r YearReport) ([]ScheduleDLine, error) {
+	parts, err := Form8949(r)
+	if err != nil {
+		return nil, err
+	}
 	tot := map[string]BoxTotal{}
-	for _, p := range Form8949(r) {
+	for _, p := range parts {
 		tot[p.Box] = p.Total
 	}
 	out := make([]ScheduleDLine, len(scheduleDLines))
@@ -224,7 +247,29 @@ func ScheduleD(r YearReport) []ScheduleDLine {
 		t := tot[l.box]
 		out[i] = ScheduleDLine{Line: l.line, Box: l.box, Proceeds: t.Proceeds, Cost: t.Cost, Gain: t.Gain}
 	}
-	return out
+	return out, nil
+}
+
+// Totals is the short-term (Part I) and long-term (Part II) totals as Schedule D prints
+// them: the sums of its lines (each a box's Form 8949 total), in whole cents, so a summary
+// built from them never disagrees with the forms by a cent. It fails as Form8949 does.
+func Totals(r YearReport) (short, long BoxTotal, err error) {
+	parts, err := Form8949(r)
+	if err != nil {
+		return BoxTotal{}, BoxTotal{}, err
+	}
+	var s, l centsTotal
+	for _, p := range parts {
+		t := &s
+		if p.Long {
+			t = &l
+		}
+		t.proceeds += cents(p.Total.Proceeds)
+		t.cost += cents(p.Total.Cost)
+		t.gain += cents(p.Total.Gain)
+		t.count += p.Total.Count
+	}
+	return s.box(), l.box(), nil
 }
 
 // ScheduleDNet returns line 7 (net short-term: lines 1b + 2 + 3, column h) and line 15

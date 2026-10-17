@@ -279,8 +279,11 @@ func TestRewardsRPCErrorStopsBackfill(t *testing.T) {
 		if len(res.Txs) != 0 {
 			t.Fatalf("txs %+v", res.Txs)
 		}
-		if st := decodeState(t, res.State); st.RewardDone || st.RewardNewest != 0 {
-			t.Fatalf("newest=%d done=%v: a failed first epoch must leave the scan unstarted", st.RewardNewest, st.RewardDone)
+		// Every epoch is refused, so nothing older is pending: backfill is done, but the refused
+		// newest epoch is not counted as fetched.
+		if st := decodeState(t, res.State); !st.RewardDone || st.RewardNewest != 0 || !res.BackfillDone {
+			t.Fatalf("newest=%d done=%v backfillDone=%v: a refused first epoch must stay unfetched and not keep the scan pending",
+				st.RewardNewest, st.RewardDone, res.BackfillDone)
 		}
 		l.chain.mu.Lock()
 		l.chain.rewardErrBelow = 699
@@ -494,6 +497,102 @@ func TestRewardsRefusedNewEpochIsAGap(t *testing.T) {
 	res, _ = l.run(t, s, res.State, since, 40)
 	if got := rewardIDs(res.Txs); !slices.Equal(got, []string{"reward:S1:704"}) {
 		t.Errorf("retry: %v", got)
+	}
+}
+
+func TestRewardsUndatedEffectiveSlotUsesNextEpochStart(t *testing.T) {
+	captureLog(t)
+	l, s := rewardLedger(t, 700, "S1")
+	l.chain.setReward(699, "S1", 1_000_000, epochTime(699))
+	since := time.Unix(epochTime(699)-1, 0)
+	res, _ := l.run(t, s, nil, since, 40)
+
+	l.chain.mu.Lock()
+	l.chain.epoch = 703
+	l.chain.mu.Unlock()
+	for e := uint64(700); e <= 702; e++ {
+		l.chain.setReward(e, "S1", 2_000_000, epochTime(e))
+	}
+	l.chain.undatedReward(700) // older than the latest epoch: refusing it would drop it for good
+	l.chain.undatedReward(702) // the latest
+	res, _ = l.run(t, s, res.State, since, 40)
+	if got := rewardIDs(res.Txs); !slices.Equal(got, []string{"reward:S1:700", "reward:S1:701", "reward:S1:702"}) {
+		t.Fatalf("txs %v", got)
+	}
+	for _, tx := range res.Txs {
+		e := map[string]uint64{"reward:S1:700": 700, "reward:S1:702": 702}[tx.ExternalID]
+		if e != 0 && !tx.Time.Equal(time.Unix(epochTime(e), 0)) {
+			t.Errorf("%s dated %v, want the start of epoch %d (%v)", tx.ExternalID, tx.Time, e+1, time.Unix(epochTime(e), 0).UTC())
+		}
+	}
+	if st := decodeState(t, res.State); st.RewardNewest != 702 {
+		t.Errorf("newest=%d, want 702", st.RewardNewest)
+	}
+}
+
+func TestRewardsRefusingEveryEpochIsDone(t *testing.T) {
+	logs := captureLog(t)
+	l, s := rewardLedger(t, 700, "S1")
+	for e := uint64(690); e <= 699; e++ {
+		l.chain.setReward(e, "S1", 1_000_000, epochTime(e))
+	}
+	since := time.Unix(epochTime(690)-1, 0)
+	res, _ := l.run(t, s, nil, since, 9) // 699 and 698 fit; older epochs stay pending
+	if st := decodeState(t, res.State); st.RewardOldest != 698 || st.RewardDone || res.BackfillDone {
+		t.Fatalf("setup: oldest=%d done=%v backfillDone=%v", st.RewardOldest, st.RewardDone, res.BackfillDone)
+	}
+
+	// From now on the node refuses every epoch, the one that just ended included.
+	l.chain.mu.Lock()
+	l.chain.epoch = 701
+	l.chain.rewardErrBelow, l.chain.rewardErrCode = 702, -32004
+	l.chain.mu.Unlock()
+	l.chain.setReward(700, "S1", 1_000_000, epochTime(700))
+	for i := 0; i < 3; i++ {
+		res, _ = l.run(t, s, res.State, since, 40)
+		if !res.BackfillDone {
+			t.Fatalf("call %d: backfill still pending although the RPC refuses every epoch", i)
+		}
+	}
+	if st := decodeState(t, res.State); st.RewardNewest != 699 || !st.RewardDone {
+		t.Errorf("newest=%d done=%v, want 699 (the refused latest epoch is retried) and done", st.RewardNewest, st.RewardDone)
+	}
+	if n := strings.Count(logs.String(), "latest epoch unavailable"); n != 1 {
+		t.Errorf("the refused latest epoch was logged %d times, want once: %q", n, logs.String())
+	}
+}
+
+func TestRewardsStakeListingRefusedMidScan(t *testing.T) {
+	for _, c := range []struct {
+		mode string
+		done bool
+	}{
+		{"rpc", true},   // JSON-RPC error object: refused for good
+		{"http", true},  // HTTP 403: refused for good
+		{"down", false}, // HTTP 503: try again later
+	} {
+		t.Run(c.mode, func(t *testing.T) {
+			captureLog(t)
+			l, s := rewardLedger(t, 700, "S1")
+			for e := uint64(690); e <= 699; e++ {
+				l.chain.setReward(e, "S1", 1_000_000, epochTime(e))
+			}
+			since := time.Unix(epochTime(690)-1, 0)
+			res, _ := l.run(t, s, nil, since, 9)
+			if res.BackfillDone {
+				t.Fatal("setup: backfill done too early")
+			}
+			l.chain.mu.Lock()
+			l.chain.stakeFail = c.mode
+			l.chain.mu.Unlock()
+			res, err := s.Activity(context.Background(), core.ActivityRequest{State: res.State, Since: since, Budget: 40})
+			if err != nil {
+				t.Fatalf("a failed stake listing must not fail activity: %v", err)
+			}
+			if res.BackfillDone != c.done {
+				t.Errorf("backfillDone=%v, want %v", res.BackfillDone, c.done)
+			}
+		})
 	}
 }
 

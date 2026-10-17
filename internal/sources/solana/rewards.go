@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"net/http"
 	"slices"
 	"strconv"
 	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/httpx"
 )
 
 // Native staking rewards.
@@ -83,7 +85,12 @@ func (r *activityRun) rewards(ctx context.Context) []core.Tx {
 	_, keys, err := r.s.stakeAccounts(ctx)
 	if err != nil {
 		// Most public RPCs refuse getProgramAccounts. Fetch already warns about it, and it must not
-		// turn into an activity error on every call. A cancellation is reported by finish.
+		// turn into an activity error on every call. A cancellation is reported by finish. A
+		// refusal for good means nothing more can be fetched, so the scan is not left pending.
+		if refusedForGood(err) {
+			r.stakeRefused = true
+			r.s.warnOnce("rewards:stake", "Staking rewards unavailable: this RPC refuses to list stake accounts", "source", r.s.cfg.ID, "err", err)
+		}
 		return nil
 	}
 	r.stakeKnown, r.hasStake = true, len(keys) > 0
@@ -106,12 +113,16 @@ func (r *activityRun) rewards(ctx context.Context) []core.Tx {
 	// budget or a "not now" answer stops the scan until the next call, and backfill waits until it
 	// gets through. A refusal is retried only for the epoch that just ended (its rewards may still
 	// be being paid out); an older refused epoch is skipped rather than blocking every later one.
+	// Backfill still runs after a refused latest epoch, so a node that refuses every epoch ends
+	// the scan instead of keeping it pending forever.
 	from := st.RewardNewest + 1
 	if st.RewardNewest == 0 {
 		from = top
 	}
+	refusedTop := false
+newEpochs:
 	for e := from; e <= top; e++ {
-		got, _, end, err := r.rewardEpoch(ctx, keys, e)
+		got, _, end, err := r.rewardEpoch(ctx, info, keys, e)
 		switch {
 		case end == epochStopped:
 			return txs
@@ -119,8 +130,9 @@ func (r *activityRun) rewards(ctx context.Context) []core.Tx {
 			slog.Info("Staking rewards not available right now; retrying on the next sync", "source", r.s.cfg.ID, "epoch", e, "err", err)
 			return txs
 		case end == epochRefused && e == top:
-			slog.Warn("Staking rewards for the latest epoch unavailable; retrying on the next sync", "source", r.s.cfg.ID, "epoch", e, "err", err)
-			return txs
+			r.s.warnOnce(fmt.Sprintf("rewards:latest:%d", e), "Staking rewards for the latest epoch unavailable; retrying on the next sync", "source", r.s.cfg.ID, "epoch", e, "err", err)
+			refusedTop = true
+			break newEpochs
 		case end == epochRefused:
 			slog.Warn("Staking rewards unavailable on this RPC for an epoch; skipped", "source", r.s.cfg.ID, "epoch", e, "err", err)
 		default:
@@ -132,14 +144,18 @@ func (r *activityRun) rewards(ctx context.Context) []core.Tx {
 		}
 	}
 
-	// Backfill, newest first.
-	for st.RewardOldest > 0 && !st.RewardDone {
-		if st.RewardOldest == 1 {
+	// Backfill, newest first. A scan whose very first epoch was refused starts below it.
+	below := st.RewardOldest
+	if below == 0 && refusedTop {
+		below = top
+	}
+	for below > 0 && !st.RewardDone {
+		if below == 1 {
 			st.RewardDone = true
 			break
 		}
-		e := st.RewardOldest - 1
-		got, at, end, err := r.rewardEpoch(ctx, keys, e)
+		e := below - 1
+		got, at, end, err := r.rewardEpoch(ctx, info, keys, e)
 		switch end {
 		case epochStopped:
 			return txs
@@ -163,16 +179,20 @@ func (r *activityRun) rewards(ctx context.Context) []core.Tx {
 			break
 		}
 		txs = append(txs, got...)
-		st.RewardOldest = e
+		st.RewardOldest, below = e, e
+		if st.RewardNewest == 0 {
+			st.RewardNewest = e // the refused latest epoch above it is retried on the next call
+		}
 	}
 	return txs
 }
 
 // rewardEpoch fetches one epoch for keys: getInflationReward, then getBlockTime of the first
 // non-null entry. at is that block time (0 when no account has an entry). An epoch is only
-// started when two requests fit in the budget, so running out never costs a refetch; when the
-// second is not needed for the reward time it is left for dating the epoch.
-func (r *activityRun) rewardEpoch(ctx context.Context, keys []string, epoch uint64) (txs []core.Tx, at int64, end epochEnd, err error) {
+// started when two requests fit in the budget, so running out never costs a refetch (except
+// when the reward time needs the fallback in rewardTime); when the second is not needed for
+// the reward time it is left for dating the epoch.
+func (r *activityRun) rewardEpoch(ctx context.Context, info epochInfo, keys []string, epoch uint64) (txs []core.Tx, at int64, end epochEnd, err error) {
 	if r.left-r.floor < 2 || !r.take() {
 		return nil, 0, epochStopped, nil
 	}
@@ -192,21 +212,50 @@ func (r *activityRun) rewardEpoch(ctx context.Context, keys []string, epoch uint
 	if !r.take() {
 		return nil, 0, epochStopped, nil
 	}
-	slot := entries[first].EffectiveSlot
-	var bt *int64
-	if err := r.s.rpc.call(ctx, "getBlockTime", []any{slot}, &bt); err != nil {
-		return r.rewardFailure(fmt.Errorf("getBlockTime slot %d: %w", slot, err))
-	}
-	if bt == nil {
-		return nil, 0, epochRefused, fmt.Errorf("getBlockTime slot %d: no block time", slot)
+	at, end, err = r.rewardTime(ctx, info, epoch, entries[first].EffectiveSlot)
+	if end != epochFetched {
+		return nil, 0, end, err
 	}
 	for i, e := range entries {
 		if e != nil && e.Amount > 0 {
-			txs = append(txs, r.rewardTx(keys[i], epoch, e.Amount, *bt))
+			txs = append(txs, r.rewardTx(keys[i], epoch, e.Amount, at))
 		}
 	}
 	r.steps++
-	return txs, *bt, epochFetched, nil
+	return txs, at, epochFetched, nil
+}
+
+// rewardTime is the block time of slot, where epoch's rewards were credited; its request is
+// already taken. When the node has no time for that slot (null, or refused for good), the
+// rewards are dated by the first slot of epoch+1, when crediting began, instead of being
+// dropped: an epoch older than the latest is never asked for again.
+func (r *activityRun) rewardTime(ctx context.Context, info epochInfo, epoch, slot uint64) (int64, epochEnd, error) {
+	var bt *int64
+	if err := r.s.rpc.call(ctx, "getBlockTime", []any{slot}, &bt); err != nil {
+		var re *rpcError
+		if !errors.As(err, &re) || rewardRetryable(re.Code) {
+			_, _, end, err := r.rewardFailure(fmt.Errorf("getBlockTime slot %d: %w", slot, err))
+			return 0, end, err
+		}
+	}
+	if bt != nil {
+		return *bt, epochFetched, nil
+	}
+	start, ok := info.startSlot(epoch + 1)
+	if !ok || start == slot {
+		return 0, epochRefused, fmt.Errorf("getBlockTime slot %d: no block time", slot)
+	}
+	if !r.take() {
+		return 0, epochStopped, nil
+	}
+	if err := r.s.rpc.call(ctx, "getBlockTime", []any{start}, &bt); err != nil {
+		_, _, end, err := r.rewardFailure(fmt.Errorf("getBlockTime slot %d: %w", start, err))
+		return 0, end, err
+	}
+	if bt == nil {
+		return 0, epochRefused, fmt.Errorf("getBlockTime slots %d and %d: no block time", slot, start)
+	}
+	return *bt, epochFetched, nil
 }
 
 // slotTime is the block time of slot, best effort: 0 when the slot was skipped, the node has no
@@ -255,16 +304,28 @@ func rewardRetryable(code int) bool {
 	return false
 }
 
-// rewardsPending reports whether older reward epochs are still to be fetched. When this call did
-// not list the stake accounts, a backfill already under way counts as pending.
+// rewardsPending reports whether older reward epochs are still to be fetched. When this call could
+// not list the stake accounts, a backfill already under way counts as pending, unless the RPC
+// refused the listing for good.
 func (r *activityRun) rewardsPending() bool {
-	if !r.s.cfg.IncludeStake || r.st.RewardDone {
+	if !r.s.cfg.IncludeStake || r.st.RewardDone || r.stakeRefused {
 		return false
 	}
 	if r.stakeKnown {
 		return r.hasStake
 	}
 	return r.st.RewardNewest > 0
+}
+
+// refusedForGood reports an answer that will not change on retry: a JSON-RPC error object other
+// than "not now", or an HTTP 4xx other than 429 (an RPC plan that does not allow the method).
+func refusedForGood(err error) bool {
+	var re *rpcError
+	if errors.As(err, &re) {
+		return !rewardRetryable(re.Code)
+	}
+	var se *httpx.StatusError
+	return errors.As(err, &se) && se.Status >= 400 && se.Status < 500 && se.Status != http.StatusTooManyRequests
 }
 
 func (r *activityRun) rewardTx(stake string, epoch, lamports uint64, at int64) core.Tx {
@@ -276,7 +337,7 @@ func (r *activityRun) rewardTx(stake string, epoch, lamports uint64, at int64) c
 		Time:       time.Unix(at, 0).UTC(),
 		Kind:       core.TxReward,
 		Status:     core.TxConfirmed,
-		Legs:       []core.Leg{{AssetKey: "SOL", Symbol: "SOL", Amount: legAmount(new(big.Int).SetUint64(lamports), lamportsDecimals)}},
+		Legs:       []core.Leg{{AssetKey: solAssetKey, Symbol: solAssetKey, Amount: legAmount(new(big.Int).SetUint64(lamports), lamportsDecimals)}},
 		Note:       fmt.Sprintf("Staking reward (epoch %d)", epoch),
 	}
 }

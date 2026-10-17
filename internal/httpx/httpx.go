@@ -32,6 +32,8 @@ type StatusError struct {
 	Status int
 	Body   string
 	URL    string
+	// RetryAfter is the Retry-After header of a 429 or 5xx answer, in full (0 when absent).
+	RetryAfter time.Duration
 }
 
 func (e *StatusError) Error() string {
@@ -80,11 +82,12 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 			continue
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			lastErr = &retryAfterError{StatusError{resp.StatusCode, string(body), safeURL(req)}, retryAfter(resp)}
+			se := StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req), RetryAfter: retryAfterHeader(resp)}
+			lastErr = &retryAfterError{se, retryAfter(resp)}
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return body, &StatusError{resp.StatusCode, string(body), safeURL(req)}
+			return body, &StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req)}
 		}
 		return body, nil
 	}
@@ -105,11 +108,18 @@ type retryAfterError struct {
 	after time.Duration
 }
 
+// retryAfter is the delay before retrying: the Retry-After header when it is at most a minute.
 func retryAfter(resp *http.Response) time.Duration {
-	if s := resp.Header.Get("Retry-After"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n >= 0 && n <= 60 {
-			return time.Duration(n) * time.Second
-		}
+	if d := retryAfterHeader(resp); d <= time.Minute {
+		return d
+	}
+	return 0
+}
+
+// retryAfterHeader is the Retry-After header in seconds, 0 when absent or not a number.
+func retryAfterHeader(resp *http.Response) time.Duration {
+	if n, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
 	}
 	return 0
 }

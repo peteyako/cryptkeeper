@@ -31,9 +31,13 @@ type TaxReportView struct {
 	Report    report.YearReport
 	Generated string
 	Method    string
-	Income    []ReportIncomeRow
-	Wallets   []ReportWallet
-	Issues    []ReportIssueCount // open year only
+	// Short and Long are the summary's totals as Schedule D prints them (report.Totals), so
+	// the summary and the forms agree to the cent; TotalsErr is why they could not be built.
+	Short, Long report.BoxTotal
+	TotalsErr   string
+	Income      []ReportIncomeRow
+	Wallets     []ReportWallet
+	Issues      []ReportIssueCount // open year only
 }
 
 // ReportIncomeRow is one income line, formatted.

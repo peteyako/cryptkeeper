@@ -458,9 +458,10 @@ func serve(args []string) error {
 		Since: func() time.Time {
 			return syncSince(time.Now(), a.cfg.Activity.BackfillDays, a.taxYears, taxLoc)
 		},
-		Interval: a.cfg.ActivityInterval(),
-		Log:      a.log,
-		Valuer:   a.prices,
+		Interval:  a.cfg.ActivityInterval(),
+		Log:       a.log,
+		Valuer:    a.prices,
+		SkipMints: a.cfg.Solana.HideMints,
 		OnNew: func(txs []core.Tx) {
 			engine.OnActivity(context.WithoutCancel(ctx), txs, a.walletKinds())
 		},

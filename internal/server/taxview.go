@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -58,13 +59,17 @@ func (s *Server) taxYearsCtx(ctx context.Context) []int {
 }
 
 // taxSymbols resolves asset keys to ticker, name and Solana mint: the latest snapshot, then
-// the legs of stored activity, then the token_meta cache for Solana mints.
+// the legs of stored activity, then the token_meta cache for Solana mints. Each key is
+// resolved once (one token_meta read per mint, not per row).
 type taxSymbols struct {
 	s     *Server
 	ctx   context.Context
 	once  sync.Once
 	info  map[string]taxSymbol
 	price map[string]float64
+
+	mu   sync.Mutex
+	memo map[string]taxSymbol
 }
 
 type taxSymbol struct{ symbol, name, mint string }
@@ -99,6 +104,21 @@ func (t *taxSymbols) load() {
 
 func (t *taxSymbols) get(key string) taxSymbol {
 	t.load()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if i, ok := t.memo[key]; ok {
+		return i
+	}
+	if t.memo == nil {
+		t.memo = map[string]taxSymbol{}
+	}
+	i := t.resolve(key)
+	t.memo[key] = i
+	return i
+}
+
+// resolve looks key up: the loaded info, then token_meta for a Solana mint.
+func (t *taxSymbols) resolve(key string) taxSymbol {
 	i := t.info[key]
 	mint, isSPL := strings.CutPrefix(key, "spl:")
 	if isSPL && i.mint == "" {
@@ -124,14 +144,19 @@ func (t *taxSymbols) get(key string) taxSymbol {
 // resolver builds the report's lookups. Prices: a Solana token is priced by its mint
 // (a ticker alone could be a look-alike), anything else by ticker then by a known mint;
 // when neither knows and day is today in the current open year, the live snapshot price
-// stands in.
+// stands in. A Quiet (auto-hidden) token is never looked up upstream: it is priced from the
+// snapshot or not at all, so a page does not send one request per airdropped token held.
 func (s *Server) resolver(ctx context.Context, year int, now time.Time) report.Resolver {
+	snap, _ := s.latest()
+	return s.resolverWith(ctx, year, now, quietSet(snap, spamSet(s.Cfg.Solana.HideMints)))
+}
+
+// resolverWith is resolver for a given set of auto-hidden (quiet) asset keys.
+func (s *Server) resolverWith(ctx context.Context, year int, now time.Time, quiet map[string]bool) report.Resolver {
 	syms := &taxSymbols{s: s, ctx: ctx}
 	labels, _ := s.sourceLabels()
-	types := map[string]string{}
-	for _, d := range s.Registry.Defs() {
-		types[d.ID] = d.Type
-	}
+	types := s.liveSourceTypes()
+	targets := csvTargets(types) // CSV lots acquired "in" their exchange's wallet (see taxActivity)
 	for csv, typ := range importedSourceType {
 		types[csv] = typ
 	}
@@ -148,10 +173,16 @@ func (s *Server) resolver(ctx context.Context, year int, now time.Time) report.R
 		WalletLabel: func(w string) string { return labels[w] },
 		WalletType:  func(w string) string { return types[w] },
 		Box:         box,
+		LotWallet: func(w string) string {
+			if t, ok := targets[w]; ok {
+				return t
+			}
+			return w
+		},
 		Price: func(key string, day time.Time) (float64, bool) {
 			i := syms.get(key)
 			_, isSPL := strings.CutPrefix(key, "spl:")
-			if s.Historical != nil {
+			if s.Historical != nil && !quiet[key] {
 				if !isSPL {
 					sym := i.symbol
 					if sym == "" {
@@ -162,7 +193,8 @@ func (s *Server) resolver(ctx context.Context, year int, now time.Time) report.R
 					}
 				}
 				if i.mint != "" {
-					if v, ok, err := s.Historical.HistoricalMint(ctx, i.mint, day); err == nil && ok {
+					// The year-end close, as Historical's Coinbase close for symbols.
+					if v, ok, err := s.mintClose(ctx, i.mint, day); err == nil && ok {
 						return v, true
 					}
 				}
@@ -178,6 +210,37 @@ func (s *Server) resolver(ctx context.Context, year int, now time.Time) report.R
 }
 
 var errNoTaxData = errors.New(noTaxData)
+
+// openYearRange is the span an open year's report covers: Jan 1 to Jan 1 in the tax
+// timezone, except that the first open year starts where the last closed year ended, at
+// midnight in the zone it was closed in (tax.OpenYearStart), so a change of tax timezone
+// since neither counts a tx twice nor leaves one out.
+func (s *Server) openYearRange(year int) (from, to time.Time) {
+	loc := s.taxLoc()
+	from, to = time.Date(year, 1, 1, 0, 0, 0, 0, loc), time.Date(year+1, 1, 1, 0, 0, 0, 0, loc)
+	if s.TaxYears == nil {
+		return from, to
+	}
+	if last, ok := s.TaxYears.LastClosed(); ok && last.Year+1 == year {
+		from = tax.OpenYearStart(last, ok, loc)
+	}
+	return from, to
+}
+
+// zoneNote warns, for the first open year after a year closed in another timezone, where
+// that year starts; "" otherwise.
+func (s *Server) zoneNote(year int) string {
+	if s.TaxYears == nil {
+		return ""
+	}
+	last, ok := s.TaxYears.LastClosed()
+	loc := s.taxLoc()
+	if !ok || last.Year+1 != year || !last.ZoneChanged(loc) {
+		return ""
+	}
+	return fmt.Sprintf("%d was closed in the %s timezone and your tax timezone is now %s: %d starts at Jan 1 00:00 %s, so no transaction is counted twice or left out. Dates and holding periods use %s.",
+		last.Year, last.Timezone, loc, year, last.Timezone, loc)
+}
 
 // yearReport is the report of one tax year: a closed year from its frozen rows, an open one
 // from the engine (the current year from the cached result; an earlier open year computed
@@ -198,6 +261,7 @@ func (s *Server) yearReportWith(ctx context.Context, year int, res report.Resolv
 	if s.Activity == nil {
 		return report.YearReport{}, errNoTaxData
 	}
+	from, to := s.openYearRange(year)
 	var result tax.Result
 	if year >= now.In(loc).Year() {
 		r, ok := s.taxResult(ctx)
@@ -217,8 +281,8 @@ func (s *Server) yearReportWith(ctx context.Context, year int, res report.Resolv
 		if err != nil {
 			return report.YearReport{}, err
 		}
-		in.To = time.Date(year+1, 1, 1, 0, 0, 0, 0, loc)
-		rep := report.FromOpen(year, tax.Compute(in), res, loc, now)
+		in.To = to
+		rep := report.FromOpenRange(year, tax.Compute(in), res, loc, now, from, to)
 		if ready {
 			c.ymu.Lock()
 			if c.years == nil {
@@ -229,7 +293,7 @@ func (s *Server) yearReportWith(ctx context.Context, year int, res report.Resolv
 		}
 		return rep, nil
 	}
-	return report.FromOpen(year, result, res, loc, now), nil
+	return report.FromOpenRange(year, result, res, loc, now, from, to), nil
 }
 
 // taxPage builds the Tax section for year (0 or unknown = the latest), tab and page. review,
@@ -248,6 +312,9 @@ func (s *Server) taxPage(ctx context.Context, year int, tab string, page int, re
 		return p
 	}
 	p.Report = rep
+	if !rep.Closed {
+		p.ZoneNote = s.zoneNote(year)
+	}
 	p.ReviewTab = !rep.Closed && year == years[len(years)-1]
 	p.Pages = max(1, (len(rep.Rows)+templates.TaxPageSize-1)/templates.TaxPageSize)
 	p.Page = min(p.Page, p.Pages)

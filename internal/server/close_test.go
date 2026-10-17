@@ -251,12 +251,13 @@ func TestUndatedManualLotWarning(t *testing.T) {
 }
 
 func TestOutsideYearGuard(t *testing.T) {
+	from, to := at(2026, 1, 1, 0, 0), at(2027, 1, 1, 0, 0)
 	res := tax.Result{Disposals: []tax.Disposal{{Sold: at(2027, 1, 1, 0, 0)}}}
-	if !outsideYear(res, 2026, time.UTC) {
+	if !outsideYear(res, from, to) {
 		t.Error("2027 row must be outside 2026")
 	}
 	res = tax.Result{Income: []tax.Income{{Date: at(2026, 6, 1, 0, 0)}}}
-	if outsideYear(res, 2026, time.UTC) {
+	if outsideYear(res, from, to) {
 		t.Error("2026 row must be inside")
 	}
 }

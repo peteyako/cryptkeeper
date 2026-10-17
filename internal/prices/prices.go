@@ -85,13 +85,18 @@ type Service struct {
 	sfFX   singleflight.Group // exchange-rates fetch
 	sfHist singleflight.Group // per historical symbol
 
-	mu       sync.Mutex
-	cache    map[string]cacheEntry
-	fx       fxCache
-	histCov  map[string][][2]time.Time // symbol -> UTC-day ranges already fetched
-	histBad  map[string]time.Time      // symbol -> unknown-until
-	cbStatus map[string]statusEntry    // symbol -> Coinbase Exchange product tradable?
-	noPrice  map[string]time.Time      // mint -> when Jupiter last had no price for it
+	cgLoadMu sync.Mutex // guards cgLoaded: the remembered CoinGecko "coin not found" answers are loaded
+	cgLoaded bool       // once, a failed load is retried by the next lookup
+
+	mu         sync.Mutex
+	cache      map[string]cacheEntry
+	fx         fxCache
+	histCov    map[string][][2]time.Time // symbol -> UTC-day ranges already fetched
+	histBad    map[string]time.Time      // symbol -> unknown-until
+	cbStatus   map[string]statusEntry    // symbol -> Coinbase Exchange product tradable?
+	noPrice    map[string]time.Time      // mint -> when Jupiter last had no price for it
+	todayCache map[string]todayEntry     // "key|variant" -> a still-forming day's answer, for todayTTL
+	cgPause    time.Time                 // CoinGecko lookups fail fast until then (after a 429)
 }
 
 type cacheEntry struct {
@@ -130,11 +135,12 @@ func New(c *httpx.Client, db *store.DB, opts Options) *Service {
 	}
 	return &Service{
 		c: c, db: db, o: o, log: lg,
-		cache:    map[string]cacheEntry{},
-		histCov:  map[string][][2]time.Time{},
-		histBad:  map[string]time.Time{},
-		cbStatus: map[string]statusEntry{},
-		noPrice:  map[string]time.Time{},
+		cache:      map[string]cacheEntry{},
+		histCov:    map[string][][2]time.Time{},
+		histBad:    map[string]time.Time{},
+		cbStatus:   map[string]statusEntry{},
+		noPrice:    map[string]time.Time{},
+		todayCache: map[string]todayEntry{},
 	}
 }
 

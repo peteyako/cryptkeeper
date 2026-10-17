@@ -22,11 +22,11 @@ import (
 // https://github.com/TeamRaccoons/WAGMI/blob/main/programs/locked-voter/src/state.rs
 // https://github.com/TeamRaccoons/WAGMI/blob/main/programs/locked-voter/src/instructions/new_escrow.rs
 // The JUP locker is the PDA ["Locker", base] with base bJ1TRoFo2P6UHVwqdiipp6Qhp2HaaHpLowZ5LHet8Gm;
-// on mainnet its token_mint is JUP (checked 2026-10-16).
+// on mainnet its token_mint is JUP (checked 2026-10-16). It is an account of the locked-voter
+// program, which runs every lock, unlock and withdrawal.
 const (
 	JupLockedVoterProgram = "voTpe3tHQ7AjQHMapgSue2HJFAh2cGsdokqN3XqmVSj"
 	JupLocker             = "CVMdMd79no569tjc5Sq7kzz8isbfCcFyBS5TLGsrZ5dN"
-	JupLockerProgram      = JupLocker
 	jupDecimals           = 6
 )
 

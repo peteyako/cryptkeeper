@@ -22,6 +22,9 @@ type Resolver struct {
 	WalletType func(walletID string) string
 	// Box is tax.yaml WalletBox: wallet to short box letter G/H/I.
 	Box map[string]string
+	// LotWallet maps the wallet part of a lot's acquiring tx ID to the wallet that holds it
+	// now (CSV imports counted as their exchange's wallet); nil keeps it.
+	LotWallet func(wallet string) string
 	// Price is the year-end price of an asset.
 	Price func(assetKey string, day time.Time) (float64, bool)
 }
@@ -39,7 +42,7 @@ type HoldingRow struct {
 	Priced                             bool
 }
 
-// BoxTotal totals the rows of one box.
+// BoxTotal totals the rows of one box (or of one Schedule D part, see Totals).
 type BoxTotal struct {
 	Proceeds, Cost, Gain float64
 	Count                int
@@ -57,7 +60,6 @@ type YearReport struct {
 	GiftsLost []Row
 	Holdings  []HoldingRow
 	Summary   tax.Summary
-	Boxes     map[string]BoxTotal
 	Issues    []tax.Issue
 }
 
@@ -71,10 +73,16 @@ func lotWallet(lotTxID string) string {
 }
 
 // BoxFor returns the Form 8949 box of d. override is a short letter from tax.yaml
-// walletBox; lotWallet is the wallet the disposed lot was acquired in ("" when unknown).
-// koinly means the wallet name is a Koinly label rather than a wallet ID.
+// walletBox (any case); lotWallet is the wallet the disposed lot was acquired in ("" when
+// unknown). koinly means the wallet name is a Koinly label rather than a wallet ID. An
+// override that is not G, H or I is returned as it is, for Form8949 to refuse.
 func BoxFor(d tax.Disposal, walletType, lotWallet, override string, koinly bool) string {
-	short := override
+	short := strings.ToUpper(override)
+	switch short {
+	case "", "G", "H", "I":
+	default:
+		return short
+	}
 	if short == "" {
 		low := strings.ToLower(d.Wallet)
 		exchange := walletType == "coinbase" || walletType == "kraken" ||
@@ -110,7 +118,7 @@ func (r Resolver) symbol(key string) (string, string) {
 		sym = key
 		if mint, ok := strings.CutPrefix(key, "spl:"); ok {
 			if rs := []rune(mint); len(rs) > 8 {
-				sym = string(rs[:4]) + "…" + string(rs[len(rs)-4:])
+				sym = string(rs[:4]) + "..." + string(rs[len(rs)-4:]) // ASCII: it goes into TurboTax files
 			} else {
 				sym = mint
 			}
@@ -140,9 +148,13 @@ func (r Resolver) row(d tax.Disposal, koinly bool) Row {
 	if r.WalletType != nil {
 		wt = r.WalletType(d.Wallet)
 	}
+	lw := lotWallet(d.LotTxID)
+	if r.LotWallet != nil && lw != "" {
+		lw = r.LotWallet(lw)
+	}
 	return Row{
 		Disposal: d, Symbol: sym, WalletLabel: r.label(d.Wallet),
-		Box: BoxFor(d, wt, lotWallet(d.LotTxID), r.Box[d.Wallet], koinly),
+		Box: BoxFor(d, wt, lw, r.Box[d.Wallet], koinly),
 	}
 }
 
@@ -152,19 +164,6 @@ func (r Resolver) rows(ds []tax.Disposal, koinly bool) []Row {
 		out[i] = r.row(d, koinly)
 	}
 	return out
-}
-
-func boxTotals(rows []Row) map[string]BoxTotal {
-	m := map[string]BoxTotal{}
-	for _, row := range rows {
-		b := m[row.Box]
-		b.Proceeds += row.ProceedsUSD
-		b.Cost += row.CostUSD
-		b.Gain += row.GainUSD
-		b.Count++
-		m[row.Box] = b
-	}
-	return m
 }
 
 func (r Resolver) holdings(lots []tax.Lot, asOf time.Time) []HoldingRow {
@@ -214,7 +213,7 @@ func FromClosed(y tax.Year, r Resolver, loc *time.Location) YearReport {
 	return YearReport{
 		Year: y.Year, Source: y.Source, Closed: true, AsOf: asOf, Loc: loc,
 		Rows: rows, Income: slices.Clone(y.Income), GiftsLost: r.rows(y.GiftsLost, koinly),
-		Holdings: r.holdings(y.ClosingLots, asOf), Summary: y.Summary, Boxes: boxTotals(rows),
+		Holdings: r.holdings(y.ClosingLots, asOf), Summary: y.Summary,
 	}
 }
 
@@ -224,7 +223,17 @@ func FromOpen(year int, res tax.Result, r Resolver, loc *time.Location, now time
 	if loc == nil {
 		loc = time.UTC
 	}
-	in := func(t time.Time) bool { return t.In(loc).Year() == year }
+	return FromOpenRange(year, res, r, loc, now, time.Date(year, 1, 1, 0, 0, 0, 0, loc), time.Date(year+1, 1, 1, 0, 0, 0, 0, loc))
+}
+
+// FromOpenRange is FromOpen keeping the rows dated in [from, to) rather than in the calendar
+// year: the first open year after a year closed in another timezone starts at that close's
+// boundary (see tax.OpenYearStart).
+func FromOpenRange(year int, res tax.Result, r Resolver, loc *time.Location, now, from, to time.Time) YearReport {
+	if loc == nil {
+		loc = time.UTC
+	}
+	in := func(t time.Time) bool { return !t.Before(from) && t.Before(to) }
 	var disp, gl []tax.Disposal
 	for _, d := range res.Disposals {
 		if in(d.Sold) {
@@ -251,6 +260,6 @@ func FromOpen(year int, res tax.Result, r Resolver, loc *time.Location, now time
 		Year: year, Source: "cryptkeep", AsOf: asOf, Loc: loc,
 		Rows: rows, Income: inc, GiftsLost: r.rows(gl, false),
 		Holdings: r.holdings(res.Lots, asOf), Summary: tax.Summarize(disp, inc),
-		Boxes: boxTotals(rows), Issues: slices.Clone(res.Issues),
+		Issues: slices.Clone(res.Issues),
 	}
 }

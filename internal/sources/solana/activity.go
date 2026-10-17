@@ -68,6 +68,8 @@ const (
 	activityStateVersion = 1
 	solscanTxURL         = "https://solscan.io/tx/"
 	systemProgramID      = "11111111111111111111111111111111"
+	// solAssetKey is native SOL's asset key and symbol on activity legs.
+	solAssetKey = "SOL"
 )
 
 var (
@@ -236,8 +238,9 @@ type activityRun struct {
 	stopped  bool // transport-level failure or cancellation: nothing more can be done
 	notReady bool // a listed transaction could not be fetched yet
 
-	stakeKnown bool // the stake accounts were listed this call
-	hasStake   bool // ... and there is at least one
+	stakeKnown   bool // the stake accounts were listed this call
+	hasStake     bool // ... and there is at least one
+	stakeRefused bool // the RPC refused to list them for good
 }
 
 func (r *activityRun) canSpend() bool { return !r.stopped && r.left > r.floor }
@@ -668,7 +671,7 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 	if feePayer && m.Fee > 0 {
 		feeBig := new(big.Int).SetUint64(m.Fee)
 		lamports.Add(lamports, feeBig) // the fee is reported separately, not inside the SOL leg
-		fee = &core.Leg{AssetKey: "SOL", Symbol: "SOL", Amount: -legAmount(feeBig, lamportsDecimals)}
+		fee = &core.Leg{AssetKey: solAssetKey, Symbol: solAssetKey, Amount: -legAmount(feeBig, lamportsDecimals)}
 	}
 
 	// SPL tokens: sum the owner's token accounts per mint, after minus before (a missing "before"
@@ -711,7 +714,7 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 
 	legs := []core.Leg{}
 	if lamports.Sign() != 0 {
-		legs = append(legs, core.Leg{AssetKey: "SOL", Symbol: "SOL", Amount: legAmount(lamports, lamportsDecimals)})
+		legs = append(legs, core.Leg{AssetKey: solAssetKey, Symbol: solAssetKey, Amount: legAmount(lamports, lamportsDecimals)})
 	}
 	for mint, d := range deltas {
 		if d.amt.Sign() == 0 {
@@ -728,7 +731,9 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 		return cmp.Or(cmp.Compare(boolInt(a.Amount > 0), boolInt(b.Amount > 0)), cmp.Compare(a.AssetKey, b.AssetKey), cmp.Compare(a.Mint, b.Mint))
 	})
 
-	position := usesProgram(tx, defi.JupLockedVoterProgram) || usesProgram(tx, defi.JupLockerProgram) || usesProgram(tx, defi.JupPerpsProgram)
+	// Position programs count only when the user called them directly: Jupiter's aggregator
+	// routes ordinary swaps through the perps pool, which then runs as an inner instruction.
+	position := callsProgram(tx, defi.JupLockedVoterProgram) || callsProgram(tx, defi.JupPerpsProgram)
 	kind := activityKind(legs, usesProgram(tx, StakeProgramID), position)
 	t := core.Tx{
 		ID:          core.TxID(s.ID(), e.Signature),
@@ -753,28 +758,30 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 	return t, true
 }
 
-// rentDust is the SOL amount below which a leg is account rent or dust, not a real movement;
-// it is ignored when judging whether a position-program tx is one-directional.
-const rentDust = 0.05
+// rentDust is the SOL amount below which a leg is account rent (about 0.002-0.003 SOL per
+// account), not a real movement; it is ignored when judging whether a position-program tx is
+// one-directional.
+const rentDust = 0.01
 
 // activityKind classifies by the owner's legs. For a tx through a position program (lock, perps)
-// that moves value one way only, ignoring rent-sized SOL legs, it is a position move. Otherwise
-// opposite signs mean the owner traded one asset for another whoever the counterparty is; then a
-// stake-program instruction makes it a stake move; otherwise the direction of the money.
+// that moves value one way only, ignoring rent-sized SOL legs, it is a position move; one that
+// moved nothing (failed, or a request that only paid the fee) is a fee. Otherwise opposite signs
+// mean the owner traded one asset for another whoever the counterparty is; then a stake-program
+// instruction makes it a stake move; otherwise the direction of the money.
 func activityKind(legs []core.Leg, stake, position bool) core.TxKind {
 	pos, neg := false, false
 	posSig, negSig := false, false
 	for _, l := range legs {
 		pos = pos || l.Amount > 0
 		neg = neg || l.Amount < 0
-		if l.AssetKey == "SOL" && math.Abs(l.Amount) < rentDust {
+		if l.AssetKey == solAssetKey && math.Abs(l.Amount) < rentDust {
 			continue
 		}
 		posSig = posSig || l.Amount > 0
 		negSig = negSig || l.Amount < 0
 	}
 	switch {
-	case position && !(posSig && negSig):
+	case position && len(legs) > 0 && !(posSig && negSig):
 		return core.TxPosition
 	case pos && neg:
 		return core.TxSwap
@@ -808,9 +815,14 @@ func (s *Source) tokenLegIdentity(mint string) (assetKey, symbol string) {
 	return assetKey, symbol
 }
 
+// callsProgram reports whether a top-level instruction runs the given program.
+func callsProgram(tx *rpcTx, programID string) bool {
+	return slices.ContainsFunc(tx.Transaction.Message.Instructions, func(i txInstruction) bool { return i.ProgramID == programID })
+}
+
 // usesProgram reports whether any instruction, top-level or inner, runs the given program.
 func usesProgram(tx *rpcTx, programID string) bool {
-	if slices.ContainsFunc(tx.Transaction.Message.Instructions, func(i txInstruction) bool { return i.ProgramID == programID }) {
+	if callsProgram(tx, programID) {
 		return true
 	}
 	for _, inner := range tx.Meta.InnerInstructions {

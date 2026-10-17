@@ -145,9 +145,21 @@ func walletHref(id string) string { return "/w/" + url.PathEscape(id) }
 func coinHref(key string) string { return "/a/" + url.PathEscape(key) }
 
 // coinRangeClick loads a coin chart range on demand. The range goes in the query string so
-// it never touches the overview's own $range signal.
+// it never touches the overview's own $range signal; $coinRange marks the clicked button.
 func coinRangeClick(key, rng string) string {
-	return "@post(" + JSString(coinHref(key)+"/chart?range="+url.QueryEscape(rng)) + ")"
+	return "$coinRange = " + JSString(rng) + "; @post(" + JSString(coinHref(key)+"/chart?range="+url.QueryEscape(rng)) + ")"
+}
+
+// coinChartSignals is the data-signals object on #coin-chart: the range shown and whether
+// another one is loading. Every patch of the chart resets both.
+func coinChartSignals(rng string) string {
+	return "{coinRange: " + JSString(rng) + ", coinCharting: false}"
+}
+
+func coinRangeClass(r string) string { return "{'seg--on': $coinRange === " + JSString(r) + "}" }
+
+func coinRangePressed(r string) string {
+	return "$coinRange === " + JSString(r) + " ? 'true' : 'false'"
 }
 
 func tabHref(id, tab string) string { return walletHref(id) + "?tab=" + url.QueryEscape(tab) }

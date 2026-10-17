@@ -56,6 +56,9 @@ type Syncer struct {
 	// Valuer, when set, fills missing Leg.USD (and Fee.USD) from historical prices. Without
 	// it legs are stored as the source reported them.
 	Valuer Valuer
+	// SkipMints are SPL mints never valued (the Solana hidden mints: spam the price source
+	// does not know, whose lookups would only spend its rate limit).
+	SkipMints []string
 	// OnNew, when set, is called after each pass with the entries inserted during it (oldest
 	// first, already carrying any transfer link made in the same pass). Backfilled history
 	// counts as new, so consumers that alert should look at the entry time.
@@ -200,7 +203,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 	if s.Since != nil {
 		since = s.Since()
 	}
-	vals := newValueCache(s.Valuer, s.log())
+	vals := newValueCache(s.Valuer, s.log(), s.SkipMints)
 
 	var (
 		mu    sync.Mutex
@@ -261,9 +264,10 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 // fiatSymbols are currencies the price source does not value as assets (USD itself is pegged).
 var fiatSymbols = map[string]bool{"EUR": true, "GBP": true, "CAD": true, "JPY": true, "AUD": true, "CHF": true}
 
-// needsValue reports whether l has no USD value but could be priced.
-func needsValue(l *core.Leg) bool {
-	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" {
+// needsValue reports whether l has no USD value but could be priced; legs of the mints in skip
+// never are.
+func needsValue(l *core.Leg, skip map[string]bool) bool {
+	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" || (l.Mint != "" && skip[l.Mint]) {
 		return false
 	}
 	if _, spl := core.IsSPLKey(l.AssetKey); spl {
@@ -286,9 +290,9 @@ func (s *Syncer) revalue(ctx context.Context, since time.Time, vals *valueCache)
 	}
 	var changed []core.Tx
 	for _, t := range recent {
-		missing := t.Fee != nil && needsValue(t.Fee)
+		missing := t.Fee != nil && needsValue(t.Fee, vals.skip)
 		for i := range t.Legs {
-			missing = missing || needsValue(&t.Legs[i])
+			missing = missing || needsValue(&t.Legs[i], vals.skip)
 		}
 		if !missing {
 			continue
@@ -456,12 +460,17 @@ type valueResult struct {
 type valueCache struct {
 	valuer Valuer
 	log    *slog.Logger
+	skip   map[string]bool // mints never valued
 	mu     sync.Mutex
 	m      map[valueKey]*valueResult
 }
 
-func newValueCache(v Valuer, log *slog.Logger) *valueCache {
-	return &valueCache{valuer: v, log: log, m: map[valueKey]*valueResult{}}
+func newValueCache(v Valuer, log *slog.Logger, skipMints []string) *valueCache {
+	skip := make(map[string]bool, len(skipMints))
+	for _, m := range skipMints {
+		skip[m] = true
+	}
+	return &valueCache{valuer: v, log: log, skip: skip, m: map[valueKey]*valueResult{}}
 }
 
 // value sets USD on t's legs and fee where it is missing. Legs of the SPL tokens that the
@@ -489,7 +498,7 @@ func (c *valueCache) value(ctx context.Context, t *core.Tx) {
 }
 
 func (c *valueCache) fill(ctx context.Context, l *core.Leg, day time.Time) {
-	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" {
+	if l.USD != nil || l.Amount == 0 || l.AssetKey == "" || (l.Mint != "" && c.skip[l.Mint]) {
 		return
 	}
 	var (

@@ -204,7 +204,7 @@ func TestPositionGainSplit(t *testing.T) {
 		t.Errorf("gains %q other %q", g.String(), o.String())
 	}
 	n := 0
-	for _, p := range Form8949(r) {
+	for _, p := range must8949(t, r) {
 		n += p.Total.Count
 	}
 	if n != 2 {
@@ -326,5 +326,30 @@ func TestCSVFormulaGuardOnLabelsAndSymbols(t *testing.T) {
 		if !strings.Contains(c.out, c.want) {
 			t.Errorf("missing %q in %q", c.want, c.out)
 		}
+	}
+}
+
+// The range form keeps the txs dated in [from, to), not the calendar year in loc: the first
+// open year after a close in another timezone starts at that close's midnight.
+func TestTransactionsRangeFollowsOpenYearStart(t *testing.T) {
+	ny := time.FixedZone("NY", -5*3600)
+	rs := Resolver{WalletLabel: func(id string) string { return id }}
+	send := func(id string, at time.Time) core.Tx {
+		return core.Tx{ID: id, SourceID: "w", Time: at, Kind: core.TxSend, Legs: []core.Leg{{AssetKey: "SOL", Symbol: "SOL", Amount: -1}}}
+	}
+	// Closed in New York: the open year starts at 05:00 UTC on Jan 1, while the tax zone is UTC.
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, ny)
+	to := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	txs := []core.Tx{
+		send("before", time.Date(2026, 1, 1, 2, 0, 0, 0, time.UTC)), // Jan 1 in UTC, still 2025 in the closed zone
+		send("inside", time.Date(2026, 1, 1, 6, 0, 0, 0, time.UTC)),
+	}
+	var b strings.Builder
+	if err := WriteTransactionsRange(&b, 2026, from, to, txs, tax.Result{}, rs, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	rows := lines(b.String())[3:]
+	if len(rows) != 1 || !strings.HasPrefix(rows[0], "2026-01-01 06:00:00 UTC") {
+		t.Errorf("rows = %q, want only the 06:00 send", rows)
 	}
 }

@@ -255,7 +255,8 @@ func TestKrakenCSVIntoEngine(t *testing.T) {
 	// EUR-quoted ETH has no USD value: a lot at cost 0 and a missing price to review. The
 	// move to staking changed nothing.
 	amount, cost, _ = res.Holding("ETH", nil)
-	if amount != 0.06 || cost != 0 || !hasIssue(res, tax.IssueMissingPrice, "ETH") {
+	near(t, "eth", amount, 0.06)
+	if cost != 0 || !hasIssue(res, tax.IssueMissingPrice, "ETH") {
 		t.Errorf("eth: %v at %v, issues %+v", amount, cost, res.Issues)
 	}
 	// Staking rewards without a price are income at 0 until valued.

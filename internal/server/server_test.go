@@ -1053,7 +1053,11 @@ func TestSpamSet(t *testing.T) {
 		{ID: "cb", Rows: []portfolio.HoldingRow{row("USDC")}},
 	}}
 	snap.Assets = []portfolio.AssetRow{{AssetKey: "SOL"}, {AssetKey: "USDC"}}
-	got := spamSet([]string{"Mint9"}, snap)
+	spam := spamSet([]string{"Mint9"})
+	got := quietSet(snap, spam)
+	for k := range spam {
+		got[k] = true
+	}
 	want := map[string]bool{"spl:Mint9": true, "spl:Airdrop1": true}
 	if len(got) != len(want) {
 		t.Fatalf("spam = %v, want %v", got, want)

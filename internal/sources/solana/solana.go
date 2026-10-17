@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math/big"
 	"net/url"
@@ -57,6 +58,7 @@ type Source struct {
 
 	mu       sync.Mutex
 	nftMints []string
+	warned   map[string]bool // keys warnOnce has logged
 }
 
 // New validates cfg and returns a source. c and cache may be nil (defaults: httpx.New() and an
@@ -111,6 +113,21 @@ func (s *Source) LastNFTMints() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Clone(s.nftMints)
+}
+
+// warnOnce logs a warning the first time this source meets key, so a refusal that repeats on
+// every sync is logged once.
+func (s *Source) warnOnce(key, msg string, args ...any) {
+	s.mu.Lock()
+	seen := s.warned[key]
+	if s.warned == nil {
+		s.warned = map[string]bool{}
+	}
+	s.warned[key] = true
+	s.mu.Unlock()
+	if !seen {
+		slog.Warn(msg, args...)
+	}
 }
 
 func (s *Source) balance(ctx context.Context) (uint64, error) {

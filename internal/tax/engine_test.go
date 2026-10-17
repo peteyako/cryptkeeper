@@ -286,21 +286,23 @@ func TestManualLotAppliedAtDate(t *testing.T) {
 	near(t, "BTC cost", btc[0].CostUSD, 25000)
 }
 
-// With nothing closed (From zero) an undated manual lot applies at the start of history.
+// With nothing closed (From zero) an undated manual lot applies at the start of history,
+// dated at the first tx (never year 0001) with IssueUndatedLot.
 func TestNoClosedYearStillAppliesUndatedManual(t *testing.T) {
 	r := Compute(Input{
 		Manual: []Lot{lot("btc", "BTC", 1, 50000, time.Time{})},
 		Txs: []core.Tx{mk("s1", "btc", at(2026, 1, 15, 0), core.TxTrade,
 			lg("BTC", -0.5, usd(-20000)), lg("USD", 20000, nil))},
 	})
-	if len(r.Disposals) != 1 || r.Disposals[0].Note != "" || !r.Disposals[0].Acquired.IsZero() {
+	if len(r.Disposals) != 1 || r.Disposals[0].Note != "" || !r.Disposals[0].Acquired.Equal(at(2026, 1, 15, 0)) ||
+		r.Disposals[0].Term != ShortTerm {
 		t.Fatalf("disposals = %+v, want one from the undated manual lot", r.Disposals)
+	}
+	if len(r.Issues) != 1 || len(issuesOf(r, IssueUndatedLot)) != 1 {
+		t.Errorf("issues = %+v, want one undated-lot", r.Issues)
 	}
 	near(t, "cost", r.Disposals[0].CostUSD, 25000)
 	near(t, "BTC held", heldIn(r, "btc", "BTC"), 0.5)
-	if len(r.Issues) != 0 {
-		t.Errorf("issues = %+v, want none", r.Issues)
-	}
 }
 
 // from2027 is the start of the open year once 2026 is closed, in UTC.
@@ -458,12 +460,17 @@ func TestCloseRoundTrip(t *testing.T) {
 				t.Errorf("disposal %+v is outside [%v, %v)", d, y.from, y.to)
 			}
 		}
-		if len(y.r.Issues) != 0 || len(y.r.Income) != 0 || len(y.r.GiftsLost) != 0 {
-			t.Errorf("issues = %+v income = %+v gifts = %+v, want none", y.r.Issues, y.r.Income, y.r.GiftsLost)
+		// The undated ETH lot is flagged where it applies: the first year (nothing closed).
+		wantUndated := 0
+		if y.from.IsZero() {
+			wantUndated = 1
+		}
+		if len(y.r.Issues) != wantUndated || len(issuesOf(y.r, IssueUndatedLot)) != wantUndated || len(y.r.Income) != 0 || len(y.r.GiftsLost) != 0 {
+			t.Errorf("issues = %+v income = %+v gifts = %+v, want %d undated-lot only", y.r.Issues, y.r.Income, y.r.GiftsLost, wantUndated)
 		}
 	}
-	if len(onePass.Issues) != 0 {
-		t.Errorf("one pass issues = %+v, want none", onePass.Issues)
+	if len(onePass.Issues) != 1 || len(issuesOf(onePass, IssueUndatedLot)) != 1 {
+		t.Errorf("one pass issues = %+v, want the undated-lot one", onePass.Issues)
 	}
 	if !reflect.DeepEqual(res2027.Lots, onePass.Lots) {
 		t.Errorf("2027 lots =\n%+v\nwant the one pass's\n%+v", res2027.Lots, onePass.Lots)

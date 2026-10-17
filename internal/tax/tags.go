@@ -23,12 +23,16 @@ func SendTags() []Tag {
 	return []Tag{TagSale, TagGift, TagLost, TagOwnWallet, TagPosition, TagSpam}
 }
 
-// tagOf returns the tag that applies to tx. Tags only apply to receive, send, other and
-// position txs without a PeerID (on a position only a spam tag has an effect); on any other
-// tx they are ignored.
+// tagOf returns the tag that applies to tx. Tags apply to receive, send, other and position
+// txs without a PeerID (on a position only a spam tag has an effect), and to a transfer half
+// of any kind that found no usable peer (see unpaired); on any other tx they are ignored.
 func (e *engine) tagOf(tx core.Tx) (Tag, bool) {
 	if tx.PeerID != "" {
-		return "", false
+		if !e.unpaired(tx) {
+			return "", false
+		}
+		t, ok := e.in.Tags[tx.ID]
+		return t, ok && knownTag[t]
 	}
 	switch tx.Kind {
 	case core.TxReceive, core.TxSend, core.TxOther, core.TxPosition:
@@ -38,11 +42,12 @@ func (e *engine) tagOf(tx core.Tx) (Tag, bool) {
 	return "", false
 }
 
-// tagged applies tag to the legs of a receive, send or other tx. A tagged tx never raises
-// an unmatched issue. A tag that does not fit a leg's direction (gift on a receive, income
-// on a send) falls back to the plain treatment: an acquisition or disposal at market value.
-// TagPosition and TagPositionGain (on a non-send) are routed to position by byKind and never
-// reach here; a position-gain on a send falls to the plain treatment.
+// tagged applies tag to the legs of a receive, send or other tx (or an unpaired transfer
+// half). A tagged tx never raises an unmatched issue. A tag that does not fit a leg's
+// direction (gift on a receive, income on a send) falls back to the plain treatment: an
+// acquisition or disposal at market value. TagPosition and TagPositionGain (on a non-send)
+// are routed to position by taggedMove and never reach here; a position-gain on a send falls
+// to the plain treatment.
 func (e *engine) tagged(tx core.Tx, tag Tag, legs []*valued) {
 	for _, v := range legs {
 		if math.Abs(v.Amount) <= dust {
@@ -57,8 +62,10 @@ func (e *engine) tagged(tx core.Tx, tag Tag, legs []*valued) {
 				Date: tx.Time, Asset: v.AssetKey, Amount: v.Amount, ValueUSD: value,
 				Type: string(tag), Wallet: tx.SourceID, TxID: tx.ID,
 			})
-		case (tag == TagGiftReceived || tag == TagOwnWallet) && recv:
-			e.carriedIn(tx, v)
+		case tag == TagOwnWallet && recv:
+			e.fromUntracked(tx, v)
+		case tag == TagGiftReceived && recv:
+			e.carriedIn(tx, v, v.Amount)
 		case tag == TagOwnWallet:
 			e.toUntracked(tx, v.AssetKey, -v.Amount)
 		case tag == TagGift && !recv, tag == TagLost && !recv:
@@ -69,17 +76,33 @@ func (e *engine) tagged(tx core.Tx, tag Tag, legs []*valued) {
 	}
 }
 
-// carriedIn opens a lot for a receipt whose cost is not the market value: the price
-// override if one is set, else 0 with FlagMissingBasis and IssueMissingBasis.
-func (e *engine) carriedIn(tx core.Tx, v *valued) {
-	l := Lot{Wallet: tx.SourceID, Asset: v.AssetKey, Amount: v.Amount, Acquired: tx.Time, TxID: tx.ID}
+// carriedIn opens a lot of amount (≤ the leg's) for a receipt whose cost is not the market
+// value: the leg's price override pro rata if one is set, else 0 with FlagMissingBasis and
+// IssueMissingBasis.
+func (e *engine) carriedIn(tx core.Tx, v *valued, amount float64) {
+	l := Lot{Wallet: tx.SourceID, Asset: v.AssetKey, Amount: amount, Acquired: tx.Time, TxID: tx.ID}
 	if p, ok := e.in.Prices[PriceKey(tx.ID, v.idx)]; ok && finite(p) {
-		l.CostUSD = math.Abs(p)
+		l.CostUSD = math.Abs(p) * amount / v.Amount
 	} else {
 		l.Flag = FlagMissingBasis
-		e.issue(IssueMissingBasis, tx, v.AssetKey, v.Amount)
+		e.issue(IssueMissingBasis, tx, v.AssetKey, amount)
 	}
 	e.addLot(l)
+}
+
+// fromUntracked books an own-wallet receive: coins coming back from a wallet CryptKeep does
+// not track. They are taken FIFO from the asset's Untracked lots, which move into the
+// receiving wallet keeping their dates, cost and flags (like a transfer); only what those
+// cannot cover is a new lot, as for a gift received (see carriedIn).
+func (e *engine) fromUntracked(tx core.Tx, v *valued) {
+	taken, short := e.queueFor(Untracked, v.AssetKey).take(v.Amount)
+	for _, l := range taken {
+		l.Wallet = tx.SourceID
+		e.addLot(l)
+	}
+	if short > 0 {
+		e.carriedIn(tx, v, short)
+	}
 }
 
 // toUntracked moves amount of asset FIFO from tx's wallet to Untracked, keeping the lots'

@@ -256,6 +256,10 @@ func KoinlyPage(step int) templates.KoinlyPage {
 func TaxReport(year int) templates.TaxReportView {
 	rep, rs := YearReport(year), taxResolver()
 	v := templates.TaxReportView{Report: rep, Generated: taxNow.Format("01/02/2006")}
+	var err error
+	if v.Short, v.Long, err = report.Totals(rep); err != nil {
+		v.TotalsErr = err.Error()
+	}
 	if rep.Source == "koinly" {
 		v.Method = "Figures for 2025 are Koinly's, imported verbatim."
 	} else {

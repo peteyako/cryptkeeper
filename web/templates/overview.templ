@@ -87,7 +87,10 @@ templ ValueCard(p OverviewPage) {
 		@RangeControl(p.Range)
 		@chartSVG(p.Chart, p.Change.Label)
 		if p.BackfillErr != "" {
-			<p class="note note--warn" role="alert">Couldn't load history: { p.BackfillErr }</p>
+			<p class="note note--warn" role="alert">{ p.BackfillErr }</p>
+		}
+		if p.BackfillNote != "" {
+			<p class="note" role="status">{ p.BackfillNote }</p>
 		}
 		if p.BackfillDays > 0 {
 			<div class="value-card__load">

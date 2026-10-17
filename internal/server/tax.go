@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -79,7 +80,7 @@ func (s *Server) taxLoc() *time.Location {
 
 // taxResult computes the open tax year's lots, disposals and income with tax.Compute, cached
 // for a minute. ok is false when there is no activity store or it cannot be read. A result
-// computed before the first snapshot is not cached: its spam set (from the snapshot's
+// computed before the first snapshot is not cached: its quiet set (from the snapshot's
 // hidden rows) is still incomplete.
 func (s *Server) taxResult(ctx context.Context) (tax.Result, bool) {
 	if s.Activity == nil {
@@ -106,10 +107,12 @@ func (s *Server) taxResult(ctx context.Context) (tax.Result, bool) {
 //     last closed year. With no closed year (before a Koinly import) From is the zero
 //     time: every activity counts, with no opening lots. A Koinly year carries no peers.
 //   - Manual lots, tags and price overrides come from data/tax.yaml.
-//   - Txs is all activity, without CSV rows the live API already synced.
-//   - Spam is spamSet of the configured hidden mints and the latest snapshot.
+//   - Txs is taxActivity: all activity, without CSV rows the live API already synced, the
+//     rest counted as their exchange's wallet when there is one.
+//   - Spam is spamSet of the configured hidden mints; Quiet is quietSet of the latest
+//     snapshot (the tokens hidden automatically).
 //
-// ready is false while there is no snapshot yet (the spam set is then incomplete).
+// ready is false while there is no snapshot yet (the quiet set is then incomplete).
 func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err error) {
 	txs, err := s.taxActivity(ctx)
 	if err != nil {
@@ -121,6 +124,7 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 		settings = s.TaxSettings.Get()
 	}
 	snap, ready := s.latest()
+	spam := spamSet(s.Cfg.Solana.HideMints)
 	in = tax.Input{
 		Loc:       loc,
 		Manual:    settings.ManualLots,
@@ -128,12 +132,13 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 		Txs:       txs,
 		Tags:      tagMap(settings.Tags),
 		Prices:    settings.Prices,
-		Spam:      spamSet(s.Cfg.Solana.HideMints, snap),
+		Spam:      spam,
+		Quiet:     quietSet(snap, spam),
 	}
 	if s.TaxYears != nil {
 		last, ok := s.TaxYears.LastClosed()
 		in.From = tax.OpenYearStart(last, ok, loc)
-		in.Opening, in.OpeningParked = last.ClosingLots, last.ClosingParked
+		in.Opening, in.OpeningParked = s.csvOpening(last.ClosingLots, last.ClosingParked)
 		if len(last.CarriedPeers) > 0 {
 			in.PairedBeforeFrom = make(map[string]bool, len(last.CarriedPeers))
 			for _, id := range last.CarriedPeers {
@@ -145,17 +150,118 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 }
 
 // taxActivity is every stored activity entry, minus CSV-imported ones the live API already
-// synced (see dedupeImported).
+// synced (see dedupeImported). The remaining CSV rows count as the wallet of their exchange
+// when exactly one live source has its type (see csvTargets): their SourceID becomes that
+// source's (their ID is kept, so tags and price overrides still find them). The engine and
+// the Koinly roll-back both read this, so CSV buys fund the live exchange's sales.
 func (s *Server) taxActivity(ctx context.Context) ([]core.Tx, error) {
 	txs, err := s.allActivity(ctx)
 	if err != nil {
 		return nil, err
 	}
+	typeOf := s.liveSourceTypes()
+	out := dedupeImported(txs, typeOf) // a fresh slice: txs is shared and stays untouched
+	targets := csvTargets(typeOf)
+	if len(targets) == 0 {
+		return out, nil
+	}
+	for i := range out {
+		if w, ok := targets[out[i].SourceID]; ok {
+			out[i].SourceID = w
+		}
+		if w, ok := targets[out[i].PeerSource]; ok {
+			out[i].PeerSource = w
+		}
+	}
+	return out, nil
+}
+
+// csvOpening is a closed year's closing lots and parked balances with the CSV pseudo-wallets
+// moved to their live exchange wallet like the CSV txs (see taxActivity). The year's own
+// slices are not modified.
+func (s *Server) csvOpening(lots []tax.Lot, parked []tax.Parked) ([]tax.Lot, []tax.Parked) {
+	targets := csvTargets(s.liveSourceTypes())
+	if len(targets) == 0 {
+		return lots, parked
+	}
+	lots, parked = slices.Clone(lots), slices.Clone(parked)
+	for i := range lots {
+		if w, ok := targets[lots[i].Wallet]; ok {
+			lots[i].Wallet = w
+		}
+	}
+	for i := range parked {
+		if w, ok := targets[parked[i].Wallet]; ok {
+			parked[i].Wallet = w
+		}
+	}
+	return lots, parked
+}
+
+// liveSourceTypes is the type of every registered source, by ID.
+func (s *Server) liveSourceTypes() map[string]string {
 	typeOf := map[string]string{}
 	for _, d := range s.Registry.Defs() {
 		typeOf[d.ID] = d.Type
 	}
-	return dedupeImported(txs, typeOf), nil
+	return typeOf
+}
+
+// csvTargets maps each CSV pseudo-source (coinbase-csv, kraken-csv) to the live source of
+// its exchange type when there is exactly one; with none or several it stays apart.
+func csvTargets(typeOf map[string]string) map[string]string {
+	byType := map[string][]string{}
+	for id, t := range typeOf {
+		byType[t] = append(byType[t], id)
+	}
+	out := map[string]string{}
+	for csv, t := range importedSourceType {
+		if ids := byType[t]; len(ids) == 1 {
+			out[csv] = ids[0]
+		}
+	}
+	return out
+}
+
+// withoutSpam is txs as the engine sees them for the transaction history: txs tagged spam are
+// left out, the configured hidden mints' legs and fee are dropped, and a tx left with
+// neither legs nor fee is left out. A spam tag on a transfer half counts only while the half
+// is unpaired, as in the engine (tagOf); on a paired half it is a leftover and is ignored.
+// txs is not modified.
+func (s *Server) withoutSpam(txs []core.Tx) []core.Tx {
+	spam := spamSet(s.Cfg.Solana.HideMints)
+	var tags map[string]tax.TagEntry
+	if s.TaxSettings != nil {
+		tags = s.TaxSettings.Get().Tags
+	}
+	byID := make(map[string]core.Tx, len(txs))
+	for _, tx := range txs {
+		if tx.PeerID != "" && tx.Status != core.TxFailed {
+			byID[tx.ID] = tx
+		}
+	}
+	// unpaired mirrors the engine: no usable peer in txs, or one that does not link back.
+	unpaired := func(tx core.Tx) bool {
+		peer, ok := byID[tx.PeerID]
+		return !ok || peer.ID == tx.ID || peer.PeerID != tx.ID
+	}
+	out := make([]core.Tx, 0, len(txs))
+	for _, tx := range txs {
+		if tags[tx.ID].Tag == tax.TagSpam && (tx.PeerID == "" || (tx.Status != core.TxFailed && unpaired(tx))) {
+			continue
+		}
+		if slices.ContainsFunc(tx.Legs, func(l core.Leg) bool { return spam[l.AssetKey] }) {
+			tx.Legs = slices.DeleteFunc(slices.Clone(tx.Legs), func(l core.Leg) bool { return spam[l.AssetKey] })
+		}
+		if tx.Fee != nil && spam[tx.Fee.AssetKey] {
+			tx.Fee = nil
+		}
+		if len(tx.Legs) == 0 && tx.Fee == nil {
+			continue
+		}
+		out = append(out, tx)
+	}
+	return out
 }
 
 // tagMap is the engine's view of the tax.yaml tags: tx ID → tag.
@@ -171,23 +277,31 @@ func tagMap(entries map[string]tax.TagEntry) map[string]tax.Tag {
 }
 
 // spamSet is the asset keys the tax engine ignores: spl:<mint> for every configured hidden
-// mint, plus the asset key of every hidden holding row in snap (spam airdrops, unpriced
-// tokens). A key that some wallet also shows (snap.Assets) is not spam: a dust balance of
-// a real token hidden in one wallet must not erase that token's trades everywhere.
-func spamSet(hideMints []string, snap portfolio.Snapshot) map[string]bool {
+// mint. Txs the user tagged spam are ignored by their tag; nothing else is dropped.
+func spamSet(hideMints []string) map[string]bool {
 	out := map[string]bool{}
 	for _, m := range hideMints {
 		if m != "" {
 			out[core.SPLKey(m)] = true
 		}
 	}
+	return out
+}
+
+// quietSet is the asset keys hidden automatically (unverified, unpriced or dust tokens): the
+// key of every hidden holding row in snap that no wallet shows (snap.Assets) and that is not
+// spam. The engine still processes them in full, but a worthless receive of one (an airdrop)
+// raises no review item (tax.Input.Quiet). The set moves as balances change, which is why it
+// may only ever silence issues, never drop a leg.
+func quietSet(snap portfolio.Snapshot, spam map[string]bool) map[string]bool {
 	shown := make(map[string]bool, len(snap.Assets))
 	for _, a := range snap.Assets {
 		shown[a.AssetKey] = true
 	}
+	out := map[string]bool{}
 	for _, w := range snap.Wallets {
 		for _, r := range w.HiddenRows {
-			if !shown[r.AssetKey] {
+			if !shown[r.AssetKey] && !spam[r.AssetKey] {
 				out[r.AssetKey] = true
 			}
 		}

@@ -86,13 +86,13 @@ func TestReviewTagOptionsByDirection(t *testing.T) {
 		t.Errorf("send item: %+v", snd)
 	}
 	pos := core.Tx{Kind: core.TxPosition}
-	if got := reviewTagOptions(pos, "in", ""); !slices.Contains(got, "position-gain") {
+	if got := reviewTagOptions(pos, "in", "", false); !slices.Contains(got, "position-gain") {
 		t.Errorf("position receive: %v", got)
 	}
-	if got := reviewTagOptions(core.Tx{Kind: core.TxReceive}, "in", tax.TagPosition); !slices.Contains(got, "position-gain") {
+	if got := reviewTagOptions(core.Tx{Kind: core.TxReceive}, "in", tax.TagPosition, false); !slices.Contains(got, "position-gain") {
 		t.Errorf("receive tagged position: %v", got)
 	}
-	if got := reviewTagOptions(pos, "out", ""); slices.Contains(got, "position-gain") {
+	if got := reviewTagOptions(pos, "out", "", false); slices.Contains(got, "position-gain") {
 		t.Errorf("send must not offer position-gain: %v", got)
 	}
 }
@@ -378,7 +378,7 @@ func TestWriteOffSaves(t *testing.T) {
 	if !strings.Contains(out, "enter a number") || len(e.taxSet.Get().WriteOffs) != 1 {
 		t.Errorf("bad amount: %s", out)
 	}
-	e.reviewPost("/reports/tax/writeoff/0/delete", nil)
+	e.reviewPost("/reports/tax/writeoff/0/delete", url.Values{"wallet": {"sol"}, "asset": {"SOL"}, "at": {"2026-05-01T12:00:00Z"}, "amount": {"1.5"}})
 	if len(e.taxSet.Get().WriteOffs) != 0 {
 		t.Error("delete failed")
 	}
@@ -511,7 +511,7 @@ func TestWriteOffDeleteBadIndex(t *testing.T) {
 		}
 	}
 	e.closeYear(2026, tax.Summary{})
-	out := e.reviewPost("/reports/tax/writeoff/0/delete", nil)
+	out := e.reviewPost("/reports/tax/writeoff/0/delete", url.Values{"wallet": {"sol"}, "asset": {"SOL"}, "at": {"2026-05-01T12:00:00Z"}, "amount": {"1"}})
 	if !strings.Contains(out, "2026 is closed") || len(e.taxSet.Get().WriteOffs) != 1 {
 		t.Errorf("closed delete: %s", out)
 	}

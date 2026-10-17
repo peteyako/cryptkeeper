@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"crypto-portfolio/internal/tax"
+	"crypto-portfolio/internal/tax/report"
 	"crypto-portfolio/web/templates"
 )
 
@@ -44,12 +45,16 @@ func TestDemoTaxConsistent(t *testing.T) {
 		for _, row := range r.Rows {
 			gain += row.GainUSD
 		}
+		parts, err := report.Form8949(r)
+		if err != nil {
+			t.Fatalf("%d: %v", year, err)
+		}
 		var bgain, bproc, bcost float64
-		for _, b := range r.Boxes {
-			bgain += b.Gain
-			bproc += b.Proceeds
-			bcost += b.Cost
-			boxN += float64(b.Count)
+		for _, p := range parts {
+			bgain += p.Total.Gain
+			bproc += p.Total.Proceeds
+			bcost += p.Total.Cost
+			boxN += float64(p.Total.Count)
 		}
 		var proc, cost float64
 		for _, row := range r.Rows {
@@ -57,7 +62,8 @@ func TestDemoTaxConsistent(t *testing.T) {
 			cost += row.CostUSD
 		}
 		boxSum = bgain
-		if math.Abs(boxSum-gain) > 0.005 || math.Abs(bproc-proc) > 0.005 || math.Abs(bcost-cost) > 0.005 || int(boxN) != len(r.Rows) {
+		tol := 0.01 * float64(len(r.Rows)) // the forms round each row to cents
+		if math.Abs(boxSum-gain) > tol || math.Abs(bproc-proc) > tol || math.Abs(bcost-cost) > tol || int(boxN) != len(r.Rows) {
 			t.Errorf("%d: boxes %v/%v/%v (%v rows) != rows %v/%v/%v (%d)", year, bgain, bproc, bcost, boxN, gain, proc, cost, len(r.Rows))
 		}
 	}

@@ -105,9 +105,16 @@ func coinRangeLabel(rng string) string {
 }
 
 // CoinChart is the price chart and its range control. Its root is #coin-chart, so a range
-// button patches just this.
+// button patches just this. Like the value chart's range control, a click marks its button
+// at once ($coinRange); while the range loads the buttons are disabled and the card is busy.
 templ CoinChart(p CoinPage) {
-	<section id="coin-chart" class="card coin-chart" aria-label={ p.Symbol + " price" }>
+	<section
+		id="coin-chart"
+		class="card coin-chart"
+		aria-label={ p.Symbol + " price" }
+		data-signals={ coinChartSignals(p.Range) }
+		data-attr:aria-busy="$coinCharting ? 'true' : 'false'"
+	>
 		<div class="coin-chart__head">
 			<div>
 				<h2 class="h-sec">{ p.Symbol } price, { coinRangeLabel(p.Range) }</h2>
@@ -124,13 +131,17 @@ templ CoinChart(p CoinPage) {
 						type="button"
 						class={ "seg__btn", templ.KV("seg--on", r == p.Range) }
 						aria-pressed={ boolStr(r == p.Range) }
+						data-indicator="coinCharting"
+						data-attr:disabled="$coinCharting"
 						data-on:click={ coinRangeClick(p.AssetKey, r) }
+						data-attr:aria-pressed={ coinRangePressed(r) }
+						data-class={ coinRangeClass(r) }
 					>{ r }</button>
 				}
 			</div>
 		</div>
 		if p.Loading {
-			<div hidden data-init={ coinRangeClick(p.AssetKey, p.Range) }></div>
+			<div hidden data-indicator="coinCharting" data-init={ coinRangeClick(p.AssetKey, p.Range) }></div>
 		}
 		@chartFigure(p.Points, p.Symbol+" price, "+coinRangeLabel(p.Range), coinEmptyNote(p))
 	</section>

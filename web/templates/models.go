@@ -54,8 +54,10 @@ type OverviewPage struct {
 	Now time.Time
 	// BackfillDays > 0 offers "Load last N days" under the chart (0 = no offer).
 	BackfillDays int
-	// BackfillErr is the note shown when loading history failed.
+	// BackfillErr is the note shown when loading history failed (a whole sentence).
 	BackfillErr string
+	// BackfillNote is the note shown when loading history could add nothing.
+	BackfillNote string
 }
 
 // WalletsPage lists every source as an account card.
@@ -301,6 +303,9 @@ type TaxPage struct {
 	// Symbols and Wallets name the assets and wallets of the income rows (asset key and
 	// wallet ID to display text).
 	Symbols, Wallets map[string]string
+	// ZoneNote warns that the open year starts at midnight in the timezone the last year was
+	// closed in, not in the current tax timezone; "" when they agree.
+	ZoneNote string
 	// Err is shown instead of the report when it could not be built.
 	Err string
 }
@@ -362,12 +367,14 @@ type ParkedRow struct {
 	Amount                             float64
 }
 
-// WriteOffRow is a saved write-off.
+// WriteOffRow is a saved write-off. Wallet, Asset, At (RFC 3339) and AmountKey identify it
+// to the delete action, which refuses when the write-off at Index is no longer this one.
 type WriteOffRow struct {
-	Index               int
-	WalletLabel, Symbol string
-	Amount, ProceedsUSD float64
-	Date, Note          string
+	Index                     int
+	Wallet, Asset             string
+	WalletLabel, Symbol       string
+	Amount, ProceedsUSD       float64
+	Date, Note, At, AmountKey string
 }
 
 // StaleTag is a tag in tax.yaml whose transaction is gone.

@@ -73,9 +73,16 @@ func FillFormsContext(ctx context.Context, r report.YearReport, w io.Writer, opt
 	if err != nil {
 		return err
 	}
-	parts := report.Form8949(r)
+	parts, err := report.Form8949(r)
+	if err != nil {
+		return fmt.Errorf("irs: %w", err)
+	}
+	lines, err := report.ScheduleD(r)
+	if err != nil {
+		return fmt.Errorf("irs: %w", err)
+	}
 
-	schedD, err := rev.schedD.fill(scheduleDValues(r, parts, opts), nil)
+	schedD, err := rev.schedD.fill(scheduleDValues(lines, parts, opts), nil)
 	if err != nil {
 		return fmt.Errorf("irs: schedule D: %w", err)
 	}
@@ -217,9 +224,8 @@ var scheduleDRows = map[string][4]string{
 // scheduleDValues fills the lines whose box has rows, and the net lines 7 and 15. Each
 // line is the sum of its box's printed rows and lines 7/15 the sums of the printed lines
 // (report works in whole cents).
-func scheduleDValues(r report.YearReport, parts []report.Form8949Part, opts Options) map[string]string {
+func scheduleDValues(lines []report.ScheduleDLine, parts []report.Form8949Part, opts Options) map[string]string {
 	values := map[string]string{scheduleDName: opts.Name, scheduleDSSN: ssnText(opts.SSN)}
-	lines := report.ScheduleD(r)
 	for _, l := range lines {
 		if !slices.ContainsFunc(parts, func(p report.Form8949Part) bool { return p.Box == l.Box }) {
 			continue

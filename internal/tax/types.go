@@ -124,6 +124,8 @@ const (
 	IssueTransferUnpaired IssueKind = "transfer-unpaired"
 	// IssueWriteOffExceedsParked: a write-off asked for more than the wallet had parked.
 	IssueWriteOffExceedsParked IssueKind = "writeoff-exceeds-parked"
+	// IssueUndatedLot: a manual lot has no date; it was dated at the start of the replay.
+	IssueUndatedLot IssueKind = "undated-lot"
 )
 
 // Issue is a data problem the user should review. Amount is always positive: the size of

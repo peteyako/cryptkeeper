@@ -82,6 +82,8 @@ func TestChartBackfillNothingToLoadFor1D(t *testing.T) {
 
 func TestChartBackfillErrorCard(t *testing.T) {
 	e := newEnv(t, "", nowAt(taxNow))
+	e.reg.Upsert(sources.Def{ID: "kids", Type: sources.TypeManual, Label: "Kids", Holdings: []manual.Holding{{Asset: "SOL", Amount: 3}}})
+	e.ref.Force(context.Background())
 	broken, err := store.Open(filepath.Join(t.TempDir(), "broken.db"))
 	if err != nil {
 		t.Fatal(err)

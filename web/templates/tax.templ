@@ -32,6 +32,13 @@ templ TaxSection(p TaxPage) {
 				}
 			</div>
 		} else {
+			if p.ZoneNote != "" {
+				<div role="status">
+					@Notice("warn", "alert") {
+						{ p.ZoneNote }
+					}
+				</div>
+			}
 			@taxTiles(p)
 			{{ tab := taxActiveTab(p) }}
 			<nav class="tabs" aria-label="Tax report sections">
@@ -58,10 +65,11 @@ templ TaxSection(p TaxPage) {
 			}
 			<div class="tax__downloads">
 				<span class="label">Downloads</span>
-				for _, d := range taxDownloads {
+				for _, d := range taxDownloadsFor(p.Report) {
 					<a class="btn btn--ghost" href={ templ.URL(taxDownloadHref(p.Year, d.Path)) }>{ d.Label }</a>
 				}
 			</div>
+			<p class="foot-note">{ txfNote }</p>
 		}
 		<p class="foot-note">First in, first out, per wallet. Not tax advice.</p>
 	</section>
@@ -129,10 +137,18 @@ templ taxGainsTab(p TaxPage) {
 							<td>{ taxDate(r.Sold, loc) }</td>
 							<td>{ taxAcquired(r, loc) }</td>
 							<td>{ r.Symbol }</td>
-							<td class="num">{ CoinAmount(r.Amount, r.Symbol) }</td>
-							<td class="num">{ Fiat(r.CostUSD) }</td>
-							<td class="num">{ Fiat(r.ProceedsUSD) }</td>
-							<td class={ "num", "chg--" + Direction(r.GainUSD) }>{ Fiat(r.GainUSD) }</td>
+							<td class="num">
+								@FigText(CoinAmount(r.Amount, r.Symbol), "••••")
+							</td>
+							<td class="num">
+								@FigFiat(r.CostUSD)
+							</td>
+							<td class="num">
+								@FigFiat(r.ProceedsUSD)
+							</td>
+							<td class={ "num", "chg--" + Direction(r.GainUSD) }>
+								@FigFiat(r.GainUSD)
+							</td>
 							<td>{ taxTerm(r.Term) }</td>
 							<td>{ r.WalletLabel }</td>
 							<td>{ r.Box }</td>
@@ -177,8 +193,12 @@ templ taxIncomeTab(p TaxPage) {
 						<tr>
 							<td>{ taxDate(i.Date, loc) }</td>
 							<td>{ taxName(p.Symbols, i.Asset) }</td>
-							<td class="num">{ CoinAmount(i.Amount, taxName(p.Symbols, i.Asset)) }</td>
-							<td class="num">{ Fiat(i.ValueUSD) }</td>
+							<td class="num">
+								@FigText(CoinAmount(i.Amount, taxName(p.Symbols, i.Asset)), "••••")
+							</td>
+							<td class="num">
+								@FigFiat(i.ValueUSD)
+							</td>
 							<td>{ IncomeTypeName(i.Type) }</td>
 							<td>{ taxName(p.Wallets, i.Wallet) }</td>
 						</tr>
@@ -210,11 +230,17 @@ templ taxHoldingsTab(p TaxPage) {
 					for _, h := range p.Report.Holdings {
 						<tr>
 							<td>{ h.Symbol }</td>
-							<td class="num">{ CoinAmount(h.Quantity, h.Symbol) }</td>
-							<td class="num">{ Fiat(h.CostUSD) }</td>
+							<td class="num">
+								@FigText(CoinAmount(h.Quantity, h.Symbol), "••••")
+							</td>
+							<td class="num">
+								@FigFiat(h.CostUSD)
+							</td>
 							if h.Priced {
 								<td class="num">{ PriceFiat(h.Price) }</td>
-								<td class="num">{ Fiat(h.ValueUSD) }</td>
+								<td class="num">
+									@FigFiat(h.ValueUSD)
+								</td>
 							} else {
 								<td class="num">—</td>
 								<td class="num">—</td>
@@ -226,9 +252,13 @@ templ taxHoldingsTab(p TaxPage) {
 					<tr>
 						<th scope="row">Total</th>
 						<td></td>
-						<td class="num">{ Fiat(cost) }</td>
+						<td class="num">
+							@FigFiat(cost)
+						</td>
 						<td></td>
-						<td class="num">{ Fiat(value) }</td>
+						<td class="num">
+							@FigFiat(value)
+						</td>
 					</tr>
 				</tfoot>
 			</table>

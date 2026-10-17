@@ -269,6 +269,7 @@ type txSpec struct {
 	delta map[string]int64 // lamports moved per key, fee excluded
 	toks  []tokBal
 	ixs   []map[string]any
+	inner []map[string]any // inner (CPI) instructions of the first top-level instruction
 }
 
 func (t txSpec) finalKeys() []string {
@@ -320,6 +321,10 @@ func (t txSpec) result(slot int64) json.RawMessage {
 	if ixs == nil {
 		ixs = []map[string]any{}
 	}
+	inner := []any{}
+	if len(t.inner) > 0 {
+		inner = append(inner, map[string]any{"index": 0, "instructions": t.inner})
+	}
 	res := map[string]any{
 		"slot": slot, "blockTime": t.at, "version": "legacy",
 		"transaction": map[string]any{
@@ -331,7 +336,7 @@ func (t txSpec) result(slot int64) json.RawMessage {
 			"preBalances": pre, "postBalances": post,
 			"preTokenBalances":  tokJSON(func(b tokBal) string { return b.pre }),
 			"postTokenBalances": tokJSON(func(b tokBal) string { return b.post }),
-			"innerInstructions": []any{}, "logMessages": []string{}, "rewards": []any{},
+			"innerInstructions": inner, "logMessages": []string{}, "rewards": []any{},
 		},
 	}
 	raw, err := json.Marshal(res)
@@ -1688,6 +1693,12 @@ func TestActivityMergesGapsBeyondLimit(t *testing.T) {
 // addProgramTx records a tx running one instruction of programID with the owner's SOL delta
 // (lamports) and token balance changes (mint -> pre/post raw amounts, 6 decimals).
 func (l *fakeLedger) addProgramTx(programID string, lamports int64, toks map[string][2]string) {
+	l.addRoutedTx(programID, nil, lamports, toks)
+}
+
+// addRoutedTx is addProgramTx whose top-level instruction reaches the inner programs through
+// CPI, like an aggregator swap routed through other programs.
+func (l *fakeLedger) addRoutedTx(programID string, inner []string, lamports int64, toks map[string][2]string) {
 	keys := []string{testOwner, programID}
 	var tb []tokBal
 	for mint, pp := range toks {
@@ -1695,11 +1706,16 @@ func (l *fakeLedger) addProgramTx(programID string, lamports int64, toks map[str
 		keys = append(keys, ata, mint)
 		tb = append(tb, tokBal{acct: ata, owner: testOwner, mint: mint, program: TokenProgramID, pre: pp[0], post: pp[1], dec: 6})
 	}
+	var cpi []map[string]any
+	for _, p := range inner {
+		cpi = append(cpi, ixRaw(p))
+	}
 	l.add(txSpec{
 		at: 1_700_000_000, fee: 5000, keys: keys,
 		delta: map[string]int64{testOwner: lamports},
 		toks:  tb,
 		ixs:   []map[string]any{ixRaw(programID)},
+		inner: cpi,
 	})
 }
 
@@ -1755,10 +1771,72 @@ func TestClassifySwapNotPosition(t *testing.T) {
 	}
 }
 
-func TestClassifyLockerUnlock(t *testing.T) {
+func TestClassifyJupUnlock(t *testing.T) {
+	// Unlocking is an instruction of the locked-voter program (the locker is one of its
+	// accounts, not a program).
 	jup := testMint("jup")
-	tx := classifyProgramTx(t, defi.JupLockerProgram, 0, map[string][2]string{jup: {"0", "500000000"}})
+	tx := classifyProgramTx(t, defi.JupLockedVoterProgram, 0, map[string][2]string{jup: {"0", "500000000"}})
 	if tx.Kind != core.TxPosition {
 		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+	}
+}
+
+func TestClassifyAggregatorRouteThroughPerpsIsSwap(t *testing.T) {
+	// Jupiter's aggregator lists the perps pool as a swap route: the perps program then runs as
+	// an inner instruction and must not make a small swap look like a position move.
+	for _, c := range []struct {
+		name     string
+		lamports int64
+		toks     map[string][2]string
+	}{
+		{"SOL dust to USDC", -5_000_000, map[string][2]string{usdcMint: {"0", "600000"}}},
+		{"small SOL to USDC", -40_000_000, map[string][2]string{usdcMint: {"0", "4170000"}}},
+		{"USDC to small SOL", 48_000_000, map[string][2]string{usdcMint: {"5000000", "0"}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			l, s := newLedger(t, testOwner)
+			l.addRoutedTx(jupProg, []string{defi.JupPerpsProgram, TokenProgramID}, c.lamports, c.toks)
+			res, _ := l.run(t, s, nil, time.Time{}, 0)
+			if tx := mustOne(t, res.Txs); tx.Kind != core.TxSwap {
+				t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+			}
+		})
+	}
+}
+
+func TestClassifyTopLevelPerpsDepositIsPosition(t *testing.T) {
+	tx := classifyProgramTx(t, defi.JupPerpsProgram, -40_000_000, map[string][2]string{usdcMint: {"30000000", "20000000"}})
+	if tx.Kind != core.TxPosition {
+		t.Errorf("kind = %s, legs %+v", tx.Kind, tx.Legs)
+	}
+}
+
+func TestClassifyLeglessPositionTxIsFee(t *testing.T) {
+	// A failed or fee-only perps / voter tx moved nothing but the fee.
+	for _, prog := range []string{defi.JupPerpsProgram, defi.JupLockedVoterProgram} {
+		tx := classifyProgramTx(t, prog, 0, nil)
+		if tx.Kind != core.TxFee || len(tx.Legs) != 0 {
+			t.Errorf("%s: kind = %s, legs %+v", prog, tx.Kind, tx.Legs)
+		}
+	}
+}
+
+func TestActivityKindPositionRules(t *testing.T) {
+	sol := func(a float64) core.Leg { return core.Leg{AssetKey: "SOL", Amount: a} }
+	usdc := func(a float64) core.Leg { return core.Leg{AssetKey: "USDC", Amount: a} }
+	for _, c := range []struct {
+		name string
+		legs []core.Leg
+		want core.TxKind
+	}{
+		{"SOL -0.04 / USDC +4.17", []core.Leg{sol(-0.04), usdc(4.17)}, core.TxSwap},
+		{"USDC -5 / SOL +0.048", []core.Leg{usdc(-5), sol(0.048)}, core.TxSwap},
+		{"no legs", nil, core.TxFee},
+		{"rent beside a deposit", []core.Leg{sol(-0.002), usdc(-10)}, core.TxPosition},
+		{"withdrawal with the rent back", []core.Leg{sol(0.003), usdc(10)}, core.TxPosition},
+	} {
+		if k := activityKind(c.legs, false, true); k != c.want {
+			t.Errorf("%s: kind %q, want %q", c.name, k, c.want)
+		}
 	}
 }

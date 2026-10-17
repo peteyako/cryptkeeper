@@ -39,6 +39,10 @@ type Year struct {
 	Year     int       `yaml:"year"`
 	Source   string    `yaml:"source"` // "koinly" | "cryptkeep"
 	ClosedAt time.Time `yaml:"closedAt"`
+	// Timezone is the tax timezone the year was closed in (a time.LoadLocation name): its
+	// end, and so the next year's start, is midnight of Jan 1 there. Empty (years closed
+	// before it was recorded) means the current tax timezone.
+	Timezone string `yaml:"timezone,omitempty"`
 	// OpenIssues is how many review items of the year were still open when it was closed.
 	OpenIssues int        `yaml:"openIssues,omitempty"`
 	Summary    Summary    `yaml:"summary"`
@@ -83,17 +87,47 @@ func Summarize(disposals []Disposal, income []Income) Summary {
 	return s
 }
 
-// OpenYearStart is the first instant of the year after last, in loc. It is the zero time
-// when no year is closed.
+// OpenYearStart is the first instant of the year after last: midnight of Jan 1 in the
+// timezone last was closed in (Year.Timezone), else in loc. It is the zero time when no year
+// is closed.
 func OpenYearStart(last Year, ok bool, loc *time.Location) time.Time {
 	if !ok {
 		return time.Time{}
 	}
-	return time.Date(last.Year+1, 1, 1, 0, 0, 0, 0, loc)
+	return time.Date(last.Year+1, 1, 1, 0, 0, 0, 0, last.Loc(loc))
 }
 
-// Validate reports whether y can be stored.
-func (y Year) Validate() error { return y.validate() }
+// Loc is the timezone y was closed in, or loc when it has none (or it does not load).
+func (y Year) Loc(loc *time.Location) *time.Location {
+	if y.Timezone != "" {
+		if l, err := time.LoadLocation(y.Timezone); err == nil {
+			return l
+		}
+	}
+	if loc == nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// ZoneChanged reports whether y was closed in a timezone other than loc, so the open year's
+// start (see OpenYearStart) is not midnight in loc.
+func (y Year) ZoneChanged(loc *time.Location) bool {
+	if y.Timezone == "" || loc == nil {
+		return false
+	}
+	return y.Timezone != loc.String()
+}
+
+// Validate reports whether y can be restored from a backup: everything validate checks, plus
+// a summary that agrees with the rows. Year files on disk skip the summary check, so a file
+// written before a Summarize change still loads.
+func (y Year) Validate() error {
+	if err := y.validate(); err != nil {
+		return err
+	}
+	return y.checkSummary()
+}
 
 func (y Year) validate() error {
 	if y.Year < 1 || y.Year > 9999 {
@@ -104,9 +138,39 @@ func (y Year) validate() error {
 	default:
 		return fmt.Errorf("tax year %d: unsupported version %d (want %d)", y.Year, y.Version, yearVersion)
 	}
+	if y.Timezone != "" {
+		if _, err := time.LoadLocation(y.Timezone); err != nil {
+			return fmt.Errorf("tax year %d: timezone %q: %v", y.Year, y.Timezone, err)
+		}
+	}
 	for i, l := range y.ClosingLots {
-		if math.IsNaN(l.Amount) || math.IsInf(l.Amount, 0) || l.Amount <= 0 {
+		switch {
+		case l.Wallet == "":
+			return fmt.Errorf("tax year %d: closingLots[%d] (%s): wallet is required", y.Year, i, l.Asset)
+		case l.Asset == "":
+			return fmt.Errorf("tax year %d: closingLots[%d]: asset is required", y.Year, i)
+		case math.IsNaN(l.Amount) || math.IsInf(l.Amount, 0) || l.Amount <= 0:
 			return fmt.Errorf("tax year %d: closingLots[%d] (%s): amount must be a positive number", y.Year, i, l.Asset)
+		case !finite(l.CostUSD) || l.CostUSD < 0:
+			return fmt.Errorf("tax year %d: closingLots[%d] (%s): costUsd must be a number >= 0", y.Year, i, l.Asset)
+		}
+	}
+	for _, set := range []struct {
+		name string
+		rows []Disposal
+	}{{"disposals", y.Disposals}, {"giftsLost", y.GiftsLost}} {
+		for i, d := range set.rows {
+			switch {
+			case !finite(d.Amount) || !finite(d.CostUSD) || !finite(d.ProceedsUSD) || !finite(d.GainUSD):
+				return fmt.Errorf("tax year %d: %s[%d] (%s): amounts must be numbers", y.Year, set.name, i, d.Asset)
+			case d.Term != ShortTerm && d.Term != LongTerm:
+				return fmt.Errorf("tax year %d: %s[%d] (%s): term %q must be short or long", y.Year, set.name, i, d.Asset, d.Term)
+			}
+		}
+	}
+	for i, in := range y.Income {
+		if !finite(in.Amount) || !finite(in.ValueUSD) {
+			return fmt.Errorf("tax year %d: income[%d] (%s): amounts must be numbers", y.Year, i, in.Asset)
 		}
 	}
 	for i, p := range y.ClosingParked {
@@ -120,6 +184,31 @@ func (y Year) validate() error {
 			return fmt.Errorf("tax year %d: carriedPeers[%d]: tx ID is required", y.Year, i)
 		case i > 0 && y.CarriedPeers[i-1] >= id:
 			return fmt.Errorf("tax year %d: carriedPeers[%d] (%s): IDs must be sorted and unique", y.Year, i, id)
+		}
+	}
+	return nil
+}
+
+// checkSummary refuses a year whose stored summary disagrees with its rows by more than a
+// cent: a file cut off inside disposals or income keeps the summary but loses rows. A year
+// with no rows at all (a summary-only import) has nothing to compare.
+func (y Year) checkSummary() error {
+	if len(y.Disposals) == 0 && len(y.Income) == 0 {
+		return nil
+	}
+	want := Summarize(y.Disposals, y.Income)
+	got := y.Summary
+	for _, c := range []struct {
+		name      string
+		got, want float64
+	}{
+		{"shortProceeds", got.ShortProceeds, want.ShortProceeds}, {"shortCost", got.ShortCost, want.ShortCost},
+		{"shortGain", got.ShortGain, want.ShortGain}, {"longProceeds", got.LongProceeds, want.LongProceeds},
+		{"longCost", got.LongCost, want.LongCost}, {"longGain", got.LongGain, want.LongGain},
+		{"income", got.Income, want.Income}, {"fees", got.Fees, want.Fees},
+	} {
+		if math.Abs(c.got-c.want) > 0.01 {
+			return fmt.Errorf("tax year %d: summary %s (%.2f) does not match its rows (%.2f): the file may be cut off", y.Year, c.name, c.got, c.want)
 		}
 	}
 	return nil

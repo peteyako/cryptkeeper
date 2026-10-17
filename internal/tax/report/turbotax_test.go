@@ -68,9 +68,13 @@ func TestTXFCodes(t *testing.T) {
 
 func rowsIn(box string, n int, gain float64) []Row {
 	rows := make([]Row, n)
+	term := tax.ShortTerm
+	if box >= "J" {
+		term = tax.LongTerm
+	}
 	for i := range rows {
 		rows[i] = Row{Box: box, Symbol: "SOL", Disposal: tax.Disposal{
-			Amount: 1, ProceedsUSD: 10 + gain, CostUSD: 10, GainUSD: gain,
+			Amount: 1, ProceedsUSD: 10 + gain, CostUSD: 10, GainUSD: gain, Term: term,
 			Sold: time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC), Acquired: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
 		}}
 	}
@@ -79,7 +83,7 @@ func rowsIn(box string, n int, gain float64) []Row {
 
 func TestForm8949Grouping(t *testing.T) {
 	r := YearReport{Year: 2026, Loc: time.UTC, Rows: append(rowsIn("L", 1, 7), rowsIn("I", 2, 3)...)}
-	parts := Form8949(r)
+	parts := must8949(t, r)
 	if len(parts) != 2 || parts[0].Box != "I" || parts[1].Box != "L" || parts[0].Long || !parts[1].Long {
 		t.Fatalf("parts %+v", parts)
 	}
@@ -93,7 +97,7 @@ func TestForm8949Grouping(t *testing.T) {
 }
 
 func TestEmpty8949(t *testing.T) {
-	if p := Form8949(YearReport{Year: 2026}); len(p) != 0 {
+	if p := must8949(t, YearReport{Year: 2026}); len(p) != 0 {
 		t.Errorf("got %v", p)
 	}
 }
@@ -101,7 +105,7 @@ func TestEmpty8949(t *testing.T) {
 func TestPages11(t *testing.T) {
 	rows := rowsIn("I", 30, 1)
 	rows[29].GainUSD, rows[29].ProceedsUSD = -0.09, 9.91
-	parts := Form8949(YearReport{Year: 2026, Loc: time.UTC, Rows: rows})
+	parts := must8949(t, YearReport{Year: 2026, Loc: time.UTC, Rows: rows})
 	pages := Pages(parts[0], 11)
 	if len(pages) != 3 || len(pages[0]) != 11 || len(pages[1]) != 11 || len(pages[2]) != 8 {
 		t.Fatalf("pages %d", len(pages))
@@ -125,7 +129,7 @@ func TestScheduleDLines(t *testing.T) {
 		{Wallet: "w", Term: tax.ShortTerm, ProceedsUSD: 20, CostUSD: 10, GainUSD: 10},
 		{Wallet: "w", Term: tax.ShortTerm, ProceedsUSD: 6, CostUSD: 10, GainUSD: -4},
 	}}
-	lines := ScheduleD(FromClosed(y, Resolver{}, time.UTC))
+	lines := mustSchedD(t, FromClosed(y, Resolver{}, time.UTC))
 	if len(lines) != 6 {
 		t.Fatalf("lines %+v", lines)
 	}
@@ -160,7 +164,7 @@ func TestForm8949Cents(t *testing.T) {
 	rows := rowsIn("I", 1, 0)
 	rows[0].ProceedsUSD, rows[0].CostUSD, rows[0].GainUSD = 10.006, 5.004, 5.002
 	r := YearReport{Year: 2026, Loc: time.UTC, Rows: rows}
-	row := Form8949(r)[0].Rows[0]
+	row := must8949(t, r)[0].Rows[0]
 	if Money8949(row.Proceeds) != "10.01" || Money8949(row.Cost) != "5.00" || Money8949(row.Gain) != "5.01" {
 		t.Errorf("row d/e/h = %s/%s/%s, want 10.01/5.00/5.01",
 			Money8949(row.Proceeds), Money8949(row.Cost), Money8949(row.Gain))
@@ -185,7 +189,7 @@ func TestForm8949TotalsAddUp(t *testing.T) {
 		rows[i].ProceedsUSD, rows[i].CostUSD, rows[i].GainUSD = 10.004, 0.004, 10
 	}
 	r := YearReport{Year: 2026, Loc: time.UTC, Rows: rows}
-	p := Form8949(r)[0]
+	p := must8949(t, r)[0]
 	for _, row := range p.Rows {
 		if Money8949(row.Proceeds) != "10.00" || Money8949(row.Cost) != "0.00" || Money8949(row.Gain) != "10.00" {
 			t.Fatalf("row %+v", row)
@@ -198,7 +202,7 @@ func TestForm8949TotalsAddUp(t *testing.T) {
 	if Money8949(p.Total.Proceeds) != "120.00" {
 		t.Errorf("part total %+v", p.Total)
 	}
-	l3 := ScheduleD(r)[2]
+	l3 := mustSchedD(t, r)[2]
 	if Money8949(l3.Proceeds) != "120.00" || Money8949(l3.Cost) != "0.00" || Money8949(l3.Gain) != "120.00" {
 		t.Errorf("line 3 %+v, want 120.00/0.00/120.00", l3)
 	}
@@ -212,7 +216,7 @@ func TestScheduleDNet(t *testing.T) {
 		rows = append(rows, rs...)
 	}
 	rows[2].ProceedsUSD, rows[2].CostUSD = 0, 2.006 // box I: (2.01)
-	short, long := ScheduleDNet(ScheduleD(YearReport{Year: 2026, Loc: time.UTC, Rows: rows}))
+	short, long := ScheduleDNet(mustSchedD(t, YearReport{Year: 2026, Loc: time.UTC, Rows: rows}))
 	if Money8949(short) != "(0.01)" || Money8949(long) != "3.00" {
 		t.Errorf("net short %s long %s, want (0.01) and 3.00", Money8949(short), Money8949(long))
 	}
