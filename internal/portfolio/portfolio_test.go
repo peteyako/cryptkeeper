@@ -415,3 +415,16 @@ func TestYearToDateRange(t *testing.T) {
 		t.Fatalf("history from Jan 11 must not count as the year: %+v", c)
 	}
 }
+
+func TestWalletStableShare(t *testing.T) {
+	w := WalletView{Rows: []HoldingRow{
+		{Holding: core.Holding{AssetKey: "SOL", Symbol: "SOL"}, ValueUSD: 300},
+		{Holding: core.Holding{AssetKey: "USDC", Symbol: "USDC"}, ValueUSD: 100},
+	}}
+	if share, ok := w.StableShare(); !ok || share < 0.2499 || share > 0.2501 {
+		t.Fatalf("share=%v ok=%v", share, ok)
+	}
+	if _, ok := (WalletView{}).StableShare(); ok {
+		t.Fatal("an empty wallet has no share")
+	}
+}

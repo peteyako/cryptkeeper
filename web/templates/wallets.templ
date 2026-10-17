@@ -149,6 +149,9 @@ templ statTiles(p WalletPage) {
 					@FigCoin(row.Amount, row.Symbol)
 				</span>
 			}
+			if stable, ok := p.W.StableShare(); ok {
+				@splitLine(stable)
+			}
 		</div>
 		<div class="stat">
 			<span class="label">Cost basis</span>
