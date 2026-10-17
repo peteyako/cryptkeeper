@@ -103,6 +103,8 @@ func syncFeedInit(total int) string {
 	return "@get('/activity/sync?feed=" + strconv.Itoa(total) + "', " + syncStreamOpts + ")"
 }
 
+const backfillClick = `@post('/chart/backfill', ` + liveFilter + `)`
+
 const refreshClick = `@post('/refresh', ` + liveFilter + `)`
 
 // testClick posts the add-source form to the connection test. It names the form by
@@ -138,6 +140,15 @@ func pfCurrent(id string) string { return "$pf === " + JSString(id) + " ? 'page'
 func pfClass(id string) string { return "{'nav-item--on': $pf === " + JSString(id) + "}" }
 
 func walletHref(id string) string { return "/w/" + url.PathEscape(id) }
+
+// coinHref is the coin page of an asset key; "spl:<mint>" keys are path-escaped.
+func coinHref(key string) string { return "/a/" + url.PathEscape(key) }
+
+// coinRangeClick loads a coin chart range on demand. The range goes in the query string so
+// it never touches the overview's own $range signal.
+func coinRangeClick(key, rng string) string {
+	return "@post(" + JSString(coinHref(key)+"/chart?range="+url.QueryEscape(rng)) + ")"
+}
 
 func tabHref(id, tab string) string { return walletHref(id) + "?tab=" + url.QueryEscape(tab) }
 

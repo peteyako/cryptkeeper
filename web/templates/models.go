@@ -52,6 +52,10 @@ type OverviewPage struct {
 	// P/L column of the holdings table; with no entries the toggle is not shown.
 	PnL map[string]PnLCell
 	Now time.Time
+	// BackfillDays > 0 offers "Load last N days" under the chart (0 = no offer).
+	BackfillDays int
+	// BackfillErr is the note shown when loading history failed.
+	BackfillErr string
 }
 
 // WalletsPage lists every source as an account card.
@@ -484,4 +488,51 @@ type CloseCard struct {
 	Msg        string
 	CloseYear  int
 	ReopenYear int
+}
+
+// CoinWallet is one source's holding of the coin on its page.
+type CoinWallet struct {
+	ID, Label        string
+	Amount, ValueUSD float64
+}
+
+// CoinRanges are the coin page's chart ranges and the days each one loads.
+var CoinRanges = []string{"7D", "30D", "90D", "1Y"}
+
+// CoinDays is the number of daily points per coin range.
+var CoinDays = map[string]int{"7D": 7, "30D": 30, "90D": 90, "1Y": 365}
+
+// CoinPage is the detail page of one asset: its price, where it is held and an on-demand
+// price chart.
+type CoinPage struct {
+	Shell
+	AssetKey, Symbol, Name, LogoURL string
+	Price                           *core.Price
+	Amount, ValueUSD                float64
+	Wallets                         []CoinWallet
+	Range                           string // "7D","30D","90D","1Y"
+	Points                          []portfolio.Point
+	Change                          portfolio.Change // over the chart range, from Points
+	Loading                         bool             // chart not loaded yet: shows a note and loads itself
+	Sync                            SyncInfo
+	Now                             time.Time
+}
+
+// CoinWalletsOf is the sources holding the asset, with their summed amount and value;
+// sources with a zero balance are left out.
+func CoinWalletsOf(ws []portfolio.WalletView, key string) []CoinWallet {
+	var out []CoinWallet
+	for _, w := range ws {
+		cw := CoinWallet{ID: w.ID, Label: w.Label}
+		for _, h := range w.Rows {
+			if h.AssetKey == key {
+				cw.Amount += h.Amount
+				cw.ValueUSD += h.ValueUSD
+			}
+		}
+		if cw.Amount != 0 {
+			out = append(out, cw)
+		}
+	}
+	return out
 }

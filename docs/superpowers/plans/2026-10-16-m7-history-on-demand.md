@@ -25,7 +25,7 @@
 
 ## Global Constraints
 
-- Backfill only fills days with no existing row: `INSERT OR IGNORE`, keyed by `ts` = 00:00 UTC of the day, and only for days strictly before the earliest existing row's UTC day, or when the table is empty. Recorded history is never modified.
+- Backfill only fills days with no existing row: `INSERT OR IGNORE`, keyed by `ts` = 23:59:59 UTC of the day (end-of-day amounts × that day's close), and only for days strictly before the earliest existing row's UTC day, or when the table is empty. Recorded history is never modified.
 - Day count per range: `1W → 7`, `1M → 30`, `1Y → 365`. The offer is shown only when `portfolio.ChangeFor(range, ...)` is not `Valid`. "1D" and "All" never show it.
 - **Price fallback:** if an asset has no historical price for a day (unlisted, or older than CoinGecko's 365-day demo limit), the row uses the asset's current snapshot price. This is a documented estimate: the asset contributes a flat line, never a cliff. Pegged stablecoins are 1.
 - **Per-wallet amounts for day D:** current amount minus the signed effect of every tx with `Time >= D+1d` (00:00 UTC). Amounts that come out negative are clamped to 0. Only wallets present in the current snapshot are written.

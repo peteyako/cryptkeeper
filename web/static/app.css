@@ -4654,3 +4654,65 @@ body.amounts-hidden .fig-m {
 .tbl--tax-holdings {
   min-width: 640px;
 }
+
+.value-card__load {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.value-card__load .load__busy,
+.value-card__load .is-busy .load__idle {
+  display: none;
+}
+
+.value-card__load .is-busy .load__busy {
+  display: inline;
+}
+
+.coin {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.coin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.coin-head__price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.coin-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.coin-chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.asset__link:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}

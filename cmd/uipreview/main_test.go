@@ -37,7 +37,7 @@ func TestEveryPageRenders(t *testing.T) {
 		"/alerts", "/alerts?empty=1", "/alerts?error=1", "/alerts/new", "/alerts/new?invalid=1",
 		"/alerts/" + demo.AlertColdDrop + "/edit", "/alerts/" + demo.AlertBTCAbove + "/edit", "/alerts/" + demo.AlertDayMove + "/edit",
 		"/alerts/" + demo.AlertKrakenOff + "/edit", "/alerts/" + demo.AlertBigSend + "/edit",
-		"/w/coinbase?tab=activity", "/w/cold?tab=activity", "/w/mom-safe?tab=activity",
+		"/a/SOL", "/a/BTC", "/w/coinbase?tab=activity", "/w/cold?tab=activity", "/w/mom-safe?tab=activity",
 		"/export/holdings.csv", "/export/history.csv?range=All", "/export/pnl.csv", "/export/activity.csv",
 	} {
 		code, body := do(t, h, "GET", path, nil, "")

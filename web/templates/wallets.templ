@@ -347,7 +347,7 @@ templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, showLogos bool) 
 				@AssetMark(r.Symbol, r.LogoURL, showLogos)
 				<div class="asset__id">
 					<span class="asset__name">
-						{ HoldingName(r.Holding) }
+						@coinAnchor(r.AssetKey, HoldingName(r.Holding))
 						if r.Staked {
 							<span class="badge">Staked</span>
 						}

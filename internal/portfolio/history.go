@@ -211,7 +211,9 @@ func RangeStart(rng string, now time.Time) time.Time {
 }
 
 // ChangeFor computes the change across pts for a range. It is valid only when history
-// reaches back to (nearly) the start of the window.
+// reaches back to (nearly) the start of the window: the first point may lie up to d/10
+// after the window start, or up to 24h for ranges of 7 days or more (so daily backfilled
+// rows always cover 1W/1M/1Y).
 func ChangeFor(rng string, pts []Point, now time.Time) Change {
 	label, ok := rangeLabels[rng]
 	if !ok {
@@ -222,8 +224,14 @@ func ChangeFor(rng string, pts []Point, now time.Time) Change {
 		return c
 	}
 	first, last := pts[0], pts[len(pts)-1]
-	if d := Ranges[rng]; d > 0 && first.T.After(now.Add(-d).Add(d/10)) {
-		return c // history doesn't cover the window yet
+	if d := Ranges[rng]; d > 0 {
+		tol := d / 10
+		if d >= 7*24*time.Hour {
+			tol = max(tol, 24*time.Hour)
+		}
+		if first.T.After(now.Add(-d).Add(tol)) {
+			return c // history doesn't cover the window yet
+		}
 	}
 	c.Abs = last.V - first.V
 	if first.V != 0 {

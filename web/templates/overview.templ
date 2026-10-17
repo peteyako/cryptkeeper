@@ -86,6 +86,24 @@ templ ValueCard(p OverviewPage) {
 		</div>
 		@RangeControl(p.Range)
 		@chartSVG(p.Chart, p.Change.Label)
+		if p.BackfillErr != "" {
+			<p class="note note--warn" role="alert">Couldn't load history: { p.BackfillErr }</p>
+		}
+		if p.BackfillDays > 0 {
+			<div class="value-card__load">
+				<button
+					type="button"
+					class="btn btn--secondary"
+					data-indicator="backfilling"
+					data-attr:disabled="$backfilling"
+					data-class="{'is-busy': $backfilling}"
+					data-on:click={ backfillClick }
+				>
+					<span class="load__idle">Load last { strconv.Itoa(p.BackfillDays) } days</span>
+					<span class="load__busy">Loading…</span>
+				</button>
+			</div>
+		}
 	</section>
 }
 
@@ -122,9 +140,15 @@ func chartLabel(label string) string {
 // chartSVG is the server-rendered area chart: 3 gridlines, an accent area at 8% and a 2px
 // line. preserveAspectRatio="none" lets CSS set its height per breakpoint.
 templ chartSVG(points []portfolio.Point, label string) {
+	@chartFigure(points, chartLabel(label), "History fills in as CryptKeep records your balances.")
+}
+
+// chartFigure is the chart with its accessible name and the note shown when there is
+// nothing to draw; the portfolio value chart and the coin price chart share it.
+templ chartFigure(points []portfolio.Point, aria, emptyNote string) {
 	{{ line, area := SVGPath(points, 800, 220) }}
 	<div class="chart-wrap">
-		<svg class="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label={ chartLabel(label) }>
+		<svg class="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label={ aria }>
 			<path class="chart__grid" d="M0 55H800M0 110H800M0 165H800"></path>
 			if line != "" && len(points) >= 2 {
 				<path class="chart__area" d={ area }></path>
@@ -132,7 +156,7 @@ templ chartSVG(points []portfolio.Point, label string) {
 			}
 		</svg>
 		if len(points) < 2 {
-			<p class="chart__empty">History fills in as CryptKeep records your balances.</p>
+			<p class="chart__empty">{ emptyNote }</p>
 		}
 	</div>
 }
@@ -250,7 +274,7 @@ templ holdingsCard(p OverviewPage) {
 									<div class="asset">
 										@AssetMark(a.Symbol, a.LogoURL, p.ShowLogos)
 										<div class="asset__id">
-											<span class="asset__name">{ AssetName(a) }</span>
+											@coinLink(a.AssetKey, AssetName(a))
 											<span class="asset__sub">{ Plural(len(a.HeldIn), "source") }</span>
 										</div>
 									</div>

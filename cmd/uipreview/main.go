@@ -125,6 +125,26 @@ func router() http.Handler {
 		}
 	})
 
+	// Coin page and its on-demand chart.
+	r.Get("/a/{asset}", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := demo.CoinPage(chi.URLParam(r, "asset"), "", true, time.Now())
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			render(w, r, templates.ErrorFull(demo.Shell("Not found", "overview", "all", ""), "That asset isn't in your holdings."))
+			return
+		}
+		render(w, r, templates.CoinFull(p))
+	})
+	r.Post("/a/{asset}/chart", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := demo.CoinPage(chi.URLParam(r, "asset"), r.URL.Query().Get("range"), false, time.Now())
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		sse := datastar.NewSSE(w, r)
+		_ = sse.PatchElementTempl(templates.CoinChart(p))
+	})
+
 	// Wallets.
 	r.Get("/wallets", func(w http.ResponseWriter, r *http.Request) {
 		p := demo.WalletsPage(time.Now())
