@@ -24,7 +24,7 @@ func TestPositionDepositKeepsLots(t *testing.T) {
 	}
 	near(t, "JUP amount", l[0].Amount, 1000)
 	near(t, "JUP cost", l[0].CostUSD, 500)
-	if len(r.Disposals) != 1 || r.Disposals[0].Asset != "SOL" || r.Disposals[0].Note != "Fee" {
+	if len(r.Disposals) != 1 || r.Disposals[0].Asset != "SOL" || r.Disposals[0].Note != "Fee" || r.Disposals[0].Source != "" {
 		t.Fatalf("disposals = %+v, want only the SOL Fee", r.Disposals)
 	}
 	if len(r.Issues) != 0 || len(r.Income) != 0 {

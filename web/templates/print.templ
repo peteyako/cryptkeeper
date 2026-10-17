@@ -1,0 +1,41 @@
+package templates
+
+// PrintLayout is the minimal layout of the printable tax pages: no app shell, no external
+// assets (the styles are inline, so a saved copy is self-contained), and a button that
+// opens the browser's print dialog, hidden when printing.
+templ PrintLayout(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<style>
+				body { font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #111; background: #fff; margin: 0 auto; max-width: 960px; padding: 24px 16px; }
+				h1 { font-size: 22px; margin: 0 0 4px; }
+				h2 { font-size: 16px; margin: 28px 0 8px; border-bottom: 1px solid #999; padding-bottom: 4px; }
+				h3 { font-size: 14px; margin: 16px 0 6px; }
+				p { margin: 6px 0; }
+				table { border-collapse: collapse; width: 100%; margin: 6px 0 12px; }
+				th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; vertical-align: top; }
+				th { background: #eee; font-weight: 600; }
+				td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+				tr.f8949-total td { font-weight: 600; background: #f4f4f4; }
+				.muted { color: #555; }
+				.f8949-page { margin-bottom: 24px; }
+				.print-btn { font: inherit; padding: 6px 14px; margin: 8px 0 16px; cursor: pointer; }
+				@media print {
+					body { max-width: none; padding: 0; font-size: 11px; }
+					.noprint { display: none !important; }
+					.f8949-page { break-after: page; page-break-after: always; }
+					h2 { break-after: avoid; }
+					tr { break-inside: avoid; }
+				}
+			</style>
+		</head>
+		<body>
+			<button type="button" class="print-btn noprint" onclick="window.print()">Print / Save as PDF</button>
+			{ children... }
+		</body>
+	</html>
+}

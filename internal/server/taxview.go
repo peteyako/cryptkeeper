@@ -1,0 +1,311 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/starfederation/datastar-go/datastar"
+
+	"crypto-portfolio/internal/tax"
+	"crypto-portfolio/internal/tax/report"
+	"crypto-portfolio/web/templates"
+)
+
+// The Tax section of Reports: one tax year's report (closed from its frozen rows, open from
+// the engine) with year selector, tabs and paging, patched as #tax-section.
+
+// taxYears are the years the selector offers, ascending: every closed year, then every open
+// year up to the current one (from the year after the last closed one, or with none closed,
+// from the earliest year with activity).
+func (s *Server) taxYears() []int { return s.taxYearsCtx(context.Background()) }
+
+func (s *Server) taxYearsCtx(ctx context.Context) []int {
+	cur := s.Now().In(s.taxLoc()).Year()
+	set := map[int]bool{}
+	start := 0
+	if s.TaxYears != nil {
+		for _, y := range s.TaxYears.Years() {
+			set[y] = true
+		}
+		if last, ok := s.TaxYears.LastClosed(); ok {
+			start = last.Year + 1
+		}
+	}
+	if start == 0 {
+		if y, ok := s.closableYear(ctx); ok {
+			start = y
+		}
+	}
+	for y := start; start > 0 && y <= cur; y++ {
+		set[y] = true
+	}
+	if len(set) == 0 {
+		set[cur] = true
+	}
+	years := make([]int, 0, len(set))
+	for y := range set {
+		years = append(years, y)
+	}
+	slices.Sort(years)
+	return years
+}
+
+// taxSymbols resolves asset keys to ticker, name and Solana mint: the latest snapshot, then
+// the legs of stored activity, then the token_meta cache for Solana mints.
+type taxSymbols struct {
+	s     *Server
+	ctx   context.Context
+	once  sync.Once
+	info  map[string]taxSymbol
+	price map[string]float64
+}
+
+type taxSymbol struct{ symbol, name, mint string }
+
+func (t *taxSymbols) load() {
+	t.once.Do(func() {
+		t.info, t.price = map[string]taxSymbol{}, map[string]float64{}
+		snap, _ := t.s.latest()
+		for _, a := range snap.Assets {
+			t.info[a.AssetKey] = taxSymbol{a.Symbol, a.Name, a.Mint}
+			if a.Price != nil {
+				t.price[a.AssetKey] = a.Price.USD
+			}
+		}
+		if t.s.Activity == nil {
+			return
+		}
+		all, err := t.s.allActivity(t.ctx)
+		if err != nil {
+			return
+		}
+		for _, tx := range all {
+			for _, l := range tx.Legs {
+				if cur := t.info[l.AssetKey]; cur.symbol == "" && l.Symbol != "" {
+					cur.symbol = l.Symbol
+					t.info[l.AssetKey] = cur
+				}
+			}
+		}
+	})
+}
+
+func (t *taxSymbols) get(key string) taxSymbol {
+	t.load()
+	i := t.info[key]
+	mint, isSPL := strings.CutPrefix(key, "spl:")
+	if isSPL && i.mint == "" {
+		i.mint = mint
+	}
+	if isSPL && (i.symbol == "" || i.name == "") && t.s.DB != nil {
+		var raw string
+		if t.s.DB.QueryRow(`SELECT json FROM token_meta WHERE mint = ?`, mint).Scan(&raw) == nil {
+			var m struct{ Symbol, Name string }
+			if json.Unmarshal([]byte(raw), &m) == nil {
+				if i.symbol == "" {
+					i.symbol = m.Symbol
+				}
+				if i.name == "" {
+					i.name = m.Name
+				}
+			}
+		}
+	}
+	return i
+}
+
+// resolver builds the report's lookups. Prices: a Solana token is priced by its mint
+// (a ticker alone could be a look-alike), anything else by ticker then by a known mint;
+// when neither knows and day is today in the current open year, the live snapshot price
+// stands in.
+func (s *Server) resolver(ctx context.Context, year int, now time.Time) report.Resolver {
+	syms := &taxSymbols{s: s, ctx: ctx}
+	labels, _ := s.sourceLabels()
+	types := map[string]string{}
+	for _, d := range s.Registry.Defs() {
+		types[d.ID] = d.Type
+	}
+	for csv, typ := range importedSourceType {
+		types[csv] = typ
+	}
+	var box map[string]string
+	if s.TaxSettings != nil {
+		box = s.TaxSettings.Get().WalletBox
+	}
+	loc := s.taxLoc()
+	return report.Resolver{
+		Symbol: func(key string) (string, string) {
+			i := syms.get(key)
+			return i.symbol, i.name
+		},
+		WalletLabel: func(w string) string { return labels[w] },
+		WalletType:  func(w string) string { return types[w] },
+		Box:         box,
+		Price: func(key string, day time.Time) (float64, bool) {
+			i := syms.get(key)
+			_, isSPL := strings.CutPrefix(key, "spl:")
+			if s.Historical != nil {
+				if !isSPL {
+					sym := i.symbol
+					if sym == "" {
+						sym = key
+					}
+					if v, ok, err := s.Historical.Historical(ctx, sym, day); err == nil && ok {
+						return v, true
+					}
+				}
+				if i.mint != "" {
+					if v, ok, err := s.Historical.HistoricalMint(ctx, i.mint, day); err == nil && ok {
+						return v, true
+					}
+				}
+			}
+			if year == now.In(loc).Year() && day.In(loc).YearDay() == now.In(loc).YearDay() {
+				if v, ok := syms.price[key]; ok {
+					return v, true
+				}
+			}
+			return 0, false
+		},
+	}
+}
+
+var errNoTaxData = errors.New(noTaxData)
+
+// yearReport is the report of one tax year: a closed year from its frozen rows, an open one
+// from the engine (the current year from the cached result; an earlier open year computed
+// up to its end).
+func (s *Server) yearReport(ctx context.Context, year int) (report.YearReport, error) {
+	ctx = s.withActivity(ctx)
+	return s.yearReportWith(ctx, year, s.resolver(ctx, year, s.Now()))
+}
+
+// yearReportWith is yearReport with the resolver given, so a page can reuse it.
+func (s *Server) yearReportWith(ctx context.Context, year int, res report.Resolver) (report.YearReport, error) {
+	loc, now := s.taxLoc(), s.Now()
+	if s.TaxYears != nil {
+		if y, ok := s.TaxYears.Get(year); ok {
+			return report.FromClosed(y, res, loc), nil
+		}
+	}
+	if s.Activity == nil {
+		return report.YearReport{}, errNoTaxData
+	}
+	var result tax.Result
+	if year >= now.In(loc).Year() {
+		r, ok := s.taxResult(ctx)
+		if !ok {
+			return report.YearReport{}, errNoTaxData
+		}
+		result = r
+	} else {
+		c := &s.taxes
+		c.ymu.Lock()
+		hit, ok := c.years[year]
+		c.ymu.Unlock()
+		if ok && now.Sub(hit.at) < time.Minute {
+			return hit.rep, nil
+		}
+		in, ready, err := s.taxInput(ctx)
+		if err != nil {
+			return report.YearReport{}, err
+		}
+		in.To = time.Date(year+1, 1, 1, 0, 0, 0, 0, loc)
+		rep := report.FromOpen(year, tax.Compute(in), res, loc, now)
+		if ready {
+			c.ymu.Lock()
+			if c.years == nil {
+				c.years = map[int]cachedYear{}
+			}
+			c.years[year] = cachedYear{at: now, rep: rep}
+			c.ymu.Unlock()
+		}
+		return rep, nil
+	}
+	return report.FromOpen(year, result, res, loc, now), nil
+}
+
+// taxPage builds the Tax section for year (0 or unknown = the latest), tab and page. review,
+// when set, is reused for the Needs review tab instead of being built again.
+func (s *Server) taxPage(ctx context.Context, year int, tab string, page int, review *templates.ReviewPage) templates.TaxPage {
+	ctx = s.withActivity(ctx)
+	years := s.taxYearsCtx(ctx)
+	if !slices.Contains(years, year) {
+		year = years[len(years)-1]
+	}
+	p := templates.TaxPage{Years: years, Year: year, Tab: tab, Page: max(page, 1)}
+	res := s.resolver(ctx, year, s.Now())
+	rep, err := s.yearReportWith(ctx, year, res)
+	if err != nil {
+		p.Err = "Tax figures couldn't be loaded: " + err.Error()
+		return p
+	}
+	p.Report = rep
+	p.ReviewTab = !rep.Closed && year == years[len(years)-1]
+	p.Pages = max(1, (len(rep.Rows)+templates.TaxPageSize-1)/templates.TaxPageSize)
+	p.Page = min(p.Page, p.Pages)
+	switch {
+	case tab == "review" && p.ReviewTab:
+		if review != nil {
+			p.Review = *review
+		} else {
+			p.Review = s.reviewPage(ctx)
+		}
+	case tab == "income" || tab == "holdings":
+	default:
+		p.Tab = "gains"
+	}
+	if p.Tab == "income" {
+		p.Symbols, p.Wallets = map[string]string{}, map[string]string{}
+		for _, i := range rep.Income {
+			if res.Symbol != nil {
+				p.Symbols[i.Asset], _ = res.Symbol(i.Asset)
+			}
+			if l := res.WalletLabel(i.Wallet); l != "" {
+				p.Wallets[i.Wallet] = l
+			}
+		}
+	}
+	return p
+}
+
+func taxParams(get func(string) string) (year int, tab string, page int) {
+	year, _ = strconv.Atoi(get("year"))
+	page, _ = strconv.Atoi(get("page"))
+	return year, get("tab"), page
+}
+
+// taxView serves a year/tab/page of the Tax section: a Datastar request patches just
+// #tax-section, a browser load renders the Reports page with it.
+func (s *Server) taxView(w http.ResponseWriter, r *http.Request) {
+	year, tab, page := taxParams(r.URL.Query().Get)
+	ctx, cancel := ctxTimeout(r, 60*time.Second)
+	defer cancel()
+	if r.Header.Get("Datastar-Request") == "true" {
+		_ = datastar.NewSSE(w, r).PatchElementTempl(templates.TaxSection(s.taxPage(ctx, year, tab, page, nil)))
+		return
+	}
+	s.render(w, r, templates.ReportsFull(s.reportsPageTax(r, year, tab, page)))
+}
+
+// taxViewYear is the year selector's POST: it shows the chosen year's first capital-gains
+// page (or the posted tab).
+func (s *Server) taxViewYear(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := ctxTimeout(r, 60*time.Second)
+	defer cancel()
+	if err := parseBody(r); err != nil {
+		p := s.taxPage(ctx, 0, "", 1, nil)
+		p.Err = "That form could not be read."
+		_ = datastar.NewSSE(w, r).PatchElementTempl(templates.TaxSection(p))
+		return
+	}
+	year, tab, page := taxParams(r.PostFormValue)
+	_ = datastar.NewSSE(w, r).PatchElementTempl(templates.TaxSection(s.taxPage(ctx, year, tab, page, nil)))
+}

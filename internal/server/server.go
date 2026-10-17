@@ -26,10 +26,19 @@ import (
 	"crypto-portfolio/web/static"
 )
 
+// HistoricalPrices is the daily close of an asset by ticker or Solana mint (ok false when
+// unknown); *prices.Service implements it.
+type HistoricalPrices interface {
+	Historical(ctx context.Context, symbol string, day time.Time) (float64, bool, error)
+	HistoricalMint(ctx context.Context, mint string, day time.Time) (float64, bool, error)
+}
+
 // Deps are the server's collaborators, wired in main.
 type Deps struct {
-	Cfg        config.Config
-	DataDir    string
+	Cfg     config.Config
+	DataDir string
+	// HTTPClient downloads newer IRS form revisions; nil disables downloads.
+	HTTPClient *http.Client
 	Version    string
 	Log        *slog.Logger
 	Box        *secrets.Box // the registry's key: opens encrypted imports, seals exports when Cfg.EncryptExports()
@@ -45,6 +54,9 @@ type Deps struct {
 	Broker     *portfolio.Broker
 	History    *portfolio.History
 	Prices     portfolio.PriceFunc
+	// Historical prices a past day's close, for the tax report's year-end holdings.
+	// Optional: without it those holdings are unpriced.
+	Historical HistoricalPrices
 
 	// Tax lots: the settings (data/tax.yaml), the closed years (data/tax/<year>.yaml) and the
 	// tax timezone (nil = time.Local). They feed the cost basis and P&L everywhere.
@@ -132,6 +144,9 @@ func New(d Deps) http.Handler {
 		r.Post("/reports/koinly/map", s.koinlyMap)
 		r.Post("/reports/koinly/accept", s.koinlyAccept)
 		r.Post("/reports/koinly/discard", s.koinlyDiscard)
+		r.Get("/reports/tax", s.taxView)
+		s.registerTaxDownloads(r)
+		r.Post("/reports/tax/year", s.taxViewYear)
 		r.Post("/reports/tax/close", s.taxClose)
 		r.Post("/reports/tax/close-cancel", s.taxCloseCancel)
 		r.Post("/reports/tax/reopen", s.taxReopen)

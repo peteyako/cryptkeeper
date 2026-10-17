@@ -208,8 +208,17 @@ func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 	return p
 }
 
+// reportsPageTax is the Reports page with the Tax section on the given year, tab and page.
+func (s *Server) reportsPageTax(r *http.Request, year int, tab string, page int) templates.ReportsPage {
+	r = r.WithContext(s.withActivity(r.Context()))
+	p := s.reportsPage(r)
+	p.Tax = s.taxPage(r.Context(), year, tab, page, &p.Review)
+	return p
+}
+
 func (s *Server) reports(w http.ResponseWriter, r *http.Request) {
-	s.render(w, r, templates.ReportsFull(s.reportsPage(r)))
+	year, tab, page := taxParams(r.URL.Query().Get)
+	s.render(w, r, templates.ReportsFull(s.reportsPageTax(r, year, tab, page)))
 }
 
 func (s *Server) patchReports(sse *datastar.ServerSentEventGenerator, r *http.Request, mutate func(*templates.ReportsPage)) {

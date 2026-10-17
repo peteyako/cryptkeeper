@@ -8,6 +8,7 @@ import (
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/tax"
+	"crypto-portfolio/internal/tax/report"
 )
 
 // Shell is what every full page needs to draw the app chrome.
@@ -274,7 +275,30 @@ type ReportsPage struct {
 	// then points at the Koinly import).
 	MissingBasisSales int
 	Now               time.Time
-	Review            ReviewPage // the "Needs review" card
+	Tax               TaxPage    // the Tax section (its Needs review tab hosts Review)
+	Review            ReviewPage // the "Needs review" panel, shown in the Tax section's review tab
+}
+
+// TaxPageSize is how many capital-gains rows one page of the Tax section lists.
+const TaxPageSize = 200
+
+// TaxPage is the Tax section of Reports (#tax-section): a year selector, the year's tiles
+// and one tab of its report.
+type TaxPage struct {
+	Years  []int
+	Year   int
+	Tab    string // "gains" | "income" | "holdings" | "review"
+	Page   int    // 1-based page of the gains tab
+	Pages  int
+	Report report.YearReport
+	// ReviewTab is whether the Needs review tab exists: the latest open year only.
+	ReviewTab bool
+	Review    ReviewPage // set for the review tab
+	// Symbols and Wallets name the assets and wallets of the income rows (asset key and
+	// wallet ID to display text).
+	Symbols, Wallets map[string]string
+	// Err is shown instead of the report when it could not be built.
+	Err string
 }
 
 // ---- Needs review -----------------------------------------------------------------------

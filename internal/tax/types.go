@@ -69,7 +69,17 @@ type Disposal struct {
 	Term        Term      `yaml:"term" json:"term"`
 	Note        string    `yaml:"note" json:"note"`
 	TxID        string    `yaml:"txId" json:"txId"`
+	// LotTxID is the TxID of the lot the row consumed (the acquiring tx, kept across
+	// transfers); empty for opening-balance-less shortfall rows.
+	LotTxID string `yaml:"lotTxId,omitempty" json:"lotTxId,omitempty"`
+	// Source names the engine path that created the row when reports must tell it apart
+	// (SourcePositionGain); empty for ordinary disposals.
+	Source string `yaml:"source,omitempty" json:"source,omitempty"`
 }
+
+// SourcePositionGain is the Disposal.Source of a gain realized by a position-gain
+// withdrawal.
+const SourcePositionGain = "position-gain"
 
 // Income is a receipt taxed as income at its fair market value.
 type Income struct {

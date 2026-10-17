@@ -92,7 +92,7 @@ func TestPositionGainTag(t *testing.T) {
 	near(t, "amount", d.Amount, 50)
 	near(t, "cost", d.CostUSD, 0)
 	near(t, "proceeds", d.ProceedsUSD, 2.5)
-	if d.Term != ShortTerm || d.Note != "" || d.TxID != wd.ID {
+	if d.Term != ShortTerm || d.Note != "" || d.TxID != wd.ID || d.Source != SourcePositionGain {
 		t.Errorf("disposal = %+v", d)
 	}
 	l := lotsIn(r, "w", jup)

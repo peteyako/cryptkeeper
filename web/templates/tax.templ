@@ -1,0 +1,236 @@
+package templates
+
+import "strconv"
+
+// TaxSection is the Tax area of Reports: year selector, the year's tiles, the report tabs
+// and the download links. Its root is #tax-section, so the selector and tabs patch just
+// this.
+templ TaxSection(p TaxPage) {
+	<section id="tax-section" class="card tax" aria-labelledby="tax-h">
+		<div class="tax__head">
+			<div>
+				<h2 id="tax-h" class="h-card">Tax</h2>
+				if p.Err == "" {
+					<span class="badge">{ taxSourceText(p.Report) }</span>
+				}
+			</div>
+			if len(p.Years) > 0 {
+				<form method="post" action="/reports/tax/year" data-on:change="@post(el.action, {contentType: 'form'})">
+					<select class="input" name="year" aria-label="Tax year">
+						for _, y := range p.Years {
+							<option value={ strconv.Itoa(y) } selected?={ y == p.Year }>{ strconv.Itoa(y) }</option>
+						}
+					</select>
+				</form>
+			}
+		</div>
+		if p.Err != "" {
+			<div role="alert">
+				@Notice("loss", "alert") {
+					{ p.Err }
+				}
+			</div>
+		} else {
+			@taxTiles(p)
+			{{ tab := taxActiveTab(p) }}
+			<nav class="tabs" aria-label="Tax report sections">
+				for _, t := range taxTabs(p) {
+					<a
+						class={ "tab", templ.KV("tab--on", t.Key == tab) }
+						href={ templ.URL(taxHref(p.Year, t.Key, 1)) }
+						data-on:click__prevent={ taxGet(p.Year, t.Key, 1) }
+						if t.Key == tab {
+							aria-current="page"
+						}
+					>{ t.Label }</a>
+				}
+			</nav>
+			switch tab {
+				case "income":
+					@taxIncomeTab(p)
+				case "holdings":
+					@taxHoldingsTab(p)
+				case "review":
+					@ReviewPanel(p.Review)
+				default:
+					@taxGainsTab(p)
+			}
+			<div class="tax__downloads">
+				<span class="label">Downloads</span>
+				for _, d := range taxDownloads {
+					<a class="btn btn--ghost" href={ templ.URL(taxDownloadHref(p.Year, d.Path)) }>{ d.Label }</a>
+				}
+			</div>
+		}
+		<p class="foot-note">First in, first out, per wallet. Not tax advice.</p>
+	</section>
+}
+
+templ taxTiles(p TaxPage) {
+	{{ s := p.Report.Summary }}
+	<div class="stat-grid">
+		@taxGainTile("Short-term gain", s.ShortGain, s.ShortProceeds, s.ShortCost)
+		@taxGainTile("Long-term gain", s.LongGain, s.LongProceeds, s.LongCost)
+		<div class="stat">
+			<span class="label">Income</span>
+			<span class="stat__value">
+				@FigFiat(s.Income)
+			</span>
+			<span class="stat__sub">Rewards, airdrops and other income</span>
+		</div>
+		<div class="stat">
+			<span class="label">Fees</span>
+			<span class="stat__value">
+				@FigFiat(s.Fees)
+			</span>
+			<span class="stat__sub">Network fees, as gain or loss</span>
+		</div>
+	</div>
+}
+
+templ taxGainTile(label string, gain, proceeds, cost float64) {
+	{{ dir := Direction(gain) }}
+	<div class="stat">
+		<span class="label">{ label }</span>
+		<span class={ "stat__value", "chg--" + dir }>
+			@FigText(Fiat(gain), "$ ••••")
+		</span>
+		<span class="stat__sub">
+			@FigText("Proceeds "+Fiat(proceeds)+" · Cost "+Fiat(cost), "Proceeds $ •••• · Cost $ ••••")
+		</span>
+	</div>
+}
+
+templ taxGainsTab(p TaxPage) {
+	if len(p.Report.Rows) == 0 {
+		<p class="empty-note">No disposals in { strconv.Itoa(p.Year) }.</p>
+	} else {
+		{{ loc := p.Report.Loc }}
+		<div class="table-scroll">
+			<table class="tbl tbl--tax-gains">
+				<thead>
+					<tr>
+						<th scope="col">Date sold</th>
+						<th scope="col">Date acquired</th>
+						<th scope="col">Asset</th>
+						<th class="num" scope="col">Amount</th>
+						<th class="num" scope="col">Cost</th>
+						<th class="num" scope="col">Proceeds</th>
+						<th class="num" scope="col">Gain</th>
+						<th scope="col">Term</th>
+						<th scope="col">Wallet</th>
+						<th scope="col">Box</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, r := range p.pageRows() {
+						<tr class="gain-row">
+							<td>{ taxDate(r.Sold, loc) }</td>
+							<td>{ taxAcquired(r, loc) }</td>
+							<td>{ r.Symbol }</td>
+							<td class="num">{ CoinAmount(r.Amount, r.Symbol) }</td>
+							<td class="num">{ Fiat(r.CostUSD) }</td>
+							<td class="num">{ Fiat(r.ProceedsUSD) }</td>
+							<td class={ "num", "chg--" + Direction(r.GainUSD) }>{ Fiat(r.GainUSD) }</td>
+							<td>{ taxTerm(r.Term) }</td>
+							<td>{ r.WalletLabel }</td>
+							<td>{ r.Box }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if p.Pages > 1 {
+			<div class="tax__pager">
+				if p.Page > 1 {
+					<a class="btn btn--ghost" href={ templ.URL(taxHref(p.Year, "gains", p.Page-1)) } data-on:click__prevent={ taxGet(p.Year, "gains", p.Page-1) }>Previous</a>
+				}
+				<span class="meta">Page { strconv.Itoa(p.Page) } of { strconv.Itoa(p.Pages) } · { strconv.Itoa(len(p.Report.Rows)) } rows</span>
+				if p.Page < p.Pages {
+					<a class="btn btn--ghost" href={ templ.URL(taxHref(p.Year, "gains", p.Page+1)) } data-on:click__prevent={ taxGet(p.Year, "gains", p.Page+1) }>Next</a>
+				}
+			</div>
+		}
+	}
+}
+
+templ taxIncomeTab(p TaxPage) {
+	if len(p.Report.Income) == 0 {
+		<p class="empty-note">No income in { strconv.Itoa(p.Year) }.</p>
+	} else {
+		{{ loc := p.Report.Loc }}
+		<div class="table-scroll">
+			<table class="tbl tbl--tax-income">
+				<thead>
+					<tr>
+						<th scope="col">Date</th>
+						<th scope="col">Asset</th>
+						<th class="num" scope="col">Amount</th>
+						<th class="num" scope="col">Value</th>
+						<th scope="col">Type</th>
+						<th scope="col">Wallet</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, i := range p.Report.Income {
+						<tr>
+							<td>{ taxDate(i.Date, loc) }</td>
+							<td>{ taxName(p.Symbols, i.Asset) }</td>
+							<td class="num">{ CoinAmount(i.Amount, taxName(p.Symbols, i.Asset)) }</td>
+							<td class="num">{ Fiat(i.ValueUSD) }</td>
+							<td>{ IncomeTypeName(i.Type) }</td>
+							<td>{ taxName(p.Wallets, i.Wallet) }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ taxHoldingsTab(p TaxPage) {
+	{{ cost, value := taxHoldingTotals(p.Report.Holdings) }}
+	<p class="muted-text">Holdings as of { taxDate(p.Report.AsOf, p.Report.Loc) }</p>
+	if len(p.Report.Holdings) == 0 {
+		<p class="empty-note">Nothing was held.</p>
+	} else {
+		<div class="table-scroll">
+			<table class="tbl tbl--tax-holdings">
+				<thead>
+					<tr>
+						<th scope="col">Asset</th>
+						<th class="num" scope="col">Quantity</th>
+						<th class="num" scope="col">Cost</th>
+						<th class="num" scope="col">Price</th>
+						<th class="num" scope="col">Value</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, h := range p.Report.Holdings {
+						<tr>
+							<td>{ h.Symbol }</td>
+							<td class="num">{ CoinAmount(h.Quantity, h.Symbol) }</td>
+							<td class="num">{ Fiat(h.CostUSD) }</td>
+							if h.Priced {
+								<td class="num">{ PriceFiat(h.Price) }</td>
+								<td class="num">{ Fiat(h.ValueUSD) }</td>
+							} else {
+								<td class="num">—</td>
+								<td class="num">—</td>
+							}
+						</tr>
+					}
+				</tbody>
+				<tfoot>
+					<tr>
+						<th scope="row">Total</th>
+						<td></td>
+						<td class="num">{ Fiat(cost) }</td>
+						<td></td>
+						<td class="num">{ Fiat(value) }</td>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+	}
+}

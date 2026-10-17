@@ -477,7 +477,7 @@ func (e *engine) disposal(tx core.Tx, l Lot, proceeds float64, note string) Disp
 		Sold: tx.Time, Acquired: l.Acquired, Various: l.Various,
 		Asset: l.Asset, Amount: l.Amount,
 		CostUSD: l.CostUSD, ProceedsUSD: proceeds, GainUSD: proceeds - l.CostUSD,
-		Wallet: tx.SourceID, Term: termOf(l.Acquired, tx.Time, e.in.Loc), Note: note, TxID: tx.ID,
+		Wallet: tx.SourceID, Term: termOf(l.Acquired, tx.Time, e.in.Loc), Note: note, TxID: tx.ID, LotTxID: l.TxID,
 	}
 }
 

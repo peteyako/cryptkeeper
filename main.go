@@ -470,9 +470,9 @@ func serve(args []string) error {
 	go syncer.Run(ctx)
 
 	h := server.New(server.Deps{
-		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log, Box: a.box,
+		Cfg: a.cfg, DataDir: a.dataDir, HTTPClient: &http.Client{Timeout: 30 * time.Second}, Version: version, Log: a.log, Box: a.box,
 		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref,
-		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, DB: a.db, Broker: broker, History: hist, Prices: a.priceFunc(),
+		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, DB: a.db, Broker: broker, History: hist, Prices: a.priceFunc(), Historical: a.prices,
 		TaxSettings: a.taxSet, TaxYears: a.taxYears, TaxLoc: taxLoc,
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,

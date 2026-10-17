@@ -1,0 +1,100 @@
+package templates
+
+import (
+	"crypto-portfolio/internal/tax/report"
+	"strconv"
+)
+
+// Form8949Doc is the printable Form 8949 + Schedule D page of one tax year.
+templ Form8949Doc(r report.YearReport) {
+	@PrintLayout("Form 8949 and Schedule D " + strconv.Itoa(r.Year)) {
+		<h1>Form 8949 and Schedule D { strconv.Itoa(r.Year) }</h1>
+		<p class="muted">Worksheet figures for transcribing onto the IRS forms. Gains and losses: losses in parentheses.</p>
+		<h2>Schedule D</h2>
+		@ScheduleDTable(r)
+		<h2>Form 8949</h2>
+		@Form8949Pages(r)
+	}
+}
+
+// Form8949Pages renders every Form 8949 page of the year: one block per box, split into
+// pages of 11 rows (the 2025 revision), each with its own totals row. Reused by the CPA report.
+templ Form8949Pages(r report.YearReport) {
+	{{ parts := report.Form8949(r) }}
+	if len(parts) == 0 {
+		<p>No disposals in { strconv.Itoa(r.Year) }.</p>
+	}
+	for _, part := range parts {
+		{{ pages := report.Pages(part, form8949PerPage) }}
+		for i, rows := range pages {
+			<section class="f8949-page">
+				<h3>
+					Form 8949, { form8949PartName(part) } · Box { part.Box }
+					<span class="muted"> · Page { strconv.Itoa(i + 1) } of { strconv.Itoa(len(pages)) }</span>
+				</h3>
+				<table>
+					<thead>
+						<tr>
+							<th>(a) Description</th>
+							<th>(b) Date acquired</th>
+							<th>(c) Date sold</th>
+							<th class="num">(d) Proceeds</th>
+							<th class="num">(e) Cost</th>
+							<th class="num">(g) Adjustment</th>
+							<th class="num">(h) Gain or loss</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range rows {
+							<tr>
+								<td>{ row.Description }</td>
+								<td>{ row.Acquired }</td>
+								<td>{ row.Sold }</td>
+								<td class="num">{ report.Money8949(row.Proceeds) }</td>
+								<td class="num">{ report.Money8949(row.Cost) }</td>
+								<td class="num">0.00</td>
+								<td class="num">{ report.Money8949(row.Gain) }</td>
+							</tr>
+						}
+						{{ tot := report.PageTotal(rows) }}
+						<tr class="f8949-total">
+							<td colspan="3">Totals for this page (line 2)</td>
+							<td class="num">{ report.Money8949(tot.Proceeds) }</td>
+							<td class="num">{ report.Money8949(tot.Cost) }</td>
+							<td class="num">0.00</td>
+							<td class="num">{ report.Money8949(tot.Gain) }</td>
+						</tr>
+					</tbody>
+				</table>
+			</section>
+		}
+	}
+}
+
+// ScheduleDTable is the Schedule D line totals of the digital-asset boxes.
+templ ScheduleDTable(r report.YearReport) {
+	<table>
+		<thead>
+			<tr>
+				<th>Line</th>
+				<th>8949</th>
+				<th class="num">(d) Proceeds</th>
+				<th class="num">(e) Cost</th>
+				<th class="num">(g) Adjustments</th>
+				<th class="num">(h) Gain or loss</th>
+			</tr>
+		</thead>
+		<tbody>
+			for _, l := range report.ScheduleD(r) {
+				<tr>
+					<td>{ l.Line }</td>
+					<td>{ l.Box }</td>
+					<td class="num">{ report.Money8949(l.Proceeds) }</td>
+					<td class="num">{ report.Money8949(l.Cost) }</td>
+					<td class="num">{ report.Money8949(l.Adjustments) }</td>
+					<td class="num">{ report.Money8949(l.Gain) }</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}

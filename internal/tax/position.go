@@ -35,8 +35,9 @@ func (e *engine) position(tx core.Tx, legs []*valued, gain bool) {
 			e.acquire(tx, v.AssetKey, excess, value)
 			if gain {
 				// A realized gain: sold at market value for no cost, and re-acquired at it.
-				e.out.Disposals = append(e.out.Disposals, e.disposal(tx,
-					Lot{Wallet: tx.SourceID, Asset: v.AssetKey, Amount: excess, Acquired: tx.Time}, value, ""))
+				d := e.disposal(tx, Lot{Wallet: tx.SourceID, Asset: v.AssetKey, Amount: excess, Acquired: tx.Time}, value, "")
+				d.Source = SourcePositionGain
+				e.out.Disposals = append(e.out.Disposals, d)
 				continue
 			}
 			e.out.Income = append(e.out.Income, Income{

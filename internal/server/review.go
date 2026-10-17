@@ -140,7 +140,7 @@ func (s *Server) reviewPage(ctx context.Context) templates.ReviewPage {
 	txs := map[string]core.Tx{}
 	earliest := 0
 	if s.Activity != nil {
-		if all, err := s.Activity.All(ctx, nil); err == nil {
+		if all, err := s.allActivity(ctx); err == nil {
 			p.TagsChecked = true
 			for _, tx := range all {
 				if y := tx.Time.In(loc).Year(); earliest == 0 || y < earliest {

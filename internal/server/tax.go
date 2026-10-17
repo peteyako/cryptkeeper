@@ -8,6 +8,7 @@ import (
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/tax"
+	"crypto-portfolio/internal/tax/report"
 )
 
 // taxCache keeps the last tax-lot computation briefly: the overview's P&L column would
@@ -17,6 +18,44 @@ type taxCache struct {
 	at  time.Time
 	res tax.Result
 	ok  bool
+
+	// years caches the report of an earlier open year (computed up to its end): it is
+	// expensive and, like res, only valid until the next invalidateTax or a minute.
+	ymu   sync.Mutex
+	years map[int]cachedYear
+}
+
+type cachedYear struct {
+	at  time.Time
+	rep report.YearReport
+}
+
+type activityKey struct{}
+
+// activityHolder loads the stored activity once for the request that carries it.
+type activityHolder struct {
+	once sync.Once
+	txs  []core.Tx
+	err  error
+}
+
+// withActivity marks ctx so every allActivity under it shares one Activity.All read.
+func (s *Server) withActivity(ctx context.Context) context.Context {
+	if ctx.Value(activityKey{}) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, activityKey{}, &activityHolder{})
+}
+
+// allActivity is every stored activity entry; under a withActivity context it is read once.
+// Callers must not modify the result.
+func (s *Server) allActivity(ctx context.Context) ([]core.Tx, error) {
+	h, ok := ctx.Value(activityKey{}).(*activityHolder)
+	if !ok {
+		return s.Activity.All(ctx, nil)
+	}
+	h.once.Do(func() { h.txs, h.err = s.Activity.All(ctx, nil) })
+	return h.txs, h.err
 }
 
 // invalidateTax drops the cached tax result, so the next read replays the activity.
@@ -25,6 +64,9 @@ func (s *Server) invalidateTax() {
 	c.mu.Lock()
 	c.ok = false
 	c.mu.Unlock()
+	c.ymu.Lock()
+	c.years = nil
+	c.ymu.Unlock()
 }
 
 // taxLoc is the tax timezone; time.Local when none was wired.
@@ -105,7 +147,7 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 // taxActivity is every stored activity entry, minus CSV-imported ones the live API already
 // synced (see dedupeImported).
 func (s *Server) taxActivity(ctx context.Context) ([]core.Tx, error) {
-	txs, err := s.Activity.All(ctx, nil)
+	txs, err := s.allActivity(ctx)
 	if err != nil {
 		return nil, err
 	}

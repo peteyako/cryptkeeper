@@ -4612,3 +4612,32 @@ body.amounts-hidden .fig-m {
   flex-direction: column;
   gap: 4px;
 }
+
+/* ---- reports: tax section -------------------------------------------------------------- */
+
+.tax {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.tax__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tax__downloads,
+.tax__pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tax .tabs {
+  padding: 0;
+}

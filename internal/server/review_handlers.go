@@ -23,12 +23,20 @@ import (
 // saves data/tax.yaml in one SettingsStore.Update, drops the tax cache and patches the
 // review panel and the P&L table. A refused action shows its reason at the top of the panel.
 
-// patchReview re-renders the review panel (with errMsg on top) and the P&L table.
+// patchReview re-renders the Tax section on its review tab (errMsg atop the panel) and the P&L table.
 func (s *Server) patchReview(w http.ResponseWriter, r *http.Request, errMsg string) {
+	r = r.WithContext(s.withActivity(r.Context()))
 	p := s.reportsPage(r)
 	p.Review.Err = errMsg
 	sse := datastar.NewSSE(w, r)
-	_ = sse.PatchElementTempl(templates.ReviewPanel(p.Review))
+	// The Tax section holds the review panel (its tab for the latest open year) and the
+	// tiles and counts the action just changed, so it is re-rendered whole.
+	tp := s.taxPage(r.Context(), 0, "review", 1, &p.Review)
+	_ = sse.PatchElementTempl(templates.TaxSection(tp))
+	if !tp.ReviewTab {
+		// Latest year closed: no review tab, but the refusal still goes to the panel.
+		_ = sse.PatchElementTempl(templates.ReviewPanel(p.Review))
+	}
 	_ = sse.PatchElementTempl(templates.PnLTable(p))
 }
 
@@ -72,7 +80,7 @@ func (s *Server) activityByID(r *http.Request) (map[string]core.Tx, bool) {
 	if s.Activity == nil {
 		return nil, false
 	}
-	all, err := s.Activity.All(r.Context(), nil)
+	all, err := s.allActivity(r.Context())
 	if err != nil {
 		return nil, false
 	}

@@ -1,0 +1,154 @@
+package templates
+
+import (
+	"crypto-portfolio/internal/tax/report"
+	"strconv"
+)
+
+// TaxReportPage is the printable complete tax report (the CPA package) of one tax year.
+templ TaxReportPage(v TaxReportView) {
+	{{ r := v.Report }}
+	@PrintLayout("Crypto tax report " + strconv.Itoa(r.Year)) {
+		<h1>Crypto tax report { strconv.Itoa(r.Year) }</h1>
+		<p class="muted">Generated { v.Generated }</p>
+		<h2>Summary</h2>
+		<table>
+			<thead>
+				<tr>
+					<th></th>
+					<th class="num">Proceeds</th>
+					<th class="num">Cost basis</th>
+					<th class="num">Gain or loss</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td>Short-term</td>
+					<td class="num">{ report.Money8949(r.Summary.ShortProceeds) }</td>
+					<td class="num">{ report.Money8949(r.Summary.ShortCost) }</td>
+					<td class="num">{ report.Money8949(r.Summary.ShortGain) }</td>
+				</tr>
+				<tr>
+					<td>Long-term</td>
+					<td class="num">{ report.Money8949(r.Summary.LongProceeds) }</td>
+					<td class="num">{ report.Money8949(r.Summary.LongCost) }</td>
+					<td class="num">{ report.Money8949(r.Summary.LongGain) }</td>
+				</tr>
+			</tbody>
+		</table>
+		<p>Income: { report.Money8949(r.Summary.Income) } · Fees: { report.Money8949(r.Summary.Fees) }</p>
+		<h2>Method</h2>
+		<p>{ v.Method }</p>
+		<h2>Schedule D</h2>
+		@ScheduleDTable(r)
+		<h2>Form 8949 detail</h2>
+		@Form8949Pages(r)
+		<h2>Income</h2>
+		if len(v.Income) == 0 {
+			<p>No income in { strconv.Itoa(r.Year) }.</p>
+		} else {
+			<table>
+				<thead>
+					<tr>
+						<th>Date</th>
+						<th>Asset</th>
+						<th class="num">Amount</th>
+						<th class="num">Value (USD)</th>
+						<th>Type</th>
+						<th>Wallet</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, i := range v.Income {
+						<tr>
+							<td>{ i.Date }</td>
+							<td>{ i.Asset }</td>
+							<td class="num">{ i.Amount }</td>
+							<td class="num">{ i.Value }</td>
+							<td>{ i.Type }</td>
+							<td>{ i.Wallet }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		<h2>Year-end holdings</h2>
+		if len(r.Holdings) == 0 {
+			<p>No holdings at the end of { strconv.Itoa(r.Year) }.</p>
+		} else {
+			<table>
+				<thead>
+					<tr>
+						<th>Asset</th>
+						<th class="num">Quantity</th>
+						<th class="num">Cost (USD)</th>
+						<th class="num">Value (USD)</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, h := range r.Holdings {
+						<tr>
+							<td>{ h.Symbol }</td>
+							<td class="num">{ FormatQty(h.Quantity) }</td>
+							<td class="num">{ report.Money8949(h.CostUSD) }</td>
+							<td class="num">
+								if h.Priced {
+									{ report.Money8949(h.ValueUSD) }
+								} else {
+									—
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		<h2>Wallets</h2>
+		if len(v.Wallets) == 0 {
+			<p>No wallets.</p>
+		} else {
+			<table>
+				<thead>
+					<tr>
+						<th>Wallet</th>
+						<th>Type</th>
+						<th>Form 8949 box</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, w := range v.Wallets {
+						<tr>
+							<td>{ w.Label }</td>
+							<td>{ w.Type }</td>
+							<td>{ w.Box }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		if !r.Closed {
+			<h2>Open review issues</h2>
+			if len(v.Issues) == 0 {
+				<p>None.</p>
+			} else {
+				<table>
+					<thead>
+						<tr>
+							<th>Issue</th>
+							<th class="num">Count</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, i := range v.Issues {
+							<tr>
+								<td>{ i.Kind }</td>
+								<td class="num">{ strconv.Itoa(i.Count) }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		}
+		<p class="muted">Prepared by CryptKeep from the user's own records. Not tax advice.</p>
+	}
+}

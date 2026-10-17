@@ -559,7 +559,7 @@ func TestRealizedCardQuietWithBasis(t *testing.T) {
 func TestTaxResultNotCachedBeforeSnapshot(t *testing.T) {
 	e := newEnv(t, "")
 	e.closeYear(2025, tax.Summary{}, solLot("sol", 10, 1000))
-	if _, page := e.do("GET", "/reports", nil, nil); strings.Contains(page, ">2026<") {
+	if _, page := e.do("GET", "/reports", nil, nil); strings.Contains(within(page, `id="realized-h"`, 1500), ">2026<") {
 		t.Fatal("no 2026 sale yet")
 	}
 	sell := core.Tx{ID: core.TxID("sol", "s1"), SourceID: "sol", ExternalID: "s1", Time: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC),

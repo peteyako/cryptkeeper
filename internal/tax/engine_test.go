@@ -715,3 +715,34 @@ func TestOpeningParkedSkipsDust(t *testing.T) {
 		t.Fatalf("Parked = %+v, want only V", r.Parked)
 	}
 }
+
+func TestDisposalCarriesLotTxID(t *testing.T) {
+	buy := mk("b", "cb", at(2026, 2, 1, 0), core.TxTrade, lg("BTC", 1, nil), lg("USD", -100, usd(-100)))
+	sell := mk("s", "cb", at(2026, 3, 1, 0), core.TxTrade, lg("BTC", -1, usd(-150)), lg("USD", 150, usd(150)))
+	r := Compute(Input{From: from2026, Txs: []core.Tx{buy, sell}})
+	var got []Disposal
+	for _, d := range r.Disposals {
+		if d.Asset == "BTC" {
+			got = append(got, d)
+		}
+	}
+	if len(got) != 1 || got[0].LotTxID != "cb:b" {
+		t.Fatalf("direct sale = %+v, want LotTxID cb:b", got)
+	}
+
+	send, recv := linked(
+		mk("send", "cb", at(2026, 2, 5, 0), core.TxTransfer, lg("BTC", -1, usd(-110))),
+		mk("recv", "x", at(2026, 2, 5, 1), core.TxTransfer, lg("BTC", 1, nil)),
+	)
+	sell2 := mk("s2", "x", at(2026, 3, 1, 0), core.TxTrade, lg("BTC", -1, usd(-150)), lg("USD", 150, usd(150)))
+	r = Compute(Input{From: from2026, Txs: []core.Tx{buy, send, recv, sell2}})
+	got = nil
+	for _, d := range r.Disposals {
+		if d.Asset == "BTC" && d.Wallet == "x" {
+			got = append(got, d)
+		}
+	}
+	if len(got) != 1 || got[0].LotTxID != "cb:b" {
+		t.Fatalf("after transfer = %+v, want LotTxID cb:b", got)
+	}
+}

@@ -31,7 +31,7 @@ func (s *Server) openYear(earliest int) (int, bool) {
 func (s *Server) closableYear(ctx context.Context) (int, bool) {
 	earliest := 0
 	if s.Activity != nil {
-		all, err := s.Activity.All(ctx, nil)
+		all, err := s.allActivity(ctx)
 		if err != nil {
 			return 0, false
 		}
