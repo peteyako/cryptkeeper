@@ -1,9 +1,6 @@
-// Package costbasis computes average-cost basis and realized/unrealized P&L from the
-// activity feed, user-entered manual entries (data/costbasis.yaml) and CSV exports
-// (Coinbase transaction history, Kraken ledgers).
-//
-// Not tax advice: the numbers are an informational estimate (global average cost, no
-// jurisdiction-specific lot rules).
+// Package costbasis parses exchange CSV exports (Coinbase transaction history, Kraken
+// ledgers) into activity, and keeps the manual cost entries of data/costbasis.yaml, which
+// predate the tax lots (internal/tax) and are carried by backups.
 package costbasis
 
 import (

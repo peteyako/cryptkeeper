@@ -3,31 +3,36 @@ package costbasis
 import (
 	"math"
 	"testing"
-	"time"
 
-	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/tax"
 )
 
 func usd(v float64) *float64 { return &v }
-
-func day(y int, m time.Month, d int) time.Time {
-	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
-}
-
-func lg(asset string, amount float64, usd *float64) core.Leg {
-	return core.Leg{AssetKey: asset, Symbol: asset, Amount: amount, USD: usd}
-}
-
-func mk(id string, t time.Time, kind core.TxKind, legs ...core.Leg) core.Tx {
-	return core.Tx{
-		ID: core.TxID("test", id), SourceID: "test", ExternalID: id,
-		Time: t, Kind: kind, Status: core.TxConfirmed, Legs: legs,
-	}
-}
 
 func near(t *testing.T, name string, got, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 1e-6*math.Max(1, math.Abs(want)) {
 		t.Errorf("%s = %v, want %v", name, got, want)
 	}
+}
+
+// gains sums the gain of asset's disposals per UTC year of the sale.
+func gains(res tax.Result, asset string) map[int]float64 {
+	out := map[int]float64{}
+	for _, d := range res.Disposals {
+		if d.Asset == asset {
+			out[d.Sold.UTC().Year()] += d.GainUSD
+		}
+	}
+	return out
+}
+
+// hasIssue reports whether res has an issue of kind for asset.
+func hasIssue(res tax.Result, kind tax.IssueKind, asset string) bool {
+	for _, is := range res.Issues {
+		if is.Kind == kind && is.Asset == asset {
+			return true
+		}
+	}
+	return false
 }

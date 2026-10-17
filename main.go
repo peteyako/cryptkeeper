@@ -44,6 +44,7 @@ import (
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/internal/sources/solana"
 	"crypto-portfolio/internal/store"
+	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/internal/yamlfile"
 )
 
@@ -91,6 +92,8 @@ type app struct {
 	activity   *activity.Store
 	costbasis  *costbasis.ManualStore
 	alertRules *alerts.RuleStore
+	taxSet     *tax.SettingsStore // data/tax.yaml
+	taxYears   *tax.YearStore     // data/tax/<year>.yaml
 }
 
 // dbName is the SQLite database in the data directory. Before the app was renamed from
@@ -176,7 +179,67 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 		db.Close()
 		return nil, fs, err
 	}
+	if a.taxSet, err = tax.NewSettingsStore(filepath.Join(*dataDir, "tax.yaml"), filepath.Join(*dataDir, "backups")); err != nil {
+		db.Close()
+		return nil, fs, err
+	}
+	if a.taxYears, err = tax.NewYearStore(filepath.Join(*dataDir, "tax"), filepath.Join(*dataDir, "backups")); err != nil {
+		db.Close()
+		return nil, fs, err
+	}
+	migrateCostBasis(a.costbasis, a.taxSet, a.log)
 	return a, fs, nil
+}
+
+// migrateCostBasis moves the manual lots of the old costbasis.yaml into tax.yaml, once: it
+// runs only while tax.yaml doesn't exist. Lots land in the untracked wallet (edit tax.yaml
+// to assign wallets); notes and per-asset overrides aren't migrated.
+func migrateCostBasis(cb *costbasis.ManualStore, ts *tax.SettingsStore, log *slog.Logger) {
+	if ts.Exists() {
+		return
+	}
+	m := cb.Get()
+	if len(m.Lots) == 0 {
+		return
+	}
+	lots := make([]tax.Lot, 0, len(m.Lots))
+	for _, l := range m.Lots {
+		acq := l.Date.Time()
+		if acq.IsZero() {
+			acq = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		}
+		lots = append(lots, tax.Lot{Wallet: tax.Untracked, Asset: l.Asset, Amount: l.Amount, CostUSD: l.CostUSD, Acquired: acq})
+	}
+	if err := ts.Update(func(s *tax.Settings) { s.ManualLots = append(s.ManualLots, lots...) }); err != nil {
+		log.Warn("could not move manual lots from costbasis.yaml to tax.yaml", "err", err)
+		return
+	}
+	log.Warn(fmt.Sprintf("moved %d manual lots from costbasis.yaml to tax.yaml (wallet: untracked); edit tax.yaml to assign wallets", len(lots)))
+	if n := len(m.Assets); n > 0 {
+		log.Warn("costbasis.yaml asset overrides are not migrated to tax.yaml", "assets", n)
+	}
+}
+
+// taxLoc is the configured tax timezone; an invalid one is logged and local time is used.
+func (a *app) taxLoc() *time.Location {
+	loc, err := a.cfg.TaxLocation()
+	if err != nil {
+		a.log.Warn("tax timezone not usable, using local time", "err", err)
+		return time.Local
+	}
+	return loc
+}
+
+// syncSince is the activity backfill horizon: backfillDays before now, or the start of the
+// open tax year when that is earlier, so the tax lots can always be rebuilt from the
+// opening lots. With no closed year it is just now − backfillDays.
+func syncSince(now time.Time, backfillDays int, years *tax.YearStore, loc *time.Location) time.Time {
+	since := now.AddDate(0, 0, -backfillDays)
+	last, ok := years.LastClosed()
+	if open := tax.OpenYearStart(last, ok, loc); !open.IsZero() && open.Before(since) {
+		return open
+	}
+	return since
 }
 
 // factory builds live sources from definitions with opened secrets.
@@ -388,10 +451,13 @@ func serve(args []string) error {
 	ref.OnSnapshot = func(snap portfolio.Snapshot) {
 		go engine.OnSnapshot(context.WithoutCancel(ctx), snap) // never block the refresher on notifications
 	}
+	taxLoc := a.taxLoc()
 	syncer := &activity.Syncer{
-		Store:    a.activity,
-		Sources:  a.activitySources,
-		Since:    func() time.Time { return time.Now().AddDate(0, 0, -a.cfg.Activity.BackfillDays) },
+		Store:   a.activity,
+		Sources: a.activitySources,
+		Since: func() time.Time {
+			return syncSince(time.Now(), a.cfg.Activity.BackfillDays, a.taxYears, taxLoc)
+		},
 		Interval: a.cfg.ActivityInterval(),
 		Log:      a.log,
 		Valuer:   a.prices,
@@ -407,6 +473,7 @@ func serve(args []string) error {
 		Cfg: a.cfg, DataDir: a.dataDir, Version: version, Log: a.log, Box: a.box,
 		Registry: a.registry, Portfolios: a.portfolios, Refresher: ref,
 		Activity: a.activity, Syncer: syncer, CostBasis: a.costbasis, AlertRules: a.alertRules, Alerts: engine, DB: a.db, Broker: broker, History: hist, Prices: a.priceFunc(),
+		TaxSettings: a.taxSet, TaxYears: a.taxYears, TaxLoc: taxLoc,
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
 	})
@@ -636,6 +703,7 @@ func (a *app) readImport(path string) ([]byte, error) {
 func (a *app) backupStores() backup.Stores {
 	return backup.Stores{
 		Sources: a.registry, Portfolios: a.portfolios, Alerts: a.alertRules, CostBasis: a.costbasis,
+		Tax: a.taxSet, TaxYears: a.taxYears,
 		OnSourceRemoved: func(id string) {
 			a.portfolios.RemoveWallet(id)
 			a.activity.DeleteSource(context.Background(), id)

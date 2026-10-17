@@ -52,6 +52,14 @@ func pnlName(r PnLRow) string {
 	return r.Symbol
 }
 
+// missingBasisText is "1 sale has no cost basis" / "3 sales have no cost basis".
+func missingBasisText(n int) string {
+	if n == 1 {
+		return "1 sale has no cost basis"
+	}
+	return strconv.Itoa(n) + " sales have no cost basis"
+}
+
 // unknownUnitsText is "0.1000 BTC with unknown cost".
 func unknownUnitsText(r PnLRow) string {
 	return Coin(r.UnknownUnits, r.Symbol) + " with unknown cost"

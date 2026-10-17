@@ -70,8 +70,11 @@ type WalletPage struct {
 	Receive    string
 	ReceiveQR  templ.Component // nil if none; an SVG component supplied by the handler
 	IsBitcoin  bool
-	CostBasis  *float64 // nil when unknown: the tile shows "—" and "Set cost basis"
+	CostBasis  *float64 // from the wallet's tax lots; nil when unknown: the tile shows "—"
 	Unrealized *float64
+	// CostUnits is how many units CostBasis covers (units in missing-basis lots, or with
+	// no lot at all, are left out), so the tile's avg is CostBasis / CostUnits.
+	CostUnits float64
 	// Activity is the wallet's most recent entries (up to 25) for the Activity tab, and
 	// ActivityMore says there are older ones (the tab then links to the full Activity page).
 	Activity     []ActivityRow
@@ -237,28 +240,24 @@ type ActivityPage struct {
 
 // ---- reports ----------------------------------------------------------------------------
 
-// PnLRow is one asset of the profit and loss table.
+// PnLRow is one asset of the profit and loss table, costed from the open tax lots.
 type PnLRow struct {
 	AssetKey, Symbol, Name string
 	Amount, Value          float64
-	AvgCost, Basis         float64
-	Unrealized             float64
-	UnrealizedPct          float64
-	HasBasis, Overridden   bool
-	UnknownUnits           float64 // units without a known cost
+	// Basis is the cost of the units covered by lots with a known cost; AvgCost is that
+	// basis per covered unit.
+	AvgCost, Basis float64
+	Unrealized     float64
+	UnrealizedPct  float64
+	HasBasis       bool
+	UnknownUnits   float64 // units held that no lot with a known cost covers
+	MissingUnits   float64 // units in missing-basis lots (held beyond what the import had a cost for)
 }
 
-// YearAmount is realized profit or loss for one calendar year.
+// YearAmount is realized profit or loss for one tax year.
 type YearAmount struct {
 	Year int
 	USD  float64
-}
-
-// ManualBasisRow is a cost entered by hand: Amount units for CostUSD in total.
-type ManualBasisRow struct {
-	Asset           string
-	Amount, CostUSD float64
-	Note            string
 }
 
 // ReportsPage is the Reports screen (/reports).
@@ -266,13 +265,73 @@ type ReportsPage struct {
 	Shell
 	Rows                                    []PnLRow
 	TotalBasis, TotalValue, TotalUnrealized float64
-	Coverage                                float64      // 0..1 share of value with a known cost
-	Realized                                []YearAmount // newest year first
-	Manual                                  []ManualBasisRow
-	AssetOptions                            []AssetOption
+	Coverage                                float64       // 0..1 share of value with a known cost
+	Realized                                []YearAmount  // newest year first
 	Import                                  ImportOutcome // CSV import result
-	BasisErr                                string        // manual cost form error
-	Now                                     time.Time
+	TaxErr                                  string        // data/tax.yaml failed to reload
+	// MissingBasisSales is how many open-year sales had no cost basis (the realized card
+	// then points at the Koinly import).
+	MissingBasisSales int
+	Now               time.Time
+}
+
+// ---- Koinly import ----------------------------------------------------------------------
+
+// KoinlyPage is the Koinly import wizard (/reports/koinly).
+type KoinlyPage struct {
+	Shell
+	Wizard KoinlyWizard
+}
+
+// KoinlyWizard is the wizard's steps: upload, map, reconcile and accept. Its root is
+// #koinly-wizard, which every step's POST patches.
+type KoinlyWizard struct {
+	Outcome       ImportOutcome // the last upload's result, shown under the upload form
+	AcceptOutcome ImportOutcome // a refused accept, shown under the Accept button
+	// HasDraft: files were uploaded. The mapping and reconciliation steps show only then.
+	HasDraft bool
+	Year     int
+	AsOf     time.Time // the holdings report's date; zero without one
+	Files    []string  // uploaded file names
+	Kinds    []string  // the report kinds uploaded: "holdings", "transactions", "gains", "income"
+	// Rows loaded from each report.
+	Holdings, Txns, Gains, Income int
+	Wallets                       []KoinlyMapRow // Koinly wallet name → source ID | "untracked"
+	WalletOptions                 []KoinlyOption
+	Assets                        []KoinlyMapRow // Koinly "SYM (Name)" → asset key | "" (skip)
+	AssetOptions                  []KoinlyOption
+	Recon                         []KoinlyReconRow
+	// Problems are the differences and warnings the user must read before accepting.
+	Problems []string
+	// Blocked says why Accept is not possible yet; "" when it is.
+	Blocked string
+}
+
+// KoinlyOption is one choice of a mapping select.
+type KoinlyOption struct{ Value, Label string }
+
+// KoinlyMapRow is one Koinly wallet or asset and what it maps to. Asset rows also carry
+// Koinly's year-end quantity and cost, and Note (e.g. the candidates of an ambiguous
+// symbol). ConfirmSkip shows the "Skip anyway" box (an ambiguous asset with a cost left on
+// Skip blocks Accept until it is ticked); SkipOK is its state.
+type KoinlyMapRow struct {
+	Name, Selected      string
+	Symbol              string
+	Qty, Cost           float64
+	Note                string
+	ConfirmSkip, SkipOK bool
+}
+
+// KoinlyReconRow is one mapped asset's reconciliation: Koinly's year-end quantity and cost
+// against CryptKeep's quantity at the cutover, and where the units went.
+type KoinlyReconRow struct {
+	KoinlyAsset, AssetKey, Symbol       string
+	KoinlyQty, KoinlyCost, CryptKeepQty float64
+	// Dated: units dated from the year's acquisitions; Various: units from before the
+	// year; Untracked: Koinly's excess, in no synced wallet; MissingBasis: CryptKeep's
+	// excess, with no Koinly cost.
+	Dated, Various, Untracked, MissingBasis float64
+	ExtraBasis                              float64 // the user's total USD basis for MissingBasis units
 }
 
 // PnLCell is the unrealized result of one asset, for the overview's P/L column.

@@ -2,9 +2,13 @@ package backup
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/core"
@@ -13,6 +17,8 @@ import (
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/sources/manual"
+	"crypto-portfolio/internal/tax"
+	"crypto-portfolio/internal/yamlfile"
 )
 
 func newStores(t *testing.T) (Stores, string) {
@@ -36,7 +42,15 @@ func newStores(t *testing.T) (Stores, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Stores{Sources: reg, Portfolios: ps, Alerts: rules, CostBasis: cb}, dir
+	ts, err := tax.NewSettingsStore(filepath.Join(dir, "tax.yaml"), bk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ty, err := tax.NewYearStore(filepath.Join(dir, "tax"), bk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Stores{Sources: reg, Portfolios: ps, Alerts: rules, CostBasis: cb, Tax: ts, TaxYears: ty}, dir
 }
 
 func seed(t *testing.T, st Stores) {
@@ -170,5 +184,224 @@ func TestInvalidSectionWritesNothing(t *testing.T) {
 	seedPhrase := []byte("version: 1\nsources:\n  - {id: x, type: bitcoin, label: X, key: \"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\"}\n")
 	if _, err := Import(st, seedPhrase, false); err == nil || !strings.Contains(err.Error(), "seed phrase") {
 		t.Fatalf("seed phrase must be refused: %v", err)
+	}
+}
+
+func taxYear(year int, source string) tax.Year {
+	return tax.Year{
+		Year: year, Source: source, ClosedAt: time.Date(year+1, 1, 5, 0, 0, 0, 0, time.UTC),
+		ClosingLots: []tax.Lot{{Wallet: "w1", Asset: "BTC", Amount: 1, CostUSD: 100, Acquired: time.Date(year, 2, 1, 0, 0, 0, 0, time.UTC)}},
+	}
+}
+
+func seedTax(t *testing.T, st Stores) {
+	t.Helper()
+	if err := st.Tax.Set(tax.Settings{
+		WalletMap:  map[string]string{"Old Wallet": "kraken"},
+		ManualLots: []tax.Lot{{Wallet: tax.Untracked, Asset: "ETH", Amount: 2, CostUSD: 50, Acquired: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}},
+		Prices:     map[string]float64{"k": 1.5},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.TaxYears.Save(taxYear(2025, "koinly")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBackupRoundTripTax(t *testing.T) {
+	src, _ := newStores(t)
+	seedTax(t, src)
+	raw, err := Export(src, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, _ := newStores(t)
+	res, err := Import(dst, raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Tax || res.TaxYears != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	if got, want := dst.Tax.Get(), src.Tax.Get(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("tax settings\n got %+v\nwant %+v", got, want)
+	}
+	got, ok := dst.TaxYears.Get(2025)
+	want, _ := src.TaxYears.Get(2025)
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("year 2025\n got %+v\nwant %+v", got, want)
+	}
+	if !strings.Contains(res.Summary(), "tax settings") || !strings.Contains(res.Summary(), "1 closed tax year") {
+		t.Fatalf("summary = %q", res.Summary())
+	}
+}
+
+func TestBackupMergeKeepsExistingYear(t *testing.T) {
+	src, _ := newStores(t)
+	if err := src.TaxYears.Save(taxYear(2025, "koinly")); err != nil {
+		t.Fatal(err)
+	}
+	if err := src.TaxYears.Save(taxYear(2026, "cryptkeep")); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := Export(src, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, _ := newStores(t)
+	if err := dst.TaxYears.Save(taxYear(2025, "cryptkeep")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Import(dst, raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if y, _ := dst.TaxYears.Get(2025); y.Source != "cryptkeep" {
+		t.Fatalf("local 2025 replaced: source %q", y.Source)
+	}
+	if !slices.Equal(dst.TaxYears.Years(), []int{2025, 2026}) {
+		t.Fatalf("years = %v", dst.TaxYears.Years())
+	}
+	if res.TaxYears != 1 || !slices.Equal(res.TaxYearsSkipped, []int{2025}) {
+		t.Fatalf("result = %+v", res)
+	}
+	if !strings.Contains(res.Summary(), "skipped") {
+		t.Fatalf("summary = %q", res.Summary())
+	}
+
+	// Only the incoming 2025: nothing imported, reported as skipped.
+	only, _ := newStores(t)
+	if err := only.TaxYears.Save(taxYear(2025, "koinly")); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = Export(only, false)
+	res, err = Import(dst, raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TaxYears != 0 || len(res.TaxYearsSkipped) != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+func TestBackupMergeSkipsYearBeforeLocalLater(t *testing.T) {
+	src, _ := newStores(t)
+	if err := src.TaxYears.Save(taxYear(2024, "koinly")); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := Export(src, false)
+	dst, _ := newStores(t)
+	if err := dst.TaxYears.Save(taxYear(2025, "koinly")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Import(dst, raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TaxYears != 0 || !slices.Equal(res.TaxYearsSkipped, []int{2024}) || !slices.Equal(dst.TaxYears.Years(), []int{2025}) {
+		t.Fatalf("result = %+v years %v", res, dst.TaxYears.Years())
+	}
+}
+
+func TestBackupMergeTaxSettings(t *testing.T) {
+	dst, _ := newStores(t)
+	lot := tax.Lot{Wallet: tax.Untracked, Asset: "ETH", Amount: 2, CostUSD: 50, Acquired: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}
+	if err := dst.Tax.Set(tax.Settings{WalletMap: map[string]string{"A": "x", "B": "y"}, ManualLots: []tax.Lot{lot}}); err != nil {
+		t.Fatal(err)
+	}
+	src, _ := newStores(t)
+	other := lot
+	other.Amount = 3
+	if err := src.Tax.Set(tax.Settings{WalletMap: map[string]string{"B": "z", "C": "w"}, ManualLots: []tax.Lot{lot, other}}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := Export(src, false)
+	if _, err := Import(dst, raw, false); err != nil {
+		t.Fatal(err)
+	}
+	got := dst.Tax.Get()
+	if !reflect.DeepEqual(got.WalletMap, map[string]string{"A": "x", "B": "z", "C": "w"}) || len(got.ManualLots) != 2 {
+		t.Fatalf("merged = %+v", got)
+	}
+}
+
+func TestBackupReplaceTaxYears(t *testing.T) {
+	src, _ := newStores(t)
+	seedTax(t, src)
+	raw, _ := Export(src, false)
+	dst, dir := newStores(t)
+	for _, y := range []int{2023, 2024} {
+		if err := dst.TaxYears.Save(taxYear(y, "cryptkeep")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := Import(dst, raw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.TaxYears != 1 || !slices.Equal(dst.TaxYears.Years(), []int{2025}) {
+		t.Fatalf("result = %+v years %v", res, dst.TaxYears.Years())
+	}
+	for _, y := range []string{"2023", "2024"} {
+		if _, err := os.Stat(filepath.Join(dir, "tax", y+".yaml")); !os.IsNotExist(err) {
+			t.Fatalf("%s.yaml still on disk: %v", y, err)
+		}
+	}
+	// Reload from disk to be sure.
+	re, err := tax.NewYearStore(filepath.Join(dir, "tax"), "")
+	if err != nil || !slices.Equal(re.Years(), []int{2025}) {
+		t.Fatalf("reloaded %v err %v", re.Years(), err)
+	}
+}
+
+func TestBackupTaxWithoutStoresRejected(t *testing.T) {
+	src, _ := newStores(t)
+	seedTax(t, src)
+	raw, _ := Export(src, false)
+	dst, _ := newStores(t)
+	dst.Tax, dst.TaxYears = nil, nil
+	if _, err := Import(dst, raw, false); err == nil {
+		t.Fatal("want error")
+	}
+}
+
+func TestBackupInvalidTaxYearWritesNothing(t *testing.T) {
+	bad := taxYear(2025, "koinly")
+	bad.ClosingLots[0].Amount = 0
+	raw, err := yamlfile.Encode(File{
+		Version:  Version,
+		Sources:  []sources.Def{{ID: "kids", Type: sources.TypeManual, Label: "Kids", Holdings: []manual.Holding{{Asset: "SOL", Amount: 3}}}},
+		TaxYears: []tax.Year{bad},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(raw); err == nil {
+		t.Fatal("Parse accepted an invalid tax year")
+	}
+	for _, replace := range []bool{false, true} {
+		dst, dir := newStores(t)
+		if _, err := Import(dst, raw, replace); err == nil {
+			t.Fatal("Import accepted an invalid tax year")
+		}
+		if n := len(dst.Sources.Defs()); n != 0 {
+			t.Fatalf("%d sources written", n)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "tax", "2025.yaml")); !os.IsNotExist(err) {
+			t.Fatalf("year file written: %v", err)
+		}
+	}
+}
+
+func TestBackupNoopTaxImportNotReported(t *testing.T) {
+	src, _ := newStores(t)
+	seedTax(t, src)
+	raw, _ := Export(src, false)
+	res, err := Import(src, raw, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Tax || strings.Contains(res.Summary(), "tax settings") {
+		t.Fatalf("no-op import reported: %+v", res)
 	}
 }

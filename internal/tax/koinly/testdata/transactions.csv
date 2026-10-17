@@ -1,0 +1,4 @@
+Transaction report 2025
+
+Date,Type,Tag,Sending Wallet,Sent Amount,Sent Currency,Sent Cost Basis,Receiving Wallet,Received Amount,Received Currency,Received Cost Basis,Fee Amount,Fee Currency,Gain (USD),Net Value (USD),Fee Value (USD),TxSrc,TxDest,TxHash,Description
+2025-03-14 09:30:00 UTC,exchange,"",test wallet,0.12345678,SOL,15.00,test wallet,31.25012300,USDC,31.25,"","",16.25,31.25,"",srcaddr,destaddr,hash123,""

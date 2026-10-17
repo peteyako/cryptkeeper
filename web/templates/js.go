@@ -280,23 +280,27 @@ func actMoreGet(cursor string) string {
 
 // ---- reports ----------------------------------------------------------------------------
 
-// basisSubmit posts the manual cost form.
-const basisSubmit = `@post('/reports/basis', {contentType: 'form'})`
-
 // csvSubmit posts the CSV import form (multipart, so the file rides along).
 const csvSubmit = `@post('/reports/import', {contentType: 'form'})`
 
-func basisDeleteClick(asset string) string {
-	return "confirm(" + JSString("Remove the manual cost for "+asset+"?") + ") && @post(" + JSString("/reports/basis/"+url.PathEscape(asset)+"/delete") + ")"
+// ---- Koinly import -----------------------------------------------------------------------
+
+// koinlyUploadSubmit posts the Koinly report files (multipart, so the files ride along).
+const koinlyUploadSubmit = `@post('/reports/koinly/upload', {contentType: 'form'})`
+
+// koinlyMapSubmit saves the wallet and asset mappings and the extra bases; the map form
+// also posts it on every change, so the reconciliation always follows the selects.
+const koinlyMapSubmit = `@post('/reports/koinly/map', {contentType: 'form'})`
+
+// koinlyAcceptClick asks first, then closes the year from the draft.
+func koinlyAcceptClick(year int) string {
+	msg := "Close " + strconv.Itoa(year) + " with these opening lots? Koinly's figures for " + strconv.Itoa(year) +
+		" are saved as a closed year, and CryptKeep's cost basis starts from them."
+	return "confirm(" + JSString(msg) + ") && @post('/reports/koinly/accept')"
 }
 
-// setCostClick fills the manual cost form for a row without a known cost and moves the
-// cursor to the cost field. The href (#basis-form) is the fallback without scripting.
-func setCostClick(asset string, amount float64) string {
-	return "document.getElementById('f-asset').value = " + JSString(asset) +
-		"; document.getElementById('f-amount').value = " + JSString(numTrim(amount)) +
-		"; document.getElementById('f-cost').focus()"
-}
+// koinlyDiscardClick asks first, then forgets the uploaded reports and mappings.
+const koinlyDiscardClick = `confirm('Discard this import? The uploaded reports and the mappings you chose are forgotten.') && @post('/reports/koinly/discard')`
 
 // ---- alerts -----------------------------------------------------------------------------
 

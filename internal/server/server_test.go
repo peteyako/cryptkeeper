@@ -28,6 +28,7 @@ import (
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/internal/store"
+	"crypto-portfolio/internal/tax"
 )
 
 // fakeExchange stands in for Kraken/Coinbase without network access.
@@ -50,6 +51,11 @@ type env struct {
 	dataDir string
 	db      *store.DB
 	box     *secrets.Box
+	// price is the fake pricer's USD price per asset key (100 when not set). Set it before
+	// the first refresh.
+	price    map[string]float64
+	taxSet   *tax.SettingsStore
+	taxYears *tax.YearStore
 }
 
 func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
@@ -79,10 +85,15 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	priceOf := map[string]float64{}
 	prices := func(_ context.Context, reqs []portfolio.PriceReq) map[string]core.Price {
 		out := map[string]core.Price{}
 		for _, r := range reqs {
-			out[r.Key] = core.Price{USD: 100, AsOf: time.Now()}
+			usd, ok := priceOf[r.Key]
+			if !ok {
+				usd = 100
+			}
+			out[r.Key] = core.Price{USD: usd, AsOf: time.Now()}
 		}
 		return out
 	}
@@ -109,6 +120,14 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	taxSet, err := tax.NewSettingsStore(filepath.Join(dir, "tax.yaml"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	taxYears, err := tax.NewYearStore(filepath.Join(dir, "tax"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	engine := &alerts.Engine{Rules: rules, DB: db}
 	syncer := &activity.Syncer{Store: act}
 	cfg := config.Default()
@@ -117,6 +136,7 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	d := Deps{
 		Cfg: cfg, DataDir: dir, Version: "test", Box: box, Registry: reg, Portfolios: ps, Refresher: ref,
 		Activity: act, Syncer: syncer, CostBasis: cb, AlertRules: rules, Alerts: engine, DB: db, Broker: broker, History: hist, Prices: prices,
+		TaxSettings: taxSet, TaxYears: taxYears, TaxLoc: time.UTC,
 		DetectBitcoin: func(s string) (string, error) {
 			if strings.HasPrefix(s, "wsh(") {
 				return "descriptor", nil
@@ -129,7 +149,8 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	}
 	srv := httptest.NewServer(New(d))
 	t.Cleanup(srv.Close)
-	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir, db: db, box: box}
+	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir, db: db, box: box,
+		price: priceOf, taxSet: taxSet, taxYears: taxYears}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {
@@ -481,9 +502,12 @@ func usd(v float64) *float64 { return &v }
 
 func TestActivityReportsAndExports(t *testing.T) {
 	e := newEnv(t, "")
+	// 2025 is closed with 1 BTC in Cold at $40; the activity below is from 2025, so the
+	// engine starts from that lot alone.
+	e.closeYear(2025, tax.Summary{}, tax.Lot{Wallet: "cold", Asset: "BTC", Amount: 1, CostUSD: 40, Acquired: time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)})
 	e.reg.Upsert(sources.Def{ID: "cold", Type: sources.TypeManual, Label: "Cold", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}})
 	e.ref.Force(context.Background()) // BTC priced at $100 by the fake pricer
-	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	base := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 	var txs []core.Tx
 	for i := range 60 {
 		txs = append(txs, core.Tx{ID: core.TxID("cold", fmt.Sprint(i)), SourceID: "cold", ExternalID: fmt.Sprint(i),
@@ -515,12 +539,7 @@ func TestActivityReportsAndExports(t *testing.T) {
 		t.Fatal("wallet activity tab should link to all activity when there are more than 25")
 	}
 
-	// Manual cost basis via the UI → P&L and wallet tiles.
-	body, hdr := form(url.Values{"asset": {"btc"}, "amount": {"1"}, "cost": {"$40"}, "note": {"test"}})
-	_, out = e.do("POST", "/reports/basis", body, hdr)
-	if !strings.Contains(out, "pnl") {
-		t.Fatalf("basis save: %.300s", out)
-	}
+	// Cost basis from the tax lots → P&L and wallet tiles.
 	if _, page := e.do("GET", "/reports", nil, nil); !strings.Contains(page, "$40.00") || !strings.Contains(page, "$60.00") || !strings.Contains(page, "$100.00") {
 		t.Fatal("reports should show basis $40, unrealized $60 and total value $100 for 1 BTC at $100")
 	}
@@ -548,7 +567,7 @@ func TestActivityReportsAndExports(t *testing.T) {
 	for path, want := range map[string]string{
 		"/export/holdings.csv": "wallet,source_type,asset",
 		"/export/history.csv":  "timestamp",
-		"/export/pnl.csv":      "asset,amount,avg_cost",
+		"/export/pnl.csv":      "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,missing_basis_units\nBTC,1,40,40,100,60,150,0\n",
 		"/export/activity.csv": "time,source,kind",
 	} {
 		resp, body := e.do("GET", path, nil, nil)
@@ -861,5 +880,186 @@ func TestSettingsPricesNotSet(t *testing.T) {
 	_, page := e.do("GET", "/settings", nil, nil)
 	if !strings.Contains(page, `id="settings-prices"`) || !strings.Contains(page, "not set") {
 		t.Fatal("settings should show the prices card with the key not set")
+	}
+}
+
+// ---- tax lots on the dashboard, wallet tiles and Reports --------------------------------
+
+// closeYear saves a closed tax year whose closing lots open the next one. Call it before
+// the first request: the tax result is cached for a minute.
+func (e *env) closeYear(year int, sum tax.Summary, lots ...tax.Lot) {
+	e.t.Helper()
+	y := tax.Year{Year: year, Source: "koinly", ClosedAt: time.Date(year+1, 1, 5, 0, 0, 0, 0, time.UTC), Summary: sum, ClosingLots: lots}
+	if err := e.taxYears.Save(y); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// within returns the n bytes of page after the first marker ("" when it is missing).
+func within(page, marker string, n int) string {
+	i := strings.Index(page, marker)
+	if i < 0 {
+		return ""
+	}
+	return page[i:min(len(page), i+n)]
+}
+
+func solLot(wallet string, amount, cost float64) tax.Lot {
+	return tax.Lot{Wallet: wallet, Asset: "SOL", Amount: amount, CostUSD: cost, Acquired: time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC)}
+}
+
+func TestReportsUsesTaxLots(t *testing.T) {
+	e := newEnv(t, "")
+	e.price["SOL"] = 150
+	e.closeYear(2025, tax.Summary{}, solLot("sol", 10, 1000))
+	e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeManual, Label: "Sol", Holdings: []manual.Holding{{Asset: "SOL", Amount: 10}}})
+	e.ref.Force(context.Background())
+
+	_, page := e.do("GET", "/reports", nil, nil)
+	tile := within(page, `<span class="label">Cost basis</span>`, 300)
+	if !strings.Contains(tile, "$1,000.00") || !strings.Contains(page, "Basis known for all of the value") {
+		t.Errorf("basis tile: %q", tile)
+	}
+	row := within(page, `<td class="col-basis num">`, 900)
+	if !strings.Contains(row, "$1,000.00") || !strings.Contains(row, "+$500.00") || !strings.Contains(row, "+50.00%") {
+		t.Errorf("P&L row: %q", row)
+	}
+	if !strings.Contains(within(page, `<span class="label">Unrealized P/L</span>`, 300), "+$500.00") {
+		t.Error("unrealized tile")
+	}
+	for _, gone := range []string{`id="basis-panel"`, "/reports/basis", "Set cost", `<span class="badge">manual</span>`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("Reports still has %q", gone)
+		}
+	}
+	// The overview's P/L column uses the same lots.
+	_, ov := e.do("GET", "/", nil, nil)
+	if !strings.Contains(within(ov, `<td class="col-pnl num"`, 400), "+50.00%") {
+		t.Errorf("overview P/L cell: %q", within(ov, `<td class="col-pnl num"`, 400))
+	}
+	// So does the P&L export.
+	_, csv := e.do("GET", "/export/pnl.csv", nil, nil)
+	if !strings.Contains(csv, "\nSOL,10,100,1000,1500,500,50,0\n") {
+		t.Errorf("pnl.csv:\n%s", csv)
+	}
+}
+
+func TestBasisRoutesRemoved(t *testing.T) {
+	e := newEnv(t, "")
+	for _, path := range []string{"/reports/basis", "/reports/basis/BTC/delete"} {
+		body, hdr := form(url.Values{"asset": {"BTC"}, "amount": {"1"}, "cost": {"40"}})
+		hdr["Origin"] = e.srv.URL
+		if resp, _ := e.do("POST", path, body, hdr); resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("POST %s: %d, want 404 or 405", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestWalletTilesFromLots(t *testing.T) {
+	e := newEnv(t, "")
+	e.price["SOL"] = 150
+	// The same asset in two wallets with different costs: each wallet shows its own lots.
+	e.closeYear(2025, tax.Summary{}, solLot("sol", 10, 1000), solLot("vault", 10, 3000))
+	e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeManual, Label: "Sol", Holdings: []manual.Holding{{Asset: "SOL", Amount: 10}}})
+	e.reg.Upsert(sources.Def{ID: "vault", Type: sources.TypeManual, Label: "Vault", Holdings: []manual.Holding{{Asset: "SOL", Amount: 10}}})
+	e.ps.Upsert(portfolios.Portfolio{ID: "solo", Name: "Solo", Wallets: portfolios.Selector{IDs: []string{"sol"}}, Assets: portfolios.AllSelector()})
+	e.ref.Force(context.Background())
+
+	for id, want := range map[string][2]string{"sol": {"$1,000.00", "+$500.00"}, "vault": {"$3,000.00", "−$1,500.00"}} {
+		_, page := e.do("GET", "/w/"+id, nil, nil)
+		if tile := within(page, `<span class="label">Cost basis</span>`, 300); !strings.Contains(tile, want[0]) {
+			t.Errorf("%s: cost basis tile %q, want %s", id, tile, want[0])
+		}
+		if tile := within(page, `<span class="label">Unrealized P/L</span>`, 300); !strings.Contains(tile, want[1]) {
+			t.Errorf("%s: unrealized tile %q, want %s", id, tile, want[1])
+		}
+	}
+	// All holdings: 20 SOL worth $3,000 against $4,000; the portfolio of Sol alone: +50%.
+	cell := func(path string) string {
+		_, page := e.do("GET", path, nil, nil)
+		return within(page, `<td class="col-pnl num"`, 400)
+	}
+	if c := cell("/"); !strings.Contains(c, "−25.00%") {
+		t.Errorf("all holdings P/L: %q", c)
+	}
+	if c := cell("/p/solo"); !strings.Contains(c, "+50.00%") {
+		t.Errorf("portfolio P/L uses its wallets' lots: %q", c)
+	}
+}
+
+func TestReportsRealizedMergesClosedYears(t *testing.T) {
+	e := newEnv(t, "")
+	e.price["SOL"] = 150
+	e.closeYear(2025, tax.Summary{ShortGain: 100, LongGain: 23.45}, solLot("sol", 10, 1000))
+	e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeManual, Label: "Sol", Holdings: []manual.Holding{{Asset: "SOL", Amount: 5}}})
+	tx := func(id string, at time.Time, kind core.TxKind, legs ...core.Leg) core.Tx {
+		return core.Tx{ID: core.TxID("sol", id), SourceID: "sol", ExternalID: id, Time: at, Kind: kind, Status: core.TxConfirmed, Legs: legs}
+	}
+	usd := func(v float64) *float64 { return &v }
+	txs := []core.Tx{
+		// Before the open year: already in the closed 2025, never replayed.
+		tx("old", time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC), core.TxTrade,
+			core.Leg{AssetKey: "SOL", Symbol: "SOL", Amount: -3, USD: usd(-900)}, core.Leg{AssetKey: "USDC", Symbol: "USDC", Amount: 900, USD: usd(900)}),
+		// 2026: sell 4 SOL (cost $400) for $800, and give 1 SOL away (tagged gift: not a sale).
+		tx("sell", time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), core.TxTrade,
+			core.Leg{AssetKey: "SOL", Symbol: "SOL", Amount: -4, USD: usd(-800)}, core.Leg{AssetKey: "USDC", Symbol: "USDC", Amount: 800, USD: usd(800)}),
+		tx("gift", time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC), core.TxSend,
+			core.Leg{AssetKey: "SOL", Symbol: "SOL", Amount: -1, USD: usd(-170)}),
+	}
+	if _, err := e.act.Upsert(context.Background(), txs); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.taxSet.Update(func(s *tax.Settings) {
+		s.Tags = map[string]tax.TagEntry{core.TxID("sol", "gift"): {Tag: tax.TagGift}}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.ref.Force(context.Background())
+
+	_, page := e.do("GET", "/reports", nil, nil)
+	card := within(page, `id="realized-h"`, 1500)
+	for _, want := range []string{">2026<", "+$400.00", ">2025<", "+$123.45"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("realized card lacks %q:\n%s", want, card)
+		}
+	}
+	if strings.Index(card, ">2026<") > strings.Index(card, ">2025<") {
+		t.Error("newest year first")
+	}
+	// 5 SOL left at $100 each: basis $500, value $750.
+	if row := within(page, `<td class="col-basis num">`, 900); !strings.Contains(row, "$500.00") || !strings.Contains(row, "+$250.00") {
+		t.Errorf("P&L row: %q", row)
+	}
+}
+
+func TestReportsShowsTaxSettingsError(t *testing.T) {
+	e := newEnv(t, "")
+	if err := os.WriteFile(filepath.Join(e.dataDir, "tax.yaml"), []byte("version: 1\nbogus: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resp, page := e.do("GET", "/reports", nil, nil)
+	if resp.StatusCode != 200 || !strings.Contains(page, "data/tax.yaml has an error") || !strings.Contains(page, `role="alert"`) {
+		t.Fatalf("%d: tax.yaml error not shown", resp.StatusCode)
+	}
+}
+
+func TestSpamSet(t *testing.T) {
+	row := func(key string) portfolio.HoldingRow {
+		return portfolio.HoldingRow{Holding: core.Holding{AssetKey: key, Symbol: key}}
+	}
+	snap := portfolio.Snapshot{Wallets: []portfolio.WalletView{
+		{ID: "phantom", Rows: []portfolio.HoldingRow{row("SOL")}, HiddenRows: []portfolio.HoldingRow{row("spl:Airdrop1"), row("USDC")}},
+		{ID: "cb", Rows: []portfolio.HoldingRow{row("USDC")}},
+	}}
+	snap.Assets = []portfolio.AssetRow{{AssetKey: "SOL"}, {AssetKey: "USDC"}}
+	got := spamSet([]string{"Mint9"}, snap)
+	want := map[string]bool{"spl:Mint9": true, "spl:Airdrop1": true}
+	if len(got) != len(want) {
+		t.Fatalf("spam = %v, want %v", got, want)
+	}
+	for k := range want {
+		if !got[k] {
+			t.Errorf("spam lacks %s: %v", k, got)
+		}
 	}
 }

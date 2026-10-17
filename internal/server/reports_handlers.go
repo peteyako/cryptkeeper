@@ -5,14 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
 	"crypto-portfolio/internal/core"
@@ -20,20 +14,9 @@ import (
 	"crypto-portfolio/internal/export"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/web/templates"
 )
-
-// costCache keeps the last cost-basis computation briefly: the overview's P&L column would
-// otherwise recompute it from all activity on every live push.
-type costCache struct {
-	mu  sync.Mutex
-	at  time.Time
-	res costbasis.Result
-	ok  bool
-}
-
-func (c *costCache) invalidate() { c.mu.Lock(); c.ok = false; c.mu.Unlock() }
 
 // importedSourceType maps CSV pseudo-sources to the live source type they duplicate.
 var importedSourceType = map[string]string{"coinbase-csv": sources.TypeCoinbase, "kraken-csv": sources.TypeKraken}
@@ -57,42 +40,24 @@ func dedupeImported(txs []core.Tx, typeOf map[string]string) []core.Tx {
 	return out
 }
 
-// costResult computes average-cost results from all activity plus manual entries.
-func (s *Server) costResult(ctx context.Context) (costbasis.Result, bool) {
-	if s.Activity == nil || s.CostBasis == nil {
-		return costbasis.Result{}, false
-	}
-	c := &s.costs
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ok && s.Now().Sub(c.at) < time.Minute {
-		return c.res, true
-	}
-	txs, err := s.Activity.All(ctx, nil)
-	if err != nil {
-		s.Log.Warn("cost basis: load activity", "err", err)
-		return costbasis.Result{}, false
-	}
-	typeOf := map[string]string{}
-	for _, d := range s.Registry.Defs() {
-		typeOf[d.ID] = d.Type
-	}
-	c.res, c.at, c.ok = costbasis.Compute(dedupeImported(txs, typeOf), s.CostBasis.Get()), s.Now(), true
-	return c.res, true
-}
-
-// pnlRows pairs current holdings with their cost basis.
-func pnlRows(res costbasis.Result, assets []portfolio.AssetRow) []templates.PnLRow {
+// pnlRows pairs current holdings with the cost of their open tax lots in the wallets that
+// pass the filter (nil = every wallet but the untracked one). Basis, AvgCost and
+// Unrealized cover only units held in lots with a known cost (tax.Result.Unrealized), and
+// need a price; UnknownUnits is the rest of the holding.
+func pnlRows(res tax.Result, assets []portfolio.AssetRow, wallets func(string) bool) []templates.PnLRow {
 	var rows []templates.PnLRow
 	for _, a := range assets {
 		row := templates.PnLRow{AssetKey: a.AssetKey, Symbol: a.Symbol, Name: a.Name, Amount: a.Amount, Value: a.ValueUSD}
-		ar, known := res.Assets[a.AssetKey]
-		if known {
-			row.Overridden, row.UnknownUnits, row.AvgCost = ar.Overridden, ar.UnknownBasisUnits, ar.AvgCost
+		held, _, missing := res.Holding(a.AssetKey, wallets)
+		covered := max(0, min(a.Amount, held-missing))
+		row.MissingUnits = missing
+		if unknown := a.Amount - covered; unknown > unknownDust(a.Amount) {
+			row.UnknownUnits = unknown
 		}
 		if a.Price != nil {
-			if basis, unreal, pct, ok := res.Unrealized(a.AssetKey, a.Amount, a.Price.USD); ok {
+			if basis, unreal, pct, ok := res.Unrealized(a.AssetKey, wallets, a.Amount, a.Price.USD); ok {
 				row.Basis, row.Unrealized, row.UnrealizedPct, row.HasBasis = basis, unreal, pct, true
+				row.AvgCost = basis / covered
 			}
 		}
 		rows = append(rows, row)
@@ -100,71 +65,145 @@ func pnlRows(res costbasis.Result, assets []portfolio.AssetRow) []templates.PnLR
 	return rows
 }
 
-// pnlCells is the overview's optional P/L column.
-func (s *Server) pnlCells(ctx context.Context, assets []portfolio.AssetRow) map[string]templates.PnLCell {
-	res, ok := s.costResult(ctx)
+// unknownDust is the leftover below which a holding of amount counts as fully covered by
+// lots: relative to the amount (1e-9 of it, at least 1e-9), since float residue grows with
+// it and a huge-supply token must not show "0.0000 BONK with unknown cost".
+func unknownDust(amount float64) float64 { return 1e-9 * max(1, amount) }
+
+// pnlCells is the overview's optional P/L column, from the lots of the given wallets (nil =
+// every wallet but the untracked one).
+func (s *Server) pnlCells(ctx context.Context, assets []portfolio.AssetRow, wallets func(string) bool) map[string]templates.PnLCell {
+	res, ok := s.taxResult(ctx)
 	if !ok {
 		return nil
 	}
 	cells := map[string]templates.PnLCell{}
-	for _, row := range pnlRows(res, assets) {
+	for _, row := range pnlRows(res, assets, wallets) {
 		cells[row.AssetKey] = templates.PnLCell{Unrealized: row.Unrealized, Pct: row.UnrealizedPct, OK: row.HasBasis}
 	}
 	return cells
 }
 
-// walletCost fills the wallet page's Cost basis and Unrealized tiles.
+// walletCost fills the wallet page's Cost basis and Unrealized tiles from that wallet's own
+// lots, and CostUnits, the units that basis covers. Rows of one asset (liquid and staked
+// SOL, say) are costed together.
 func (s *Server) walletCost(ctx context.Context, p *templates.WalletPage) {
-	res, ok := s.costResult(ctx)
+	res, ok := s.taxResult(ctx)
 	if !ok {
 		return
 	}
-	var basis, unreal float64
-	found := false
+	amounts, prices := map[string]float64{}, map[string]float64{}
+	var keys []string
 	for _, r := range p.W.Rows {
 		if r.Price == nil {
 			continue
 		}
-		if b, u, _, ok := res.Unrealized(r.AssetKey, r.Amount, r.Price.USD); ok {
+		if _, seen := amounts[r.AssetKey]; !seen {
+			keys = append(keys, r.AssetKey)
+		}
+		amounts[r.AssetKey] += r.Amount
+		prices[r.AssetKey] = r.Price.USD
+	}
+	id := p.W.ID
+	only := func(wallet string) bool { return wallet == id }
+	var basis, unreal, units float64
+	found := false
+	for _, k := range keys {
+		if b, u, _, ok := res.Unrealized(k, only, amounts[k], prices[k]); ok {
 			basis, unreal, found = basis+b, unreal+u, true
+			held, _, missing := res.Holding(k, only)
+			units += max(0, min(amounts[k], held-missing)) // the units the basis covers
 		}
 	}
 	if found {
-		p.CostBasis, p.Unrealized = &basis, &unreal
+		p.CostBasis, p.Unrealized, p.CostUnits = &basis, &unreal, units
 	}
+}
+
+// realizedYears is the realized profit or loss per tax year, newest first: each closed
+// year's frozen Summary (short- plus long-term gain), and the open years' disposals from
+// res when ok.
+func (s *Server) realizedYears(res tax.Result, ok bool) []templates.YearAmount {
+	years := map[int]float64{}
+	closed := map[int]bool{}
+	if s.TaxYears != nil {
+		for _, y := range s.TaxYears.Years() {
+			if yr, found := s.TaxYears.Get(y); found {
+				years[y], closed[y] = yr.Summary.ShortGain+yr.Summary.LongGain, true
+			}
+		}
+	}
+	if ok {
+		for y, v := range res.RealizedByYear(s.taxLoc()) {
+			if !closed[y] { // the engine starts after the last closed year: belt and braces
+				years[y] += v
+			}
+		}
+	}
+	out := make([]templates.YearAmount, 0, len(years))
+	for y, v := range years {
+		out = append(out, templates.YearAmount{Year: y, USD: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Year > out[j].Year })
+	return out
+}
+
+// realizedByAsset is the realized profit or loss per asset and tax year: the closed years'
+// disposals, then the open years' from res. A Koinly year lists Koinly's asset names, so
+// it only lines up with an asset key that is the plain symbol (BTC, SOL).
+func (s *Server) realizedByAsset(res tax.Result) map[string]map[int]float64 {
+	out := map[string]map[int]float64{}
+	add := func(asset string, year int, gain float64) {
+		if out[asset] == nil {
+			out[asset] = map[int]float64{}
+		}
+		out[asset][year] += gain
+	}
+	closed := map[int]bool{}
+	if s.TaxYears != nil {
+		for _, y := range s.TaxYears.Years() {
+			yr, found := s.TaxYears.Get(y)
+			if !found {
+				continue
+			}
+			closed[y] = true
+			for _, d := range yr.Disposals {
+				add(d.Asset, y, d.GainUSD)
+			}
+		}
+	}
+	loc := s.taxLoc()
+	for _, d := range res.Disposals {
+		if y := d.Sold.In(loc).Year(); !closed[y] {
+			add(d.Asset, y, d.GainUSD)
+		}
+	}
+	return out
 }
 
 func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 	snap, _ := s.latest()
 	p := templates.ReportsPage{Shell: s.shell(r, "Reports", "reports", "all", ""), TotalValue: snap.TotalUSD, Now: s.Now()}
-	p.AssetOptions = s.assetOptions()
-	if s.CostBasis != nil {
-		for _, m := range s.CostBasis.Get().Assets {
-			p.Manual = append(p.Manual, templates.ManualBasisRow{Asset: m.Asset, Amount: m.Amount, CostUSD: m.CostUSD, Note: m.Note})
-		}
-		if err := s.CostBasis.Err(); err != nil {
-			p.BasisErr = "data/costbasis.yaml has an error and was not reloaded: " + err.Error()
+	if s.TaxSettings != nil {
+		if err := s.TaxSettings.Err(); err != nil {
+			p.TaxErr = "data/tax.yaml has an error and was not reloaded: " + err.Error()
 		}
 	}
-	res, ok := s.costResult(r.Context())
+	res, ok := s.taxResult(r.Context())
+	p.Realized = s.realizedYears(res, ok)
 	if !ok {
 		return p
 	}
-	p.Rows = pnlRows(res, snap.Assets)
+	p.Rows = pnlRows(res, snap.Assets, nil)
 	// Basis and unrealized cover only units with a known cost; the Value tile is everything.
-	p.TotalBasis, _, p.TotalUnrealized = costbasis.ForPortfolio(res, snap.Assets)
-	p.TotalValue = snap.TotalUSD
-	p.Coverage = costbasis.Coverage(res, snap.Assets)
-	years := map[int]float64{}
-	for _, a := range res.Assets {
-		for y, v := range a.RealizedByYear {
-			years[y] += v
+	for _, row := range p.Rows {
+		if row.HasBasis {
+			p.TotalBasis += row.Basis
+			p.TotalUnrealized += row.Unrealized
 		}
 	}
-	for y, v := range years {
-		p.Realized = append(p.Realized, templates.YearAmount{Year: y, USD: v})
-	}
-	sort.Slice(p.Realized, func(i, j int) bool { return p.Realized[i].Year > p.Realized[j].Year })
+	p.Coverage = tax.Coverage(res, snap.Assets)
+	p.MissingBasisSales = res.MissingBasisSales()
 	return p
 }
 
@@ -178,50 +217,7 @@ func (s *Server) patchReports(sse *datastar.ServerSentEventGenerator, r *http.Re
 		mutate(&p)
 	}
 	_ = sse.PatchElementTempl(templates.PnLTable(p))
-	_ = sse.PatchElementTempl(templates.CostBasisPanel(p))
 	_ = sse.PatchElementTempl(templates.CSVResultView(p.Import))
-}
-
-func (s *Server) basisSave(w http.ResponseWriter, r *http.Request) {
-	var msg string
-	if err := parseBody(r); err != nil {
-		msg = "Could not read the form."
-	} else {
-		asset := manual.NormalizeAsset(r.PostFormValue("asset"))
-		amount, err1 := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(r.PostFormValue("amount")), ",", ""), 64)
-		cost, err2 := strconv.ParseFloat(strings.ReplaceAll(strings.TrimPrefix(strings.TrimSpace(r.PostFormValue("cost")), "$"), ",", ""), 64)
-		switch {
-		case asset == "":
-			msg = "Choose an asset."
-		case err1 != nil || amount <= 0:
-			msg = "Enter the amount you hold, e.g. 0.5."
-		case err2 != nil || cost < 0:
-			msg = "Enter the total you paid in USD, e.g. 15000."
-		default:
-			if err := s.CostBasis.SetAsset(asset, amount, cost, strings.TrimSpace(r.PostFormValue("note"))); err != nil {
-				msg = err.Error()
-			}
-		}
-	}
-	s.costs.invalidate()
-	sse := datastar.NewSSE(w, r)
-	s.patchReports(sse, r, func(p *templates.ReportsPage) {
-		if msg != "" {
-			p.BasisErr = msg
-		}
-	})
-}
-
-func (s *Server) basisDelete(w http.ResponseWriter, r *http.Request) {
-	asset, _ := url.PathUnescape(chi.URLParam(r, "asset"))
-	err := s.CostBasis.DeleteAsset(asset)
-	s.costs.invalidate()
-	sse := datastar.NewSSE(w, r)
-	s.patchReports(sse, r, func(p *templates.ReportsPage) {
-		if err != nil {
-			p.BasisErr = err.Error()
-		}
-	})
 }
 
 // csvImport parses a Coinbase or Kraken CSV export into activity under a pseudo-source.
@@ -265,7 +261,7 @@ func (s *Server) csvImport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.costs.invalidate()
+	s.invalidateTax()
 	sse := datastar.NewSSE(w, r)
 	s.patchReports(sse, r, func(p *templates.ReportsPage) { p.Import = outcome })
 }
@@ -308,13 +304,14 @@ func (s *Server) exportHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) exportPnL(w http.ResponseWriter, r *http.Request) {
 	snap, _ := s.latest()
-	res, _ := s.costResult(r.Context())
+	res, _ := s.taxResult(r.Context())
+	realized := s.realizedByAsset(res)
 	var rows []export.PnLRow
-	for _, p := range pnlRows(res, snap.Assets) {
+	for _, p := range pnlRows(res, snap.Assets, nil) {
 		rows = append(rows, export.PnLRow{
 			AssetKey: p.AssetKey, Symbol: p.Symbol, Amount: p.Amount, AvgCost: p.AvgCost, Basis: p.Basis,
 			Value: p.Value, Unrealized: p.Unrealized, UnrealizedPct: p.UnrealizedPct, HasBasis: p.HasBasis,
-			Realized: res.Assets[p.AssetKey].RealizedByYear,
+			MissingUnits: p.MissingUnits, Realized: realized[p.AssetKey],
 		})
 	}
 	s.csvHeaders(w, "pnl")

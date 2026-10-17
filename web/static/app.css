@@ -3472,19 +3472,7 @@ body.amounts-hidden .fig-m {
   font-size: 12px;
 }
 
-.pl__set {
-  min-width: 0;
-  min-height: 28px;
-}
-
-@media (pointer: coarse) {
-  .pl__set {
-    min-height: 44px;
-  }
-}
-
 .realized,
-.basis-panel,
 .csv-import,
 .exports {
   display: flex;
@@ -3506,7 +3494,6 @@ body.amounts-hidden .fig-m {
 }
 
 .year-list,
-.basis-list,
 .export-list {
   display: flex;
   flex-direction: column;
@@ -3530,60 +3517,14 @@ body.amounts-hidden .fig-m {
   font: 500 14px/20px var(--font-mono);
 }
 
-.basis-panel__intro,
 .csv-import__intro {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.basis-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--row);
-}
-
-.basis-row .disc {
-  width: 32px;
-  height: 32px;
-  font-size: 10px;
-}
-
-.basis-row__text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.basis-row__title {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-}
-
-.basis-row__sub {
-  color: var(--text-2);
-  font: 400 12px/16px var(--font-mono);
-}
-
-.basis-row__note {
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 16px;
-  overflow-wrap: anywhere;
-}
-
 .rep-col .form {
   flex: none;
-}
-
-.basis-list + .basis-form {
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
 }
 
 .export-row {
@@ -3615,6 +3556,222 @@ body.amounts-hidden .fig-m {
   color: var(--text-3);
   font-size: 12px;
   line-height: 16px;
+}
+
+/* Open-year sales without a cost basis point at the Koinly import. */
+.realized__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.realized__warn .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.koinly-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+}
+
+/* The wallet tile's "Import cost basis" link, in place of the sub line. */
+.stat__link {
+  align-self: flex-start;
+  color: var(--link);
+  text-decoration: none;
+}
+
+.stat__link:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
+}
+
+/* ---- Koinly import --------------------------------------------------------------------- */
+
+.koinly {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.koinly .page-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title hide";
+}
+
+.koinly-wizard,
+.koinly-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.koinly-step {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.koinly-step__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.koinly-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--link);
+  font: 500 12px/16px var(--font-mono);
+}
+
+.koinly-step .form {
+  flex: none;
+}
+
+.koinly-loaded {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--row);
+}
+
+.koinly-loaded__title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.koinly-loaded__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.koinly-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  list-style: none;
+}
+
+.koinly-files__name {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font: 400 12px/16px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* The mapping tables fit a phone; only the wide reconciliation scrolls sideways. */
+.koinly-map {
+  min-width: 0;
+}
+
+/* Koinly's names can be long: they wrap, unlike the rest of a plain table. */
+.koinly-map .koinly-map__name,
+.koinly-recon .koinly-recon__name {
+  min-width: 120px;
+  white-space: normal;
+}
+
+.koinly-map__name label,
+.koinly-recon__asset {
+  display: block;
+  color: var(--text-1);
+  font-weight: 500;
+  overflow-wrap: break-word;
+}
+
+.koinly-map__note {
+  display: block;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.koinly-map__skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.koinly-map__skip-box {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.koinly-map__pick {
+  width: 45%;
+  min-width: 160px;
+}
+
+.koinly-recon {
+  min-width: 980px;
+}
+
+.koinly-recon__cost {
+  width: 120px;
+  height: 36px;
+  margin-left: auto;
+  text-align: right;
+}
+
+.koinly-problems {
+  min-width: 0;
+}
+
+.koinly-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.koinly-actions .btn--primary {
+  margin-left: auto;
+}
+
+@media (min-width: 760px) {
+  .koinly {
+    gap: 24px;
+  }
+
+  .koinly-card,
+  .koinly-step {
+    padding: 24px;
+  }
 }
 
 @media (max-width: 759.98px) {
@@ -3945,7 +4102,6 @@ body.amounts-hidden .fig-m {
     flex-wrap: nowrap;
   }
 
-  .basis-panel,
   .csv-import,
   .exports,
   .realized,

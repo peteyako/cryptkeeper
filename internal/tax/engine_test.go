@@ -1,6 +1,7 @@
 package tax
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -495,5 +496,13 @@ func TestResultSorted(t *testing.T) {
 		if l := r.Lots[i]; l.Wallet != w.wallet || l.Asset != w.asset || !l.Acquired.Equal(w.acq) {
 			t.Errorf("lots[%d] = %+v, want %s %s %v", i, l, w.wallet, w.asset, w.acq)
 		}
+	}
+}
+
+func TestOpeningParkedSkipsDust(t *testing.T) {
+	in := Input{From: from2026, OpeningParked: []Parked{{"a", "X", 0}, {"a", "Y", 1e-13}, {"a", "Z", -1}, {"a", "W", math.NaN()}, {"a", "V", 2}}}
+	r := Compute(in)
+	if len(r.Parked) != 1 || r.Parked[0].Asset != "V" {
+		t.Fatalf("Parked = %+v, want only V", r.Parked)
 	}
 }

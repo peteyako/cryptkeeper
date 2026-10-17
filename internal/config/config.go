@@ -23,6 +23,7 @@ type Config struct {
 	Solana          Solana   `yaml:"solana"`
 	Ntfy            Ntfy     `yaml:"ntfy"`
 	Activity        Activity `yaml:"activity"`
+	Tax             Tax      `yaml:"tax"`
 	// SeedSources are written to data/sources.yaml on first run only.
 	SeedSources []map[string]any `yaml:"seedSources"`
 
@@ -33,6 +34,25 @@ type Config struct {
 	NtfyToken string `yaml:"-"` // NTFY_TOKEN
 	// CoinGeckoKey is the CoinGecko demo API key (COINGECKO_API_KEY); it wins over the one saved in Settings.
 	CoinGeckoKey string `yaml:"-"`
+}
+
+// Tax holds tax-report settings.
+type Tax struct {
+	// Timezone is an IANA name (America/New_York) that decides where a tax day starts and
+	// ends. Empty means the server's local zone.
+	Timezone string `yaml:"timezone"`
+}
+
+// TaxLocation returns the tax timezone: time.Local when none is configured.
+func (c Config) TaxLocation() (*time.Location, error) {
+	if c.Tax.Timezone == "" {
+		return time.Local, nil
+	}
+	loc, err := time.LoadLocation(c.Tax.Timezone)
+	if err != nil {
+		return nil, fmt.Errorf("tax.timezone: %w", err)
+	}
+	return loc, nil
 }
 
 type Bitcoin struct {

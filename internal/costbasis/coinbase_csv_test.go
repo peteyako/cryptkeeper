@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/tax"
 )
 
 func openFixture(t *testing.T, name string) *os.File {
@@ -312,21 +313,42 @@ func TestCoinbaseUnknownTypesAreSkippedNotFatal(t *testing.T) {
 	}
 }
 
+// TestCoinbaseCSVIntoEngine feeds the parsed history to the tax engine: one FIFO wallet,
+// coinbase-csv, replayed from the start (no closed year).
 func TestCoinbaseCSVIntoEngine(t *testing.T) {
-	txs := parseCB(t, "coinbase_old.csv")
-	res := Compute(txs, Manual{})
-	btc := res.Assets["BTC"]
-	// buy 0.01 for 580 -> sell 0.005 (proceeds 181.30 vs 290 basis) -> send 0.002 -> convert 0.001
-	near(t, "btc realized 2021", btc.RealizedByYear[2021], 181.30-290)
-	near(t, "btc realized 2022", btc.RealizedByYear[2022], 43-58)
-	near(t, "btc amount", btc.Amount, 0.01-0.005-0.002-0.001)
-	near(t, "btc avg", btc.AvgCost, 58000)
-	// ETH: buy 1 @1990, convert 0.5 (realized 1200-995), staking 0.001 @2.30, receive 0.1 unknown
-	eth := res.Assets["ETH"]
-	near(t, "eth realized", eth.RealizedByYear[2021], 1200-995)
-	near(t, "eth amount", eth.Amount, 0.501)
-	near(t, "eth unknown", eth.UnknownBasisUnits, 0.1)
-	near(t, "usdc basis", res.Assets["USDC"].Basis, 1200+1.25)
-	near(t, "doge basis", res.Assets["DOGE"].Basis, 43)
-	near(t, "sol realized", res.Assets["SOL"].RealizedByYear[2022], 109.34-150.90)
+	res := tax.Compute(tax.Input{Loc: time.UTC, Txs: parseCB(t, "coinbase_old.csv")})
+	// BTC: buy 0.01 for 580 -> sell 0.005 for 181.30 (cost 290) -> send 0.002 with no value
+	// (cost 116, proceeds 0) -> convert 0.001 for 43 (cost 58).
+	btc := gains(res, "BTC")
+	near(t, "btc 2021", btc[2021], (181.30-290)+(0-116))
+	near(t, "btc 2022", btc[2022], 43-58)
+	amount, cost, _ := res.Holding("BTC", nil)
+	near(t, "btc left", amount, 0.002)
+	near(t, "btc cost left", cost, 116)
+	if !hasIssue(res, tax.IssueUnmatchedSend, "BTC") || !hasIssue(res, tax.IssueMissingPrice, "BTC") {
+		t.Errorf("the unvalued send is up for review: %+v", res.Issues)
+	}
+	// ETH: buy 1 for 1990, convert 0.5 for 1200 (cost 995); staking 0.001 at 2.30; a
+	// receive of 0.1 with no value is a lot at cost 0.
+	near(t, "eth 2021", gains(res, "ETH")[2021], 1200-995)
+	amount, cost, _ = res.Holding("ETH", nil)
+	near(t, "eth left", amount, 0.601)
+	near(t, "eth cost left", cost, 995+2.30)
+	if !hasIssue(res, tax.IssueUnmatchedReceive, "ETH") {
+		t.Errorf("the receive is up for review: %+v", res.Issues)
+	}
+	_, usdc, _ := res.Holding("USDC", nil)
+	near(t, "usdc basis", usdc, 1200+1.25)
+	_, doge, _ := res.Holding("DOGE", nil)
+	near(t, "doge basis", doge, 43)
+	near(t, "sol 2022", gains(res, "SOL")[2022], 109.34-150.90)
+	// Staking, Earn, Rewards, Learning and Inflation rewards are income at market value.
+	var income float64
+	for _, in := range res.Income {
+		income += in.ValueUSD
+	}
+	if len(res.Income) != 5 {
+		t.Errorf("%d income entries, want 5", len(res.Income))
+	}
+	near(t, "income", income, 2.30+2.50+1.25+4+3)
 }

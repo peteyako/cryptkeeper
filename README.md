@@ -142,6 +142,25 @@ moving coins between your own wallets never changes it), realized P/L by year, a
 - **CSV import** for history older than the APIs reach: Coinbase *Transaction history* report and
   Kraken *Ledgers* export. Re-importing the same file is safe.
 
+### Taxes
+
+**Reports → Import from Koinly** moves a Koinly tax history into CryptKeep so it can take over:
+
+1. Upload the four reports for the year you are closing: the year-end holdings, the transaction
+   history, the capital gains report and the income report (CSV).
+2. Map each Koinly wallet to a CryptKeep source (or `untracked`), and each Koinly asset to an
+   asset key (or skip it, e.g. spam).
+3. Reconcile: compare what Koinly held at year end with what CryptKeep holds, and fill in any
+   missing basis.
+4. Accept. The year is closed and CryptKeep carries its lots forward.
+
+Your choices live in `data/tax.yaml` (wallet and asset maps, manual lots, tags, prices, 8949
+boxes); each closed year is frozen in `data/tax/<year>.yaml`. Both are included in the Settings
+backup. Manual lots from an older `costbasis.yaml` are copied into `tax.yaml` once, in the
+`untracked` wallet; edit `tax.yaml` to assign wallets. The tax timezone (day boundaries for the
+year cutover) is `tax.timezone` in `config.yaml`, an IANA name such as `America/New_York`;
+empty means the server's local time.
+
 Not tax advice.
 
 ## Alerts
@@ -172,7 +191,7 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 ### Backup & restore
 
 **Settings → Backup & restore** exports everything you set up in one YAML file — sources,
-portfolios, alert rules and manual cost basis — and restores it (merge, or replace the
+portfolios, alert rules, manual cost basis, tax settings and closed tax years — and restores it (merge, or replace the
 sections the file contains). Exchange secrets are left out unless you choose "with encrypted
 secrets"; those stay AES-256-GCM sealed and only restore into a CryptKeep with the same key
 (`CRYPTKEEP_SECRET_KEY` or `data/secret.key`). Balances and activity aren't included: CryptKeep fetches

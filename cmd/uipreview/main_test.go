@@ -29,7 +29,7 @@ func TestEveryPageRenders(t *testing.T) {
 	for _, path := range []string{
 		"/", "/wallets", "/settings", "/portfolios",
 		"/activity", "/activity?source=coinbase&asset=BTC&kind=trade", "/activity?empty=1",
-		"/reports", "/reports?empty=1",
+		"/reports", "/reports?empty=1", "/reports/koinly", "/reports/koinly?empty=1", "/reports/koinly?blocked=1",
 		"/alerts", "/alerts?empty=1", "/alerts?error=1", "/alerts/new", "/alerts/new?invalid=1",
 		"/alerts/" + demo.AlertColdDrop + "/edit", "/alerts/" + demo.AlertBTCAbove + "/edit", "/alerts/" + demo.AlertDayMove + "/edit",
 		"/alerts/" + demo.AlertKrakenOff + "/edit", "/alerts/" + demo.AlertBigSend + "/edit",
@@ -67,35 +67,13 @@ func TestActivityList(t *testing.T) {
 
 func TestReportsStubs(t *testing.T) {
 	h := router()
-	form := func(kv ...string) (io.Reader, string) {
-		v := url.Values{}
-		for i := 0; i < len(kv); i += 2 {
-			v.Set(kv[i], kv[i+1])
-		}
-		return strings.NewReader(v.Encode()), "application/x-www-form-urlencoded"
-	}
-	_, _ = do(t, h, "GET", "/reports?reset=1", nil, "")
-
-	// A bad form patches the error into the panel.
-	b, ct := form("asset", "", "amount", "1", "cost", "2")
-	_, body := do(t, h, "POST", "/reports/basis", b, ct)
-	if !strings.Contains(body, `id="basis-panel"`) || !strings.Contains(body, "Choose an asset.") || !strings.Contains(body, `id="pnl"`) {
-		t.Errorf("error patch:\n%.800s", body)
-	}
-	// A good one adds the entry, and the P/L row picks it up.
-	b, ct = form("asset", "dot", "amount", "185.2", "cost", "$1,500", "note", "Kraken CSV")
-	_, body = do(t, h, "POST", "/reports/basis", b, ct)
-	if !strings.Contains(body, "Kraken CSV") || strings.Contains(body, "Choose an asset.") || !strings.Contains(body, `id="csv-result"`) {
-		t.Errorf("saved patch:\n%.800s", body)
-	}
+	// The manual cost form is gone: the tax lots are the only source of cost basis.
 	_, page := do(t, h, "GET", "/reports", nil, "")
-	if strings.Count(page, `<span class="badge">manual</span>`) != 3 {
-		t.Error("the new manual cost shows a badge on its row")
+	if strings.Contains(page, `id="basis-panel"`) || strings.Contains(page, "/reports/basis") || !strings.Contains(page, `id="pnl"`) {
+		t.Error("Reports must show the P&L without the manual cost panel")
 	}
-	// Deleting removes it again.
-	_, body = do(t, h, "POST", "/reports/basis/"+url.PathEscape("DOT")+"/delete", nil, "")
-	if strings.Contains(body, "Kraken CSV") || !strings.Contains(body, `id="basis-panel"`) {
-		t.Errorf("delete patch:\n%.800s", body)
+	if code, _ := do(t, h, "POST", "/reports/basis", strings.NewReader("asset=BTC"), "application/x-www-form-urlencoded"); code != http.StatusNotFound && code != http.StatusMethodNotAllowed {
+		t.Errorf("POST /reports/basis: %d", code)
 	}
 
 	// CSV import: a file succeeds, a name with "bad" fails, no file is asked for.

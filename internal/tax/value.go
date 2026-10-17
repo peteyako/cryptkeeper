@@ -43,7 +43,7 @@ func usableUSD(u *float64) bool { return u != nil && *u != 0 && finite(*u) }
 func finite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
 
 // fillTrade values a side's single unvalued leg from the other, fully valued, side.
-// Temporary copy of costbasis.sideValue/fillSide; that package is deleted in M3.
+// Adapted from the average-cost engine's sideValue / fillSide, removed in M3.
 func fillTrade(neg, pos []*valued) {
 	negTotal, negAll := sideValue(neg)
 	posTotal, posAll := sideValue(pos)

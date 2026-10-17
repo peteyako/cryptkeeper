@@ -29,6 +29,11 @@ ntfy:
 activity:
   backfillDays: 365
 
+# Tax reports: an IANA timezone decides where a tax day starts and ends.
+# Empty (or omitted) uses the server's local timezone.
+# tax:
+#   timezone: America/New_York
+
 # Optional: sources to create on first run only (unattended setup). Secrets placed here
 # are sealed into data/sources.yaml on import; remove them from this file afterwards.
 # seedSources:

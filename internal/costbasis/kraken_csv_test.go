@@ -4,8 +4,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/tax"
 )
 
 func parseKr(t *testing.T, name string, opts ...ParseOptions) []core.Tx {
@@ -227,21 +229,39 @@ func TestKrakenLedgersErrors(t *testing.T) {
 	}
 }
 
+// TestKrakenCSVIntoEngine feeds the parsed ledgers to the tax engine: one FIFO wallet,
+// kraken-csv, replayed from the start (no closed year).
 func TestKrakenCSVIntoEngine(t *testing.T) {
-	res := Compute(parseKr(t, "kraken_ledgers.csv"), Manual{})
-	btc := res.Assets["BTC"]
-	// buy 0.05 for 1503.90 (avg 30078); sell 0.01 for 598.44 -> realized 598.44-300.78;
-	// withdrawal of 0.03 and its 0.0005 fee only remove units.
-	near(t, "realized", btc.RealizedByYear[2021], 598.44-300.78)
-	near(t, "amount", btc.Amount, 0.05-0.01-0.03-0.0005)
-	near(t, "avg", btc.AvgCost, 30078)
-	if _, ok := res.Assets["USD"]; ok {
-		t.Error("fiat tracked")
+	txs := parseKr(t, "kraken_ledgers.csv")
+	res := tax.Compute(tax.Input{Loc: time.UTC, Txs: txs})
+	// BTC: buy 0.05 for 1503.90 (fee included); sell 0.01 for 598.44 (net of the fee) at a
+	// FIFO cost of 300.78; the 0.03 withdrawal and its 0.0005 fee leave at no value.
+	sale := byRef(t, txs, "TFFFFF-FFFFF-FFFFF1").ID
+	var saleGain float64
+	for _, d := range res.Disposals {
+		if d.TxID == sale {
+			saleGain += d.GainUSD
+		}
 	}
-	// EUR-quoted ETH has unknown basis; the allocation transfer changed nothing.
-	eth := res.Assets["ETH"]
-	near(t, "eth unknown", eth.UnknownBasisUnits, 0.06)
-	near(t, "eth amount", eth.Amount, 0)
-	// Staking reward without a price is unknown basis until valued.
-	near(t, "dot unknown", res.Assets["DOT"].UnknownBasisUnits, 0.03)
+	near(t, "sale gain", saleGain, 598.44-300.78)
+	amount, cost, _ := res.Holding("BTC", nil)
+	near(t, "btc left", amount, 0.05-0.01-0.03-0.0005)
+	near(t, "btc cost left", cost, 1503.90*0.0095/0.05)
+	for _, l := range res.Lots {
+		if l.Asset == "USD" || l.Asset == "EUR" {
+			t.Errorf("fiat lot %+v", l)
+		}
+	}
+	// EUR-quoted ETH has no USD value: a lot at cost 0 and a missing price to review. The
+	// move to staking changed nothing.
+	amount, cost, _ = res.Holding("ETH", nil)
+	if amount != 0.06 || cost != 0 || !hasIssue(res, tax.IssueMissingPrice, "ETH") {
+		t.Errorf("eth: %v at %v, issues %+v", amount, cost, res.Issues)
+	}
+	// Staking rewards without a price are income at 0 until valued.
+	amount, _, _ = res.Holding("DOT", nil)
+	near(t, "dot", amount, 0.03)
+	if len(res.Income) != 2 {
+		t.Errorf("%d income entries, want 2", len(res.Income))
+	}
 }

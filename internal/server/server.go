@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,7 @@ import (
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/store"
+	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/web/static"
 )
 
@@ -34,8 +36,8 @@ type Deps struct {
 	Registry   *sources.Registry
 	Portfolios *portfolios.Store
 	Activity   *activity.Store
-	Syncer     *activity.Syncer // optional: kicked after a source is added
-	CostBasis  *costbasis.ManualStore
+	Syncer     *activity.Syncer       // optional: kicked after a source is added
+	CostBasis  *costbasis.ManualStore // the retired manual costs: kept for backup only
 	AlertRules *alerts.RuleStore
 	Alerts     *alerts.Engine
 	DB         *store.DB // UI settings changed from the Settings page
@@ -43,6 +45,12 @@ type Deps struct {
 	Broker     *portfolio.Broker
 	History    *portfolio.History
 	Prices     portfolio.PriceFunc
+
+	// Tax lots: the settings (data/tax.yaml), the closed years (data/tax/<year>.yaml) and the
+	// tax timezone (nil = time.Local). They feed the cost basis and P&L everywhere.
+	TaxSettings *tax.SettingsStore
+	TaxYears    *tax.YearStore
+	TaxLoc      *time.Location
 
 	// Bitcoin helpers, injected so the server doesn't depend on the bitcoin package.
 	DetectBitcoin          func(input string) (kind string, err error)
@@ -54,7 +62,9 @@ type Deps struct {
 
 type Server struct {
 	Deps
-	costs costCache
+	taxes taxCache
+	// draftMu serialises the Koinly import draft's load → change → save.
+	draftMu sync.Mutex
 }
 
 // New builds the router.
@@ -114,9 +124,12 @@ func New(d Deps) http.Handler {
 		r.Get("/activity/sync", s.activitySync)
 
 		r.Get("/reports", s.reports)
-		r.Post("/reports/basis", s.basisSave)
-		r.Post("/reports/basis/{asset}/delete", s.basisDelete)
 		r.Post("/reports/import", s.csvImport)
+		r.Get("/reports/koinly", s.koinlyPage)
+		r.Post("/reports/koinly/upload", s.koinlyUpload)
+		r.Post("/reports/koinly/map", s.koinlyMap)
+		r.Post("/reports/koinly/accept", s.koinlyAccept)
+		r.Post("/reports/koinly/discard", s.koinlyDiscard)
 
 		r.Get("/export/holdings.csv", s.exportHoldings)
 		r.Get("/export/history.csv", s.exportHistory)

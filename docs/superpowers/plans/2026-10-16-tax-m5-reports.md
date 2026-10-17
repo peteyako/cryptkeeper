@@ -2,12 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce everything the user hands to TurboTax and their CPA:
+**Goal:** Produce the same set of reports Koinly gives, for any user's data:
 - an in-app Tax view per year
 - Koinly-format CSVs
 - TurboTax Online CSV and TXF
 - a printable Form 8949 with Schedule D totals
 - a printable complete tax report
+- the official IRS Form 8949 and Schedule D, filled in (PDF)
+- a "Download all" bundle, with the same file set as Koinly's exports
 
 **Architecture:**
 - A report model package `internal/tax/report` turns a year's data into rows: a closed `tax.Year`, or the open year computed with `From`/`To`.
@@ -60,6 +62,12 @@
   3. Else `I`.
 - **Schedule D lines:** G → 1b, H → 2, I → 3, J → 8b, K → 9, L → 10. Columns are (d) proceeds, (e) cost, (g) adjustments = 0, (h) gain.
 - **8949 column (a)** description: `<amount, up to 8 decimals, trailing zeros trimmed> <SYMBOL>`.
+- **8949 layout matches Koinly's IRS package** (Koinly's Form 8949 / Schedule D PDF export, used as a template):
+  - Rows per Form 8949 page follow the form revision: 14 on the 2024 form, **11 on the 2025 form** (the current IRS revision). Each page carries its own line-2 totals row (columns d, e, g, h).
+  - The box letter is marked once per page.
+  - Gains and losses print with losses in parentheses, e.g. `(0.09)`.
+  - Koinly put every 2024 disposal in Box C/F (no 1099). For 2025 and later, the digital-asset boxes I/L replace C/F per the IRS 2025 instructions.
+  - Schedule D shows line totals only: line 3 short, line 10 long.
 - The print pages use their own minimal templ layout (no app shell) with `@media print` CSS, plus a "Print / Save as PDF" button (hidden in print). The CPA report ends with: "Prepared by CryptKeep from the user's own records. Not tax advice."
 - Do NOT `git add`, `git commit`, `git stash` or switch branches.
 - Gate: `task generate && task vet && task test`.
@@ -195,6 +203,7 @@ func TestCSVQuotesLabels(t *testing.T)       // wallet label `Cold, Ledger` → 
   - `func WriteTurboTaxCSV(w io.Writer, r YearReport) error`
   - `func WriteTXF(w io.Writer, r YearReport, today time.Time) error`
   - `func Form8949(r YearReport) []Form8949Part`, where `Form8949Part{Box string; Long bool; Rows []Form8949Row; Total BoxTotal}`, `Form8949Row{Description, Acquired, Sold string; Proceeds, Cost, Gain float64}`, and parts are in box order G, H, I, J, K, L, omitting empty boxes.
+  - `func Pages(p Form8949Part, perPage int) [][]Form8949Row` splits a part into pages (`perPage` = 11 for the 2025 revision). The print view and the IRS PDF filler (Task 6) both render one form page per chunk, with that page's totals.
   - `func ScheduleD(r YearReport) []ScheduleDLine`, where `ScheduleDLine{Line, Box string; Proceeds, Cost, Adjustments, Gain float64}`, with all six lines always present.
 
 - [ ] **Step 1: Write failing tests**
@@ -205,7 +214,8 @@ func TestTXFRecord(t *testing.T)            // long-term I/L row → "TD\nN714\n
 func TestForm8949Grouping(t *testing.T)     // rows in boxes I and L → two parts in order I, L; totals equal the row sums
 func TestScheduleDLines(t *testing.T)       // box I total gain 6 → line "3" gain 6; line "1b" zeros present
 func TestEmpty8949(t *testing.T)            // no rows → Form8949 empty slice; GET /reports/tax/2026/8949 → 200 with "No disposals in 2026"
-func TestKoinlyYearBoxes(t *testing.T)      // Koinly year rows with wallet "Kraken" short → box H; "Solana (SOL) - K1S" long → L
+func TestPages11(t *testing.T)              // 30 rows in box I, perPage 11 → 3 pages (11, 11, 8); each page's totals equal its rows' sums; a loss renders as "(0.09)"
+func TestKoinlyYearBoxes(t *testing.T)      // Koinly year rows with wallet "Kraken" short → box H; "Solana (SOL) - Main" long → L
 ```
 
 - [ ] **Step 2–4:** `go test ./internal/tax/report/ ./internal/server/ -run 'TestTurboTax|TestTXF|TestForm8949|TestScheduleD|TestEmpty8949|TestKoinlyYearBoxes' -v` → FAIL; implement; PASS.
@@ -243,3 +253,83 @@ func TestTaxReportKoinlyYear(t *testing.T) // year 2025 → "imported verbatim"
 ```
 
 - [ ] **Step 2–4:** `go test ./internal/server/ -run TestTaxReport -v` → FAIL; implement; then `task generate && task vet && task test` → PASS.
+
+---
+
+### Task 6: Filled official IRS Form 8949 and Schedule D (PDF)
+
+**Files:**
+- Create:
+  - `internal/tax/irs/irs.go`
+  - `internal/tax/irs/forms/2025/f8949.pdf` and `internal/tax/irs/forms/2025/f1040sd.pdf` (embedded via `embed`). These are the official IRS fillable PDFs from `https://www.irs.gov/pub/irs-pdf/f8949.pdf` and `f1040sd.pdf`, which are public domain.
+  - `internal/tax/irs/irs_test.go`
+- Modify: `go.mod` (add `github.com/pdfcpu/pdfcpu v0.11.0`), `internal/server/taxview.go` (route `GET /reports/tax/{year}/irs-forms.pdf`)
+
+**Interfaces:**
+- Produces: `func FillForms(r report.YearReport, w io.Writer, opts Options) error`, where `type Options struct { Name, SSN string; FormsDir string }` (`FormsDir` = `<data>/irs` for newer revisions, see below).
+- Output is one merged PDF: Schedule D (2 pages) first, then one Form 8949 copy per page chunk. Part I chunks go on page 1 of a copy and Part II chunks on page 2; a copy whose other page is empty still includes that blank page, as the IRS form does.
+- **Field map for the 2025 revision** (verified with `pdfcpu form list` / `form export`):
+  - Form 8949 page 1:
+    - `topmostSubform[0].Page1[0].f1_01[0]` is the name; `f1_02[0]` is the SSN (maxlen 11).
+    - Checkboxes `c1_1[0..5]` are boxes A, B, C, G, H, I.
+    - Rows `Table_Line1_Part1[0].Row{1..11}[0].f1_NN[0]` hold 8 fields per row, in order: (a) description, (b) acquired, (c) sold, (d) proceeds, (e) cost, (f) code, (g) adjustment, (h) gain. Row1 is `f1_03..f1_10`, Row2 `f1_11..f1_18`, and so on.
+    - Totals are `f1_91[0]` (d), `f1_92[0]` (e), `f1_93[0]` (f, unused), `f1_94[0]` (g), `f1_95[0]` (h).
+  - Form 8949 page 2 mirrors page 1 with prefix `Page2[0]`, `f2_NN`, checkboxes `c2_1[0..5]` = D, E, F, J, K, L, and `Table_Line1_Part2[0]`. Confirm the exact table name in the field list.
+  - Schedule D page 1:
+    - `f1_1[0]` name, `f1_2[0]` SSN; `c1_1[0..1]` QOF yes/no (leave unset).
+    - Line 1b is `Table_PartI[0].Row1b[0].f1_7..f1_10`, line 2 is `Row2[0].f1_11..f1_14`, line 3 is `Row3[0].f1_15..f1_18`. The four fields are (d), (e), (g), (h).
+    - Line 8b is `Table_PartII[0].Row8b[0].f1_27..f1_30`, line 9 is `Row9[0].f1_31..f1_34`, line 10 is `Row10[0].f1_35..f1_38`.
+    - Line 7 (`f1_22`) is net short-term and line 15 is net long-term: fill both. Leave the rest blank.
+  - Read each field's `maxlen` from the form and format values to fit: dates `MM/DD/YYYY`, or `MM/DD/YY` when maxlen < 10; money with 2 decimals; losses in parentheses.
+- **Box mapping:** Part I uses G, H or I. Part II uses J, K or L. Schedule D lines: G → 1b, H → 2, I → 3, J → 8b, K → 9, L → 10.
+- **Revisions:**
+  - The embedded 2025 revision is used for tax years ≤ 2025.
+  - For a later year, look in `<FormsDir>/<year>/f8949.pdf` and `f1040sd.pdf`. If they are absent, download the current revision from irs.gov once and cache it there. Accept it only if its field names match the map above.
+  - Otherwise fall back to the embedded 2025 revision and add a first-page note: "Filled on the 2025 form revision; check irs.gov for the <year> form."
+- Use pdfcpu's API: read the form JSON, set values, `FillForm`, then `MergeRaw`. pdfcpu removes the IRS signature when filling, which is expected.
+
+- [ ] **Step 1: Write failing tests**
+
+```go
+func TestFillFormsOneShortRow(t *testing.T)   // one box-I row → output PDF exported back via pdfcpu: Page1 c1_1[5] checked, Row1 (a) "0.5 BTC", (d) "1500.00", totals f1_91 "1500.00"; Schedule D line 3 (f1_15) "1500.00"
+func TestFillFormsPaging(t *testing.T)        // 23 box-I rows → 3 Form 8949 copies after Schedule D; copy 3 has rows 1–1 filled and its totals equal that row
+func TestFillFormsLongTermPage2(t *testing.T) // one box-L row → Page2 c2_1[5] checked, Part II row 1 filled, Page1 table empty
+func TestFillFormsLoss(t *testing.T)          // gain −0.09 → (h) "(0.09)"
+func TestFormRevisionFallback(t *testing.T)   // year 2026, empty FormsDir, download disabled (nil HTTP client) → uses embedded 2025, note present
+```
+
+- [ ] **Step 2–4:** `go test ./internal/tax/irs/ -v` → FAIL; implement; PASS.
+
+---
+
+### Task 7: Other-gains CSV, and a "Download all reports" bundle
+
+**Files:**
+- Modify: `internal/tax/report/koinlycsv.go` (`WriteOtherGains`), `internal/server/taxview.go` (routes `GET /reports/tax/{year}/other-gains.csv` and `GET /reports/tax/{year}/all.zip`), `web/templates/tax.templ` (downloads row: an "Everything (zip)" link first)
+- Test: `internal/tax/report/koinlycsv_test.go`, `internal/server/taxview_test.go`
+
+**Interfaces:**
+- `WriteOtherGains`:
+  - Title `Other gains report <Y>`, a blank line, then the header `Date,Asset,Amount,Value (USD),Type,Wallet Name`.
+  - Rows are the disposal rows created by the `position-gain` tag, with Type `Position gain`.
+  - Header only when there are none.
+- `all.zip` contains, named like Koinly's but prefixed `cryptkeep_<Y>_`:
+  - `capital_gains_report.csv`
+  - `income_report.csv`
+  - `other_gains_report.csv`
+  - `end_of_year_holdings_report.csv`
+  - `transaction_history.csv` (omitted for Koinly-closed years)
+  - `turbotax_online.csv`
+  - `turbotax.txf`
+  - `irs_reports_form_8949_schedule_d.pdf`
+  - `complete_tax_report.html` (the print page, self-contained)
+
+- [ ] **Step 1: Write failing tests**
+
+```go
+func TestOtherGainsHeaderOnly(t *testing.T)  // no position-gain rows → exactly title, blank line, header
+func TestAllZipContents(t *testing.T)        // GET /reports/tax/2026/all.zip → zip with the 9 names above; capital gains entry starts with "Capital gains report 2026"
+func TestAllZipKoinlyYear(t *testing.T)      // year 2025 (koinly) → no transaction_history.csv
+```
+
+- [ ] **Step 2–4:** `go test ./internal/tax/report/ ./internal/server/ -run 'TestOtherGains|TestAllZip' -v` → FAIL; implement; then `task generate && task vet && task test` → PASS.

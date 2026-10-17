@@ -199,10 +199,12 @@ func TestExpressionsAreValidJavaScript(t *testing.T) {
 		{"activity filter", actFilterGet, false},
 		{"activity signals", actSignals(ActivityPage{SourceID: hostile, AssetKey: hostile, Kind: hostile}), true},
 		{"activity more", actMoreGet(hostile), false},
-		{"basis submit", basisSubmit, false},
 		{"csv submit", csvSubmit, false},
-		{"basis delete", basisDeleteClick(hostile), false},
-		{"set cost", setCostClick(hostile, 0.1), false},
+		{"koinly upload", koinlyUploadSubmit, false},
+		{"koinly map", koinlyMapSubmit, false},
+		{"koinly accept", koinlyAcceptClick(2025), false},
+		{"koinly discard", koinlyDiscardClick, false},
+		{"koinly busy", "$koinlySaving || $koinlyAccepting", true},
 		{"alert test", alertTestClick, false},
 		{"alert delete", alertDeleteClick(hostile, hostile), false},
 		{"alert submit", alertSubmitClick(hostile), false},
@@ -355,15 +357,6 @@ func TestExpressionBuilders(t *testing.T) {
 	}
 	if got := actMoreGet("1760000000000000000"); got != `@get('/activity/list?before=1760000000000000000', {filterSignals: {include: /^act/}})` {
 		t.Errorf("actMoreGet = %s", got)
-	}
-	if got := basisDeleteClick("BTC"); got != `confirm('Remove the manual cost for BTC?') && @post('/reports/basis/BTC/delete')` {
-		t.Errorf("basisDeleteClick = %s", got)
-	}
-	if got := basisDeleteClick("spl:a b/c"); !strings.HasSuffix(got, `@post('/reports/basis/spl:a%20b%2Fc/delete')`) {
-		t.Errorf("basisDeleteClick must path-escape the asset: %s", got)
-	}
-	if got := setCostClick("BTC", 0.05); got != `document.getElementById('f-asset').value = 'BTC'; document.getElementById('f-amount').value = '0.05'; document.getElementById('f-cost').focus()` {
-		t.Errorf("setCostClick = %s", got)
 	}
 	if got := alertDeleteClick("cold-drop", "Mom's alert"); got != `confirm('Delete the alert Mom\'s alert?') && @post('/alerts/cold-drop/delete')` {
 		t.Errorf("alertDeleteClick = %s", got)

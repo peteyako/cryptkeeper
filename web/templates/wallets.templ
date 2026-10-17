@@ -157,16 +157,16 @@ templ statTiles(p WalletPage) {
 					@FigFiat(*p.CostBasis)
 				</span>
 				{{ rowc, singlec := SingleAsset(p.W) }}
-				if singlec && rowc.Amount > 0 {
+				if singlec && p.CostUnits > 0 {
 					<span class="stat__sub stat__sub--inline">
 						<span>avg</span>
-						@FigFiat(*p.CostBasis / rowc.Amount)
+						@FigFiat(*p.CostBasis / p.CostUnits)
 						<span>/ { rowc.Symbol }</span>
 					</span>
 				}
 			} else {
 				<span class="stat__value stat__value--none">—</span>
-				<span class="stat__sub">Set cost basis</span>
+				<a class="stat__sub stat__link" href="/reports/koinly" data-on:click={ navClick("/reports/koinly", "") }>Import cost basis</a>
 			}
 		</div>
 		<div class="stat">

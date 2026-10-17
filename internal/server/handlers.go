@@ -119,7 +119,7 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		Sync:          s.syncInfo(all, ready),
 		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
 		NetWorthShare: pv.share,
-		PnL:           s.pnlCells(r.Context(), snap.Assets),
+		PnL:           s.pnlCells(r.Context(), snap.Assets, pv.lotWallets),
 		Now:           now,
 	}
 	if s.History != nil {

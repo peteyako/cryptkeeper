@@ -217,16 +217,16 @@ templ SettingsPrices(p SettingsPage) {
 	</section>
 }
 
-// BackupIO exports and restores everything in one file: sources, portfolios, alert rules
-// and manual cost basis (secrets excluded unless asked for).
+// BackupIO exports and restores everything in one file: sources, portfolios, alert rules,
+// manual cost basis, tax settings and closed tax years (secrets excluded unless asked for).
 templ BackupIO(p SettingsPage) {
 	<section id="backup-io" class="card pf-io" aria-labelledby="set-backup-h">
 		<div class="pf-io__intro">
 			<h2 id="set-backup-h" class="h-card">{ "Backup & restore" }</h2>
 			if p.EncryptedExports {
-				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis and exchange API secrets. The whole file is encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>, so it only restores into a CryptKeep with the same key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings, closed tax years and exchange API secrets. The whole file is encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>, so it only restores into a CryptKeep with the same key. Balances and activity aren't included; CryptKeep fetches them again.</p>
 			} else {
-				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules and manual cost basis. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a CryptKeep with the same secret key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings and closed tax years. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a CryptKeep with the same secret key. Balances and activity aren't included; CryptKeep fetches them again.</p>
 			}
 		</div>
 		<div class="pf-io__block pf-io__row">

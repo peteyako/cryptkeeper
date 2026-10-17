@@ -1,16 +1,21 @@
 // Package backup exports and restores everything a user configures in one YAML file:
-// sources, portfolios, alert rules and manual cost basis. Every section is optional on
+// sources, portfolios, alert rules and manual cost basis, tax settings and closed tax years. Every section is optional on
 // import, so a sources-only or portfolios-only export restores through the same path.
 package backup
 
 import (
 	"fmt"
+	"maps"
+	"reflect"
 	"slices"
+	"strconv"
+	"strings"
 
 	"crypto-portfolio/internal/alerts"
 	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/internal/yamlfile"
 )
 
@@ -24,6 +29,8 @@ type File struct {
 	Portfolios []portfolios.Portfolio `yaml:"portfolios,omitempty"`
 	Alerts     []alerts.Rule          `yaml:"alerts,omitempty"`
 	CostBasis  *costbasis.Manual      `yaml:"costBasis,omitempty"`
+	Tax        *tax.Settings          `yaml:"tax,omitempty"`
+	TaxYears   []tax.Year             `yaml:"taxYears,omitempty"`
 }
 
 // Stores are the places a backup reads from and restores into. Any may be nil (that
@@ -33,6 +40,8 @@ type Stores struct {
 	Portfolios *portfolios.Store
 	Alerts     *alerts.RuleStore
 	CostBasis  *costbasis.ManualStore
+	Tax        *tax.SettingsStore
+	TaxYears   *tax.YearStore
 	// OnSourceRemoved runs for each source a replace import deletes, before portfolios are
 	// restored (callers drop the source's activity and portfolio references).
 	OnSourceRemoved func(id string)
@@ -72,7 +81,24 @@ func Export(st Stores, withSecrets bool) ([]byte, error) {
 			f.CostBasis = &m
 		}
 	}
+	if st.Tax != nil {
+		if t := st.Tax.Get(); !isEmptySettings(t) {
+			f.Tax = &t
+		}
+	}
+	if st.TaxYears != nil {
+		for _, y := range st.TaxYears.Years() {
+			if v, ok := st.TaxYears.Get(y); ok {
+				f.TaxYears = append(f.TaxYears, v)
+			}
+		}
+	}
 	return yamlfile.Encode(f)
+}
+
+func isEmptySettings(t tax.Settings) bool {
+	return len(t.WalletMap) == 0 && len(t.AssetMap) == 0 && len(t.ManualLots) == 0 &&
+		len(t.Tags) == 0 && len(t.Prices) == 0 && len(t.WalletBox) == 0
 }
 
 // Parse strictly decodes a backup (unknown fields are line-numbered errors) and validates
@@ -88,8 +114,9 @@ func Parse(raw []byte) (File, error) {
 	if f.Version != Version {
 		return File{}, fmt.Errorf("unsupported backup version %d (this build reads version %d)", f.Version, Version)
 	}
-	if len(f.Sources) == 0 && len(f.Portfolios) == 0 && len(f.Alerts) == 0 && f.CostBasis == nil {
-		return File{}, fmt.Errorf("the file has nothing to import (no sources, portfolios, alerts or cost basis)")
+	if len(f.Sources) == 0 && len(f.Portfolios) == 0 && len(f.Alerts) == 0 && f.CostBasis == nil &&
+		f.Tax == nil && len(f.TaxYears) == 0 {
+		return File{}, fmt.Errorf("the file has nothing to import (no sources, portfolios, alerts, cost basis or tax data)")
 	}
 	for i := range f.Sources {
 		if f.Sources[i].Kind == "" {
@@ -128,6 +155,24 @@ func Parse(raw []byte) (File, error) {
 		}
 		f.CostBasis = &m
 	}
+	if f.Tax != nil {
+		t, err := f.Tax.Normalized()
+		if err != nil {
+			return File{}, err
+		}
+		f.Tax = &t
+	}
+	seen := map[int]bool{}
+	for _, y := range f.TaxYears {
+		if err := y.Validate(); err != nil {
+			return File{}, fmt.Errorf("taxYears: %w", err)
+		}
+		if seen[y.Year] {
+			return File{}, fmt.Errorf("taxYears: year %d appears twice", y.Year)
+		}
+		seen[y.Year] = true
+	}
+	slices.SortFunc(f.TaxYears, func(a, b tax.Year) int { return a.Year - b.Year })
 	return f, nil
 }
 
@@ -137,7 +182,15 @@ type Result struct {
 	Portfolios *portfolios.ImportResult
 	Alerts     *alerts.ImportResult
 	CostBasis  bool // the cost basis section was applied
+	Tax        bool // the tax settings section was applied
+	TaxYears   int  // closed tax years written
+	// TaxYearsSkipped are incoming years a merge left out: the year exists locally, or a
+	// later local year is closed.
+	TaxYearsSkipped []int
 }
+
+// TouchedTax reports whether the import changed tax settings or closed years.
+func (r Result) TouchedTax() bool { return r.Tax || r.TaxYears > 0 }
 
 // Import restores every section present in raw. Sections absent from the file are left
 // alone, even with replace. With replace, each present section becomes exactly the file's
@@ -196,6 +249,30 @@ func Import(st Stores, raw []byte, replace bool) (Result, error) {
 		}
 		res.CostBasis = true
 	}
+	if f.Tax != nil {
+		next := *f.Tax
+		if !replace {
+			next = mergeTax(st.Tax.Get(), next)
+		}
+		cur, err := st.Tax.Get().Normalized()
+		if err != nil {
+			return res, fmt.Errorf("tax settings: %w", err)
+		}
+		if next, err = next.Normalized(); err != nil {
+			return res, fmt.Errorf("tax settings: %w", err)
+		}
+		if !reflect.DeepEqual(cur, next) {
+			if err := st.Tax.Set(next); err != nil {
+				return res, fmt.Errorf("tax settings: %w", err)
+			}
+			res.Tax = true
+		}
+	}
+	if len(f.TaxYears) > 0 {
+		if err := importTaxYears(st.TaxYears, f.TaxYears, replace, &res); err != nil {
+			return res, fmt.Errorf("tax years: %w", err)
+		}
+	}
 	return res, nil
 }
 
@@ -204,7 +281,9 @@ func (st Stores) check(f File) error {
 	case len(f.Sources) > 0 && st.Sources == nil,
 		len(f.Portfolios) > 0 && st.Portfolios == nil,
 		len(f.Alerts) > 0 && st.Alerts == nil,
-		f.CostBasis != nil && st.CostBasis == nil:
+		f.CostBasis != nil && st.CostBasis == nil,
+		f.Tax != nil && st.Tax == nil,
+		len(f.TaxYears) > 0 && st.TaxYears == nil:
 		return fmt.Errorf("this CryptKeep can't restore every section of the file")
 	}
 	return nil
@@ -231,6 +310,63 @@ func mergeManual(cur, in costbasis.Manual) costbasis.Manual {
 		out.Version = in.Version
 	}
 	return out
+}
+
+// mergeTax overlays the backup's map entries per key and appends manual lots that aren't
+// already there.
+func mergeTax(cur, in tax.Settings) tax.Settings {
+	out := cur
+	out.WalletMap = overlay(cur.WalletMap, in.WalletMap)
+	out.AssetMap = overlay(cur.AssetMap, in.AssetMap)
+	out.Tags = overlay(cur.Tags, in.Tags)
+	out.Prices = overlay(cur.Prices, in.Prices)
+	out.WalletBox = overlay(cur.WalletBox, in.WalletBox)
+	out.ManualLots = slices.Clone(cur.ManualLots)
+	for _, l := range in.ManualLots {
+		if !slices.ContainsFunc(out.ManualLots, func(x tax.Lot) bool {
+			return x.Wallet == l.Wallet && x.Asset == l.Asset && x.Amount == l.Amount && x.CostUSD == l.CostUSD && x.Acquired.Equal(l.Acquired) && x.Various == l.Various && x.TxID == l.TxID && x.Flag == l.Flag
+		}) {
+			out.ManualLots = append(out.ManualLots, l)
+		}
+	}
+	return out
+}
+
+func overlay[V any](cur, in map[string]V) map[string]V {
+	if len(cur) == 0 && len(in) == 0 {
+		return nil
+	}
+	out := maps.Clone(cur)
+	if out == nil {
+		out = map[string]V{}
+	}
+	maps.Copy(out, in)
+	return out
+}
+
+// importTaxYears replaces every closed year (replace) or adds the years that aren't closed
+// locally, ascending, leaving out any year earlier than a later local one. years is ascending.
+func importTaxYears(ys *tax.YearStore, years []tax.Year, replace bool, res *Result) error {
+	if replace {
+		if err := ys.ReplaceAll(years); err != nil {
+			return err
+		}
+		res.TaxYears = len(years)
+		return nil
+	}
+	for _, y := range years {
+		last, ok := ys.LastClosed()
+		_, have := ys.Get(y.Year)
+		if have || (ok && last.Year > y.Year) {
+			res.TaxYearsSkipped = append(res.TaxYearsSkipped, y.Year)
+			continue
+		}
+		if err := ys.Save(y); err != nil {
+			return err
+		}
+		res.TaxYears++
+	}
+	return nil
 }
 
 // Summary is a one-line description of an import for the UI and the CLI.
@@ -260,6 +396,16 @@ func (r Result) Summary() string {
 	if r.CostBasis {
 		parts = append(parts, "manual cost basis restored")
 	}
+	if r.Tax {
+		parts = append(parts, "tax settings restored")
+	}
+	if r.TaxYears > 0 || len(r.TaxYearsSkipped) > 0 {
+		s := fmt.Sprintf("%d closed tax %s restored", r.TaxYears, plural(r.TaxYears, "year", "years"))
+		if n := len(r.TaxYearsSkipped); n > 0 {
+			s += fmt.Sprintf(", %d skipped (%s already closed here or earlier than a closed year)", n, joinInts(r.TaxYearsSkipped))
+		}
+		parts = append(parts, s)
+	}
 	if len(parts) == 0 {
 		return "Nothing to import."
 	}
@@ -271,4 +417,22 @@ func (r Result) Summary() string {
 		out += p
 	}
 	return out + "."
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+func joinInts(ns []int) string {
+	var b strings.Builder
+	for i, n := range ns {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(strconv.Itoa(n))
+	}
+	return b.String()
 }

@@ -8,7 +8,6 @@ import (
 
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/templates"
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
@@ -464,14 +463,17 @@ func TestReportsFixtures(t *testing.T) {
 		t.Fatalf("%d P/L rows for %d assets", len(p.Rows), len(snap.Assets))
 	}
 	var basis, unreal, known float64
-	var manual, noBasis int
+	var missing, noBasis int
 	for i, r := range p.Rows {
 		a := snap.Assets[i]
 		if r.AssetKey != a.AssetKey || !near(r.Amount, a.Amount) || !near(r.Value, a.ValueUSD) {
 			t.Errorf("%s: row does not match the snapshot", r.Symbol)
 		}
-		if r.Overridden {
-			manual++
+		if r.MissingUnits > 0 {
+			missing++
+			if r.MissingUnits > r.UnknownUnits {
+				t.Errorf("%s: missing-basis units are part of the unknown ones", r.Symbol)
+			}
 		}
 		if !r.HasBasis {
 			noBasis++
@@ -495,8 +497,8 @@ func TestReportsFixtures(t *testing.T) {
 		unreal += r.Unrealized
 		known += kv
 	}
-	if manual != 2 || noBasis != 2 {
-		t.Errorf("want 2 manual and 2 without a cost, got %d and %d", manual, noBasis)
+	if missing != 1 || noBasis != 2 {
+		t.Errorf("want 1 with missing-basis units and 2 without a cost, got %d and %d", missing, noBasis)
 	}
 	if !near(p.TotalBasis, basis) || !near(p.TotalUnrealized, unreal) || !near(p.TotalValue, snap.TotalUSD) {
 		t.Errorf("totals %v %v %v vs %v %v %v", p.TotalBasis, p.TotalUnrealized, p.TotalValue, basis, unreal, snap.TotalUSD)
@@ -507,10 +509,6 @@ func TestReportsFixtures(t *testing.T) {
 	if len(p.Realized) != 3 || p.Realized[0].Year != now.Year() || p.Realized[0].Year < p.Realized[1].Year {
 		t.Errorf("realized newest year first: %+v", p.Realized)
 	}
-	if len(p.Manual) != 2 || len(p.AssetOptions) != len(snap.Assets) {
-		t.Errorf("manual %d, options %d", len(p.Manual), len(p.AssetOptions))
-	}
-
 	cells := PnLCells(now)
 	if len(cells) != len(snap.Assets) {
 		t.Errorf("%d cells", len(cells))
@@ -524,24 +522,6 @@ func TestReportsFixtures(t *testing.T) {
 		t.Error("the overview carries the P/L cells")
 	}
 
-	// Dropping a fixture's manual cost takes its badge away; a new one overrides the cost.
-	without := ReportsWith(now, p.Manual[1:])
-	if without.Rows[0].Overridden {
-		t.Error("BTC lost its manual cost")
-	}
-	dot := ReportsWith(now, append(append([]templates.ManualBasisRow(nil), p.Manual...), templates.ManualBasisRow{Asset: "DOT", Amount: 185.20, CostUSD: 1500}))
-	for _, r := range dot.Rows {
-		if r.AssetKey == "DOT" && (!r.HasBasis || !r.Overridden || r.Basis != 1500 || r.UnknownUnits != 0 || !near(r.Unrealized, r.Value-1500)) {
-			t.Errorf("DOT after a manual cost: %+v", r)
-		}
-	}
-	if dot.Coverage <= p.Coverage || dot.TotalBasis != p.TotalBasis+1500 {
-		t.Errorf("a new cost raises the coverage (%v -> %v) and the basis", p.Coverage, dot.Coverage)
-	}
-	same := ReportsWith(now, p.Manual)
-	if same.TotalBasis != p.TotalBasis || same.Coverage != p.Coverage {
-		t.Error("the fixture's own manual costs change nothing")
-	}
 	if e := ReportsEmpty(now); len(e.Rows) != 0 || e.Coverage != 0 {
 		t.Error("empty reports")
 	}

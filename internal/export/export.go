@@ -101,13 +101,14 @@ func History(w io.Writer, pts []portfolio.Point) error {
 	return c.finish()
 }
 
-// PnLRow is one asset of the P&L export.
+// PnLRow is one asset of the P&L export, costed from the open tax lots.
 type PnLRow struct {
 	AssetKey, Symbol string
-	Amount, AvgCost  float64
+	Amount, AvgCost  float64 // AvgCost: basis per unit covered by lots with a known cost
 	Basis, Value     float64
 	Unrealized       float64
 	UnrealizedPct    float64 // percent, 50 = +50%
+	MissingUnits     float64 // units in missing-basis lots
 	Realized         map[int]float64
 	// HasBasis is false when no cost is known: avg_cost, basis, unrealized and
 	// unrealized_pct are then left empty.
@@ -115,8 +116,9 @@ type PnLRow struct {
 }
 
 // PnL writes one row per asset: asset (the symbol, else the asset key), amount, avg_cost,
-// basis, value, unrealized, unrealized_pct, then one realized_<year> column per year that
-// any row has, ascending. A row without realized P&L for a year leaves that cell empty.
+// basis, value, unrealized, unrealized_pct, missing_basis_units, then one realized_<year>
+// column per tax year that any row has, ascending. A row without realized P&L for a year
+// leaves that cell empty.
 func PnL(w io.Writer, rows []PnLRow) error {
 	yearSet := map[int]bool{}
 	for _, r := range rows {
@@ -131,7 +133,7 @@ func PnL(w io.Writer, rows []PnLRow) error {
 	sort.Ints(years)
 
 	c := newWriter(w)
-	header := []string{"asset", "amount", "avg_cost", "basis", "value", "unrealized", "unrealized_pct"}
+	header := []string{"asset", "amount", "avg_cost", "basis", "value", "unrealized", "unrealized_pct", "missing_basis_units"}
 	for _, y := range years {
 		header = append(header, "realized_"+strconv.Itoa(y))
 	}
@@ -142,7 +144,7 @@ func PnL(w io.Writer, rows []PnLRow) error {
 		if asset == "" {
 			asset = r.AssetKey
 		}
-		cells := []string{text(asset), num(r.Amount), "", "", num(r.Value), "", ""}
+		cells := []string{text(asset), num(r.Amount), "", "", num(r.Value), "", "", num(r.MissingUnits)}
 		if r.HasBasis {
 			cells[2], cells[3] = num(r.AvgCost), num(r.Basis)
 			cells[5], cells[6] = num(r.Unrealized), num(r.UnrealizedPct)

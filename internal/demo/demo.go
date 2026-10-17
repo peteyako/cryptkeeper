@@ -554,10 +554,13 @@ func Wallet(id, tab string, now time.Time) (templates.WalletPage, bool) {
 		p.UTXOs = ColdUTXOs()
 		p.Receive = ReceiveAddress
 		p.ReceiveQR = QR("bitcoin:" + ReceiveAddress)
-		// Cost basis is wired up in the P&L milestone; the cold wallet shows the filled
-		// state, every other wallet shows the empty one.
+		// The cold wallet shows the filled cost basis state (every unit has a known cost);
+		// every other wallet shows the empty one.
 		p.CostBasis = ptr(11402.50)
 		p.Unrealized = ptr(round2(w.ValueUSD - 11402.50))
+		for _, r := range w.Rows {
+			p.CostUnits += r.Amount
+		}
 	}
 	walletActivity(&p, now)
 	return p, true

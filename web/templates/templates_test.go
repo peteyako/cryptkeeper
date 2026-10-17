@@ -148,17 +148,26 @@ func allPages(t *testing.T) []page {
 	full("reports", templates.ReportsFull(rp))
 	full("reports empty", templates.ReportsFull(demo.ReportsEmpty(now)))
 	rerr := rp
-	rerr.BasisErr = "Enter the amount you hold, e.g. 0.5."
+	rerr.TaxErr = "data/tax.yaml has an error and was not reloaded: line 3: bad indent"
 	rerr.Import = templates.ImportOutcome{OK: true, Message: "Imported 148 transactions (112 new)."}
 	full("reports messages", templates.ReportsFull(rerr))
 	frag("pnl", templates.PnLTable(rp))
 	frag("pnl empty", templates.PnLTable(demo.ReportsEmpty(now)))
-	frag("basis panel", templates.CostBasisPanel(rp))
-	frag("basis panel error", templates.CostBasisPanel(rerr))
 	frag("csv import", templates.CSVImportPanel(rp))
 	frag("csv ok", templates.CSVResultView(rerr.Import))
 	frag("csv failed", templates.CSVResultView(templates.ImportOutcome{Message: "Nothing was imported: line 1: not a Kraken export."}))
 	frag("csv empty", templates.CSVResultView(templates.ImportOutcome{}))
+
+	// Koinly import
+	kp := demo.Koinly(now)
+	full("koinly", templates.KoinlyFull(kp))
+	full("koinly empty", templates.KoinlyFull(demo.KoinlyEmpty(now)))
+	full("koinly blocked", templates.KoinlyFull(demo.KoinlyBlocked(now)))
+	frag("koinly wizard", templates.KoinlyWizardView(kp.Wizard))
+	frag("koinly wizard empty", templates.KoinlyWizardView(templates.KoinlyWizard{}))
+	rmb := rp
+	rmb.MissingBasisSales = 3
+	full("reports missing basis", templates.ReportsFull(rmb))
 
 	// alerts
 	ap := demo.Alerts(now)
@@ -237,13 +246,16 @@ func TestRequiredIDs(t *testing.T) {
 		"activity":           {"activity-list", "activity-rows", "activity-more", "activity-sync"},
 		"activity empty":     {"activity-list", "activity-sync"},
 		"activity no match":  {"activity-list"},
-		"reports":            {"pnl", "basis-panel", "basis-form", "csv-import", "csv-form", "csv-result"},
-		"reports empty":      {"pnl", "basis-panel", "basis-form", "csv-import", "csv-form", "csv-result"},
+		"reports":            {"pnl", "csv-import", "csv-form", "csv-result"},
+		"reports empty":      {"pnl", "csv-import", "csv-form", "csv-result"},
 		"alerts":             {"alert-rules", "alert-recent", "alert-test"},
 		"alerts empty":       {"alert-rules", "alert-recent", "alert-test"},
 		"alert form new":     {"alert-form", "form-errors", "f-type", "f-name"},
 		"alert form invalid": {"alert-form", "form-errors", "f-asset-err", "f-above-err"},
 		"settings":           {"activity-sync"},
+		"koinly":             {"koinly-wizard", "koinly-upload", "f-koinly-files", "koinly-map", "koinly-recon", "koinly-accept", "kw-0", "ka-0", "kx-1"},
+		"koinly empty":       {"koinly-wizard", "koinly-upload", "f-koinly-files"},
+		"koinly blocked":     {"koinly-wizard", "koinly-map", "koinly-accept", "koinly-blocked"},
 	}
 	for name, ids := range want {
 		p := byName(t, pages, name)
@@ -254,7 +266,7 @@ func TestRequiredIDs(t *testing.T) {
 		}
 	}
 	// /stream patches #dashboard, so only pages that have one may open it.
-	for _, name := range []string{"wallets", "wallet cold holdings", "portfolios", "portfolio form new", "activity", "reports", "alerts", "alert form new"} {
+	for _, name := range []string{"wallets", "wallet cold holdings", "portfolios", "portfolio form new", "activity", "reports", "alerts", "alert form new", "koinly"} {
 		lacks(t, byName(t, pages, name), `id="live"`)
 	}
 
@@ -267,10 +279,11 @@ func TestRequiredIDs(t *testing.T) {
 		"import ok": "import-result", "import failed": "import-result", "import empty": "import-result",
 		"activity list": "activity-list", "activity more": "activity-more", "activity more none": "activity-more",
 		"sync card": "activity-sync", "sync card empty": "activity-sync",
-		"pnl": "pnl", "pnl empty": "pnl", "basis panel": "basis-panel", "basis panel error": "basis-panel",
+		"pnl": "pnl", "pnl empty": "pnl",
 		"csv import": "csv-import", "csv ok": "csv-result", "csv failed": "csv-result", "csv empty": "csv-result",
 		"alert rules": "alert-rules", "alert recent": "alert-recent", "alert recent empty": "alert-recent",
 		"alert test ok": "alert-test", "alert test failed": "alert-test", "alert test empty": "alert-test",
+		"koinly wizard": "koinly-wizard", "koinly wizard empty": "koinly-wizard",
 	}
 	for name, id := range roots {
 		p := byName(t, pages, name)
@@ -588,9 +601,10 @@ func TestWalletContent(t *testing.T) {
 		t.Error("active tab should carry aria-current")
 	}
 
-	// No cost basis yet: the tiles show a dash and the hint.
+	// No cost basis yet: the tiles show a dash and a link to the Koinly import.
 	ph := byName(t, pages, "wallet phantom holdings")
-	has(t, ph, "Set cost basis", "Needs a cost basis", `stat__value stat__value--none`)
+	has(t, ph, "Import cost basis", `href="/reports/koinly"`, "Needs a cost basis", `stat__value stat__value--none`)
+	lacks(t, ph, "Set cost basis")
 	lacks(t, ph, "Receive address", `id="receive"`, ">Addresses</a>", ">UTXOs</a>", `href="#receive"`)
 	has(t, ph,
 		"Solana · hot wallet", "Staked", "Native stake",
@@ -1418,28 +1432,22 @@ func TestReportsPage(t *testing.T) {
 		"Cost basis", "Value", "Unrealized P/L", "Basis known for 92% of value", `class="cover"`, `style="width:91.8%;"`,
 		`<span class="stat__value chg--up">▲ <span class="fig">`, `<span class="stat__sub chg--up">+23.32%</span>`, "All holdings, at today's prices",
 		// Table.
-		`id="pnl"`, `<th class="col-asset" scope="col">Asset</th>`, `>Amount</th>`, `>Avg cost</th>`, `>Cost basis</th>`, `>Value</th>`, `>Unrealized</th>`,
-		"Bitcoin", "Polkadot", "Bonk", `<span class="badge">manual</span>`, "0.0500 BTC with unknown cost", "185.2000 DOT with unknown cost",
+		`id="pnl"`, "FIFO tax lots, all wallets", `<th class="col-asset" scope="col">Asset</th>`, `>Amount</th>`, `>Avg cost</th>`, `>Cost basis</th>`, `>Value</th>`, `>Unrealized</th>`,
+		"Bitcoin", "Polkadot", "Bonk", "0.0500 BTC with unknown cost", "185.2000 DOT with unknown cost",
 		`<span class="chg chg--up">▲ <span class="fig"><span class="fig-v">+$9,023.17</span>`, `<span class="chg pl__pct chg--up">+50.18%</span>`,
 		`<span class="chg chg--down">▼ <span class="fig"><span class="fig-v">−$553.50</span>`, `<span class="chg pl__pct chg--down">−4.44%</span>`,
-		`<span class="chg chg--none" aria-label="No profit or loss available">—</span>`, `aria-label="Set the cost of Polkadot"`, `href="#basis-form"`,
+		`<span class="chg chg--none" aria-label="No profit or loss available">—</span>`,
 		`<span class="fig-v">$42,694.48</span>`, `$ ••••`,
 		// Realized.
 		"Realized P/L", "by year", ">2026<", ">2025<", ">2024<", "+$1,204.12", "−$212.40", "+$3,880.00",
 		// Exports and the disclaimer.
 		`href="/export/holdings.csv" download`, `href="/export/history.csv?range=All" download`, `href="/export/pnl.csv" download`, `href="/export/activity.csv" download`,
-		`aria-label="Download holdings CSV"`, "Average cost across all wallets. Not tax advice.",
+		`aria-label="Download holdings CSV"`, "First in, first out, per wallet, from your tax lots. Not tax advice.",
 	)
-	if n := strings.Count(p.html, `<span class="badge">manual</span>`); n != 2 {
-		t.Errorf("BTC and SOL are overridden, got %d manual badges", n)
-	}
-	if n := strings.Count(p.html, ">Set cost</a>"); n != 2 {
-		t.Errorf("DOT and BONK have no cost, got %d Set cost links", n)
-	}
-	has(t, un,
-		`data-on:click__prevent="document.getElementById('f-asset').value = 'DOT'; document.getElementById('f-amount').value = '185.2'; document.getElementById('f-cost').focus()"`,
-		`data-on:click__prevent="document.getElementById('f-asset').value = 'BONK'; document.getElementById('f-amount').value = '12500000'; document.getElementById('f-cost').focus()"`,
-	)
+	// The manual cost panel and its "Set cost" links are gone: the tax lots are the only
+	// source of cost basis.
+	lacks(t, p, `id="basis-panel"`, `id="basis-form"`, "/reports/basis", ">Set cost</a>", `<span class="badge">manual</span>`,
+		"Manual cost basis", "Average cost", "notice--loss", `role="alert"`)
 	for _, m := range regexp.MustCompile(`<a [^>]*download[^>]*>`).FindAllString(p.html, -1) {
 		if strings.Contains(m, "data-on") {
 			t.Errorf("export link must be a plain anchor: %s", m)
@@ -1447,29 +1455,6 @@ func TestReportsPage(t *testing.T) {
 	}
 	if n := strings.Count(p.html, " download"); n != 4 {
 		t.Errorf("want 4 export links, got %d", n)
-	}
-
-	// Manual costs.
-	has(t, p,
-		`id="basis-panel"`, "Manual cost basis", "0.30006114", "$11,402.50", "Bought over 2021 to 2023", "Kraken, before the API key",
-		`aria-label="Remove the manual cost for BTC"`, `aria-label="Remove the manual cost for SOL"`, `class="btn btn--danger btn--icon"`,
-		`<form id="basis-form" class="form basis-form" method="post" action="/reports/basis"`, `data-indicator="savingBasis"`,
-		`name="asset"`, `name="amount"`, `name="cost"`, `name="note"`, `list="basis-assets"`, `<datalist id="basis-assets">`, `<option value="BTC">Bitcoin</option>`,
-		`inputmode="decimal"`, `maxlength="120"`, "Sets the total you paid for this amount; overrides the computed cost for this asset.",
-		`data-attr:disabled="$savingBasis"`, ">Save cost</button>",
-	)
-	has(t, un,
-		`data-on:submit="@post('/reports/basis', {contentType: 'form'})"`,
-		`data-on:click="confirm('Remove the manual cost for BTC?') && @post('/reports/basis/BTC/delete')"`,
-	)
-	lacks(t, p, "notice--loss")
-	for _, name := range []string{"asset", "amount", "cost"} {
-		if tag := tagOf(t, p.html, `name="`+name+`"`); !strings.Contains(tag, "required") {
-			t.Errorf("%s must be required: %s", name, tag)
-		}
-	}
-	if tag := tagOf(t, p.html, `name="note"`); strings.Contains(tag, "required") {
-		t.Errorf("the note is optional: %s", tag)
 	}
 
 	// CSV import.
@@ -1486,7 +1471,7 @@ func TestReportsPage(t *testing.T) {
 
 	// Messages.
 	m := byName(t, pages, "reports messages")
-	has(t, m, `<div role="alert"><div class="notice notice--loss">`, "Enter the amount you hold, e.g. 0.5.", "notice--gain", "Imported 148 transactions (112 new).")
+	has(t, m, `<div role="alert"><div class="notice notice--loss">`, "data/tax.yaml has an error and was not reloaded: line 3: bad indent", "notice--gain", "Imported 148 transactions (112 new).")
 	ok := byName(t, pages, "csv ok")
 	has(t, ok, "notice--gain", "Imported 148 transactions (112 new).")
 	bad := byName(t, pages, "csv failed")
@@ -1497,8 +1482,89 @@ func TestReportsPage(t *testing.T) {
 
 	// Nothing held yet.
 	e := byName(t, pages, "reports empty")
-	has(t, e, "Nothing is held yet.", "No sales on record yet.", `<span class="stat__value stat__value--none">—</span>`, "Needs a cost basis", "No cost basis known yet", `id="basis-form"`)
-	lacks(t, e, "<table", `class="basis-list"`, `class="year-list"`)
+	has(t, e, "Nothing is held yet.", "No sales on record yet.", `<span class="stat__value stat__value--none">—</span>`, "Needs a cost basis", "No cost basis known yet")
+	lacks(t, e, "<table", `class="year-list"`)
+}
+
+func TestReportsKoinlyLinks(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "reports")
+	has(t, p, `id="koinly-card-h"`, "Import from Koinly", `<a class="btn btn--secondary btn--block" href="/reports/koinly" data-on:click=`)
+	lacks(t, p, "no cost basis", `class="realized__warn"`)
+	m := byName(t, pages, "reports missing basis")
+	card := m.html[strings.Index(m.html, `id="realized-h"`):]
+	card = card[:strings.Index(card, "</section>")]
+	text := strings.Join(strings.Fields(html.UnescapeString(reTag.ReplaceAllString(card, ""))), " ")
+	if !strings.Contains(text, "3 sales have no cost basis — import your opening basis from Koinly") || !strings.Contains(card, `href="/reports/koinly"`) {
+		t.Errorf("realized card: %q", text)
+	}
+}
+
+func TestKoinlyPage(t *testing.T) {
+	pages := allPages(t)
+	p := byName(t, pages, "koinly")
+	un := unescaped(p)
+	has(t, p,
+		`<title id="page-title">Import from Koinly · CryptKeep</title>`, `<h1 class="h-title">Import from Koinly</h1>`,
+		`<a class="nav-item nav-item--on" href="/reports" data-on:click=`, `<a class="back" href="/reports"`,
+		// Step 1: upload, and what is loaded.
+		`<form id="koinly-upload" class="form" method="post" action="/reports/koinly/upload" enctype="multipart/form-data"`,
+		`name="file" type="file" accept=".csv,text/csv" multiple required`, "Loaded for 2025",
+		"Holdings as at Dec 31, 2025: 4 assets", "Transaction history: 212 transactions", "Capital gains: 37 rows", "Income: not uploaded",
+		"koinly_transaction_history.csv", "notice--gain",
+		// Step 2: one select per Koinly wallet and asset, the chosen option selected.
+		`<label for="kw-0">Ledger</label>`, `<select class="input" id="kw-0" name="w.Ledger">`,
+		`<option value="cold" selected>Cold storage (Bitcoin)</option>`, `<option value="untracked" selected>Untracked (no longer synced)</option>`,
+		`<label for="ka-2">JUP (Jupiter)</label>`, "Several assets use the symbol JUP: choose the right one.",
+		`<input class="koinly-map__skip-box" type="checkbox" id="ks-2" name="s.JUP (Jupiter)" value="1" checked>`, `<label class="koinly-map__skip" for="ks-2">`,
+		`<option value="" selected>Skip</option>`, `<option value="BTC" selected>BTC · Bitcoin</option>`,
+		// Step 3: the reconciliation, the problems above Accept, the extra basis input.
+		`id="koinly-recon"`, ">Dated in 2025</th>", ">Before 2025</th>", ">Untracked</th>", ">CryptKeep extra</th>",
+		`name="x.SOL"`, `value="212.5"`, `<label class="sr-only" for="kx-1">Your cost for the 1.2500 SOL Koinly has no cost for, in US dollars</label>`,
+		"Check these before you accept:", "<li>BTC: Koinly 0.35 vs CryptKeep 0.30006114</li>",
+		"Accept and close 2025", "Discard import", "Update reconciliation",
+	)
+	has(t, un,
+		`data-on:submit="@post('/reports/koinly/upload', {contentType: 'form'})"`,
+		`data-on:change="@post('/reports/koinly/map', {contentType: 'form'})"`,
+		`data-on:click="confirm('Close 2025 with these opening lots?`, `&& @post('/reports/koinly/accept')"`,
+		`data-attr:disabled="$koinlySaving || $koinlyAccepting"`,
+		`@post('/reports/koinly/discard')`,
+	)
+	if strings.Index(p.html, "Check these before you accept:") > strings.Index(p.html, `id="koinly-accept"`) {
+		t.Error("the problems must show above Accept")
+	}
+	if n := strings.Count(p.html, `name="x.`); n != 1 {
+		t.Errorf("only the asset with units missing a basis takes one, got %d inputs", n)
+	}
+
+	e := byName(t, pages, "koinly empty")
+	has(t, e, `id="koinly-upload"`)
+	lacks(t, e, `id="koinly-map"`, `id="koinly-recon"`, "Loaded for")
+
+	b := byName(t, pages, "koinly blocked")
+	has(t, b, "Holdings: not uploaded (needed to accept)", "Nothing was loaded: coinbase.csv: not a Koinly report.",
+		`<button type="button" id="koinly-accept" class="btn btn--primary" disabled aria-describedby="koinly-blocked">`,
+		`<p id="koinly-blocked" class="field__help">Upload the end of year holdings report first`,
+		"Koinly's assets appear here once you upload the end of year holdings report.", "Nothing to reconcile yet")
+	lacks(t, b, "koinlyAccepting", "Check these before you accept:")
+}
+
+func TestKoinlyHostileNamesAreEscaped(t *testing.T) {
+	const evil = `x"><img src=x onerror=alert(1)>'`
+	p := demo.Koinly(now)
+	p.Wizard.Wallets[0].Name = evil
+	p.Wizard.Assets[0].Name = evil
+	p.Wizard.Recon[1].AssetKey = evil
+	p.Wizard.Problems = append(p.Wizard.Problems, evil)
+	p.Wizard.Files = append(p.Wizard.Files, evil)
+	out := render(t, templates.KoinlyFull(p))
+	if strings.Contains(out, "<img") || strings.Count(out, "<script") != 1 {
+		t.Errorf("hostile Koinly names broke out of the page")
+	}
+	if !strings.Contains(out, `name="w.x&#34;&gt;&lt;img src=x onerror=alert(1)&gt;&#39;"`) {
+		t.Errorf("wallet field name not escaped:\n%s", grep(out, "name=\"w."))
+	}
 }
 
 func TestOverviewPnLColumn(t *testing.T) {
@@ -1766,9 +1832,7 @@ func TestAlertAndReportPagesEscapeHostileValues(t *testing.T) {
 	rp.Rows = append([]templates.PnLRow(nil), rp.Rows...)
 	rp.Rows[0].AssetKey, rp.Rows[0].Symbol, rp.Rows[0].Name = "x'y</script><i>", evil, evil
 	rp.Rows[4].AssetKey = "a'b\\"
-	rp.Manual = []templates.ManualBasisRow{{Asset: "x'y</script><i>", Amount: 1, CostUSD: 2, Note: evil}}
-	rp.AssetOptions = []templates.AssetOption{{Key: evil, Symbol: evil, Name: evil}}
-	rp.BasisErr = evil
+	rp.TaxErr = evil
 	rp.Import = templates.ImportOutcome{Message: evil}
 	reports := render(t, templates.ReportsFull(rp))
 
@@ -1794,12 +1858,7 @@ func TestAlertAndReportPagesEscapeHostileValues(t *testing.T) {
 	if !strings.Contains(fun, `data-on:submit="@post('/alerts/x%27y%3C%2Fscript%3E%3Ci%3E', {contentType: 'form'})"`) {
 		t.Errorf("alert form action not escaped:\n%s", grep(fun, "data-on:submit"))
 	}
-	for _, want := range []string{
-		`confirm('Remove the manual cost for x\'y\u003c/script\u003e\u003ci\u003e?') && @post('/reports/basis/x%27y%3C%2Fscript%3E%3Ci%3E/delete')`,
-		`document.getElementById('f-asset').value = 'a\'b\\'`,
-	} {
-		if !strings.Contains(run, want) {
-			t.Errorf("reports is missing %q:\n%s", want, grep(run, "f-asset"))
-		}
+	if strings.Contains(run, "/reports/basis") || strings.Contains(run, "f-asset") {
+		t.Errorf("reports must not carry the retired manual cost scripts:\n%s", grep(run, "basis"))
 	}
 }

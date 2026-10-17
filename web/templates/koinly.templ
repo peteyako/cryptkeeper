@@ -1,0 +1,331 @@
+package templates
+
+import "strconv"
+
+// KoinlyFull is the Koinly import wizard (/reports/koinly): upload Koinly's year-end
+// reports, match its wallets and assets, check the reconciliation and close the year.
+templ KoinlyFull(p KoinlyPage) {
+	@Layout(p.Shell, koinlyBody(p))
+}
+
+templ koinlyBody(p KoinlyPage) {
+	<div class="koinly">
+		<a class="back" href="/reports" data-on:click={ navClick("/reports", "") }>
+			@Icon("chevron-left", 16)
+			Reports
+		</a>
+		<header class="page-head">
+			<div class="page-head__title">
+				<span class="eyebrow">Reports</span>
+				<h1 class="h-title">Import from Koinly</h1>
+				<p class="lede">Start your cost basis from the last year Koinly closed</p>
+			</div>
+			<div class="page-head__actions">
+				@HideButton()
+			</div>
+		</header>
+		@KoinlyWizardView(p.Wizard)
+		<p class="foot-note">The uploaded reports are kept as a draft until you accept or discard the import. Not tax advice.</p>
+	</div>
+}
+
+// KoinlyWizardView is every step of the import. Its root is #koinly-wizard: each step's
+// POST patches the whole wizard.
+templ KoinlyWizardView(w KoinlyWizard) {
+	<div id="koinly-wizard" class="koinly-wizard">
+		@koinlyUploadStep(w)
+		if w.HasDraft {
+			<form
+				id="koinly-map"
+				class="koinly-steps"
+				method="post"
+				action="/reports/koinly/map"
+				data-indicator="koinlySaving"
+				data-on:submit={ koinlyMapSubmit }
+				data-on:change={ koinlyMapSubmit }
+			>
+				@koinlyWalletStep(w)
+				@koinlyAssetStep(w)
+				@koinlyReconStep(w)
+			</form>
+		}
+	</div>
+}
+
+templ koinlyStepHead(n int, id, title string) {
+	<div class="koinly-step__head">
+		<span class="koinly-step__num" aria-hidden="true">{ strconv.Itoa(n) }</span>
+		<h2 id={ id } class="h-card">{ title }</h2>
+	</div>
+}
+
+templ koinlyUploadStep(w KoinlyWizard) {
+	<section class="card koinly-step" aria-labelledby="koinly-up-h">
+		@koinlyStepHead(1, "koinly-up-h", "Upload Koinly's reports")
+		<p class="muted-text">In Koinly, open the tax reports of the last year you filed and download these as CSV: the end of year holdings report (required), the transaction history, and, to keep that year's figures, the capital gains and income reports. Upload them together or one at a time.</p>
+		<form
+			id="koinly-upload"
+			class="form"
+			method="post"
+			action="/reports/koinly/upload"
+			enctype="multipart/form-data"
+			data-indicator="koinlyUploading"
+			data-on:submit={ koinlyUploadSubmit }
+		>
+			<div class="field">
+				<label class="field__label" for="f-koinly-files">Koinly CSV reports</label>
+				<input
+					class="input input--file"
+					id="f-koinly-files"
+					name="file"
+					type="file"
+					accept=".csv,text/csv"
+					multiple
+					required
+					aria-describedby="f-koinly-files-help"
+				/>
+				<p id="f-koinly-files-help" class="field__help">Up to 8 MB each. A report you upload again replaces the one of the same kind.</p>
+			</div>
+			<button
+				type="submit"
+				class="btn btn--secondary btn--block"
+				data-attr:disabled="$koinlyUploading"
+				data-class="{'is-busy': $koinlyUploading}"
+			>
+				@Icon("upload", 16)
+				Upload
+			</button>
+		</form>
+		<div class="import-result" aria-live="polite">
+			@outcomeNotice(w.Outcome)
+		</div>
+		if w.HasDraft {
+			<div class="koinly-loaded">
+				<h3 class="koinly-loaded__title">{ "Loaded for " + strconv.Itoa(w.Year) }</h3>
+				<ul class="koinly-loaded__list">
+					for _, line := range koinlyLoaded(w) {
+						<li>{ line }</li>
+					}
+				</ul>
+				if len(w.Files) > 0 {
+					<ul class="koinly-files" aria-label="Uploaded files">
+						for _, f := range w.Files {
+							<li class="koinly-files__name">{ f }</li>
+						}
+					</ul>
+				}
+			</div>
+		}
+	</section>
+}
+
+templ koinlyWalletStep(w KoinlyWizard) {
+	<section class="card koinly-step" aria-labelledby="koinly-w-h">
+		@koinlyStepHead(2, "koinly-w-h", "Match wallets and assets")
+		<p class="muted-text">Each wallet Koinly names goes to the CryptKeep wallet it is, or to Untracked for wallets CryptKeep doesn't sync, such as closed exchange accounts.</p>
+		if len(w.Wallets) == 0 {
+			<p class="empty-note">Koinly's wallets appear here once you upload the transaction history.</p>
+		} else {
+			<div class="table-scroll">
+				<table class="tbl tbl--plain koinly-map">
+					<thead>
+						<tr>
+							<th scope="col">Koinly wallet</th>
+							<th scope="col">CryptKeep wallet</th>
+						</tr>
+					</thead>
+					<tbody>
+						for i, r := range w.Wallets {
+							<tr>
+								<td class="koinly-map__name">
+									<label for={ koinlyID("kw", i) }>{ r.Name }</label>
+								</td>
+								<td class="koinly-map__pick">
+									<div class="select">
+										<select class="input" id={ koinlyID("kw", i) } name={ "w." + r.Name }>
+											for _, o := range w.WalletOptions {
+												<option value={ o.Value } selected?={ o.Value == r.Selected }>{ o.Label }</option>
+											}
+										</select>
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ koinlyAssetStep(w KoinlyWizard) {
+	<section class="card koinly-step" aria-labelledby="koinly-a-h">
+		<h2 id="koinly-a-h" class="h-card">Assets</h2>
+		<p class="muted-text">Each asset of Koinly's holdings report goes to the asset CryptKeep knows it as. Skip spam and worthless NFTs.</p>
+		if len(w.Assets) == 0 {
+			<p class="empty-note">Koinly's assets appear here once you upload the end of year holdings report.</p>
+		} else {
+			<div class="table-scroll">
+				<table class="tbl tbl--plain koinly-map">
+					<thead>
+						<tr>
+							<th scope="col">Koinly asset</th>
+							<th class="num" scope="col">Quantity</th>
+							<th class="num" scope="col">Cost</th>
+							<th scope="col">CryptKeep asset</th>
+						</tr>
+					</thead>
+					<tbody>
+						for i, r := range w.Assets {
+							<tr>
+								<td class="koinly-map__name">
+									<label for={ koinlyID("ka", i) }>{ r.Name }</label>
+									if r.Note != "" {
+										<span class="koinly-map__note">{ r.Note }</span>
+									}
+									if r.ConfirmSkip {
+										<label class="koinly-map__skip" for={ koinlyID("ks", i) }>
+											<input class="koinly-map__skip-box" type="checkbox" id={ koinlyID("ks", i) } name={ "s." + r.Name } value="1" checked?={ r.SkipOK }/>
+											Skip anyway
+										</label>
+									}
+								</td>
+								<td class="num">
+									@FigCoin(r.Qty, "")
+								</td>
+								<td class="num">
+									@FigFiat(r.Cost)
+								</td>
+								<td class="koinly-map__pick">
+									<div class="select">
+										<select class="input" id={ koinlyID("ka", i) } name={ "a." + r.Name }>
+											for _, o := range w.AssetOptions {
+												<option value={ o.Value } selected?={ o.Value == r.Selected }>{ o.Label }</option>
+											}
+										</select>
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ koinlyReconStep(w KoinlyWizard) {
+	<section id="koinly-recon" class="card koinly-step" aria-labelledby="koinly-r-h">
+		@koinlyStepHead(3, "koinly-r-h", "Reconcile and accept")
+		<p class="muted-text">{ "For each asset, Koinly's year-end quantity and cost against what CryptKeep's wallets held when " + strconv.Itoa(w.Year) + " ended: today's balances minus the activity since. Koinly's extra units go to Untracked. CryptKeep's extra units have no cost unless you enter what you paid for them (for staking rewards, their value when received)." }</p>
+		if len(w.Recon) == 0 {
+			<p class="empty-note">Nothing to reconcile yet: map at least one asset of the holdings report.</p>
+		} else {
+			<div class="table-scroll">
+				<table class="tbl tbl--plain koinly-recon">
+					<thead>
+						<tr>
+							<th scope="col">Asset</th>
+							<th class="num" scope="col">Koinly</th>
+							<th class="num" scope="col">Cost</th>
+							<th class="num" scope="col">CryptKeep</th>
+							<th class="num" scope="col">{ "Dated in " + strconv.Itoa(w.Year) }</th>
+							<th class="num" scope="col">{ "Before " + strconv.Itoa(w.Year) }</th>
+							<th class="num" scope="col">Untracked</th>
+							<th class="num" scope="col">CryptKeep extra</th>
+							<th class="num" scope="col">Your cost (USD)</th>
+						</tr>
+					</thead>
+					<tbody>
+						for i, r := range w.Recon {
+							<tr>
+								<td class="koinly-recon__name">
+									<span class="koinly-recon__asset">{ r.KoinlyAsset }</span>
+									<span class="koinly-map__note">{ r.AssetKey }</span>
+								</td>
+								<td class="num">
+									@FigCoin(r.KoinlyQty, r.Symbol)
+								</td>
+								<td class="num">
+									@FigFiat(r.KoinlyCost)
+								</td>
+								<td class="num">
+									@FigCoin(r.CryptKeepQty, r.Symbol)
+								</td>
+								<td class="num">
+									@FigCoin(r.Dated, "")
+								</td>
+								<td class="num">
+									@FigCoin(r.Various, "")
+								</td>
+								<td class="num">
+									@FigCoin(r.Untracked, "")
+								</td>
+								<td class="num">
+									@FigCoin(r.MissingBasis, "")
+								</td>
+								<td class="num">
+									if r.MissingBasis > 0 {
+										<label class="sr-only" for={ koinlyID("kx", i) }>{ koinlyExtraLabel(r) }</label>
+										<input
+											class="input input--mono koinly-recon__cost"
+											id={ koinlyID("kx", i) }
+											name={ "x." + r.AssetKey }
+											type="text"
+											inputmode="decimal"
+											autocomplete="off"
+											placeholder="0"
+											value={ koinlyExtraValue(r.ExtraBasis) }
+										/>
+									} else {
+										<span class="muted">—</span>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		if len(w.Problems) > 0 {
+			<div class="koinly-problems">
+				@Notice("warn", "alert") {
+					<p class="notice__line">Check these before you accept:</p>
+					<ul class="notice__list">
+						for _, p := range w.Problems {
+							<li>{ p }</li>
+						}
+					</ul>
+				}
+			</div>
+		}
+		<div class="koinly-actions">
+			<button
+				type="submit"
+				class="btn btn--secondary"
+				data-attr:disabled="$koinlySaving"
+				data-class="{'is-busy': $koinlySaving}"
+			>Update reconciliation</button>
+			<button type="button" class="btn btn--ghost" data-on:click={ koinlyDiscardClick }>Discard import</button>
+			if w.Blocked != "" {
+				<button type="button" id="koinly-accept" class="btn btn--primary" disabled aria-describedby="koinly-blocked">{ koinlyAcceptLabel(w) }</button>
+			} else {
+				<button
+					type="button"
+					id="koinly-accept"
+					class="btn btn--primary"
+					data-indicator="koinlyAccepting"
+					data-attr:disabled="$koinlySaving || $koinlyAccepting"
+					data-class="{'is-busy': $koinlyAccepting}"
+					data-on:click={ koinlyAcceptClick(w.Year) }
+				>{ koinlyAcceptLabel(w) }</button>
+			}
+		</div>
+		if w.Blocked != "" {
+			<p id="koinly-blocked" class="field__help">{ w.Blocked }</p>
+		}
+		<div class="import-result" aria-live="polite">
+			@outcomeNotice(w.AcceptOutcome)
+		</div>
+	</section>
+}

@@ -17,8 +17,8 @@ Today `internal/costbasis` is one global **average-cost** engine (`avgcost.go:74
 - **Acquisition dates are back-filled** from the 2025 transaction history. FIFO keeps the newest units, so the most recent 2025 acquisitions keep their real dates and cost, and the rest becomes one "acquired before 2025" lot, which is long-term for any 2026 sale.
 - **FIFO lots replace average cost everywhere**: dashboard P/L column, wallet tiles, Reports.
 - **Filing outputs needed:** TurboTax import, Form 8949 / Schedule D, income report, and a complete package for the CPA.
-- **Running CryptKeep already syncs every active wallet** with full 2026 history: 4 Solana wallets, BTC `3J9j…`, Kraken.
-- **Koinly's other wallets (ETH/EVM, XMR, MATIC, AVAX, older BTC addresses) are dormant.** Their lots matter, but no new activity happens there.
+- **Running CryptKeep already syncs every active wallet** with full history since the cutover.
+- **Koinly may hold wallets CryptKeep doesn't sync** (for example EVM chains or old addresses). These are treated as dormant: their lots matter, but no new activity happens there.
 - **The user stakes SOL natively and uses locked JUP and Jupiter perps.**
   - Native staking rewards are income.
   - Moving tokens into one of their own positions (JUP lock, perps collateral, LP) is **non-taxable**: the lots stay in that wallet with their dates and cost.
@@ -29,18 +29,18 @@ Today `internal/costbasis` is one global **average-cost** engine (`avgcost.go:74
 
 | File | Header line (after a 2-line title preamble) | Use |
 | --- | --- | --- |
-| `end_of_year_holdings_report` | `Asset,Quantity,Cost (USD),Value (USD),Description`. Asset is `SYM (Name)`. Ends with a `Total` row. Numbers use thousands separators. | Opening quantity and cost per asset. 52 assets, total cost $110,476.29. |
+| `end_of_year_holdings_report` | `Asset,Quantity,Cost (USD),Value (USD),Description`. Asset is `SYM (Name)`. Ends with a `Total` row. Numbers use thousands separators. | Opening quantity and cost per asset; the `Total` row gives the overall cost to reconcile against. |
 | `transaction_history` | `Date,Type,Tag,Sending Wallet,Sent Amount,Sent Currency,Sent Cost Basis,Receiving Wallet,Received Amount,Received Currency,Received Cost Basis,Fee Amount,Fee Currency,Gain (USD),Net Value (USD),Fee Value (USD),TxSrc,TxDest,TxHash,Description`. Dates are UTC. | Back-filling dates per wallet, wallet auto-mapping (TxSrc/TxDest addresses), and a parity reference. |
 | `capital_gains_report` | `Date Sold,Date Acquired,Asset,Amount,Cost (USD),Proceeds (USD),Gain / loss,Notes,Wallet Name,Holding period`. Local time `MM/DD/YYYY HH:MM`. | The 2025 realized history (read-only) and the **output format to reproduce**. |
 | `income_report` / `other_gains_report` | `Date,Asset,Amount,Value (USD),Type,Description,Wallet Name` / `Date,Asset,Amount,Value (USD),Type,Wallet Name` | Empty for 2025. Income is still an output format to reproduce. |
-| `complete_tax_report.pdf` | 62 pages | The model for the CPA package. |
+| `complete_tax_report.pdf` | multi-page PDF | The model for the CPA package. |
 
 **Koinly has no export of open lots** (open feature request since 2023), which is why opening dates are back-filled.
 
 **How Koinly treated 2025 activity.** This is the parity target for forward rules:
 
-- Untagged `crypto_deposit` (511): an acquisition at market value. No gain, not income, and `Received Cost Basis = Net Value`.
-- Untagged `crypto_withdrawal`: a **disposal at market value** (81 realized a gain). The 38 without a gain were zero-value.
+- Untagged `crypto_deposit`: an acquisition at market value. No gain, not income, and `Received Cost Basis = Net Value`.
+- Untagged `crypto_withdrawal`: a **disposal at market value** (rows without a gain were zero-value).
 - `Cost` / `Other fee`-tagged withdrawals and transfer fees: disposals at market value. `Fee` appears in the Notes column.
 - `exchange`: a disposal of the sent asset plus an acquisition of the received asset.
 - `transfer`: moves basis between wallets. Its fee is a disposal.
@@ -136,7 +136,7 @@ The import is a wizard on the Reports page (upload → map → reconcile → acc
    - The mapping is auto-suggested by matching `TxSrc` / `TxDest` addresses against `sources.Def.Address` / `Key`, and by matching labels.
    - The user confirms it.
 3. **Map assets.** Each Koinly `SYM (Name)` maps to a CryptKeep asset key.
-   - The match is auto-suggested by symbol and name against the holdings and `token_meta` of mapped wallets. Ambiguous pairs (e.g. `JUP (Jupiter)` vs `JUP (Jupiter Price)`) are left to the user.
+   - The match is auto-suggested by symbol and name against the holdings and `token_meta` of mapped wallets. Ambiguous pairs (e.g. two different tokens that both use the symbol `JUP`) are left to the user.
    - Zero-cost, zero-value spam and NFTs are skipped by default.
 4. **Opening quantity per wallet (roll-back).** For each mapped wallet and asset: current holding minus the net signed 2026 activity (legs and fees, non-failed).
    - Current holdings include stake accounts and position underlyings, such as locked JUP.
@@ -153,7 +153,7 @@ The import is a wizard on the Reports page (upload → map → reconcile → acc
 6. **Back-fill dates, per wallet and asset.**
    - Walk that wallet's 2025 acquisition rows, newest first: deposits, the received side of exchanges, and transfer-ins.
    - Each row covers `min(remaining, amount)` at the row's unit cost (`Received Cost Basis / Received Amount`).
-   - A transfer-in row is dated at the transfer and flagged, which is conservative. There are only 5 in 2025.
+   - A transfer-in row is dated at the transfer and flagged, which is conservative. Such rows are rare.
    - The leftover becomes a `before-2025` lot.
    - **Cost allocation:**
      - Dated lots keep their exact Koinly cost.
@@ -286,9 +286,9 @@ The UI follows the Vault design system (`docs/design/`) with existing components
   - Each Koinly parser, against synthetic CSVs in the exact header layouts above (preamble, thousands separators, `Total` row).
 - **Real-data check, local only, nothing committed:**
   - Import the user's `~/Downloads/koinly_2025_*` files.
-  - Opening Σ cost must equal **$110,476.29**, minus only skipped spam rows whose cost is 0.
+  - Opening Σ cost must equal the year-end report's `Total` cost, minus only skipped spam rows whose cost is 0.
   - Per-asset quantities must match the year-end report, with every difference shown in reconciliation.
-  - Spot-check BTC (0.71318207, $30,954.12) and SOL (99.65734375, $24,242.66) lot splits by hand.
+  - Spot-check the lot splits of two assets by hand.
 - **Forward check:** pick 3 real 2026 disposals (a swap, a fee and a transfer) and verify cost, proceeds and term by hand against the lots.
 - **Output check:**
   - The Koinly-format capital gains CSV opens with byte-identical headers to Koinly's.
@@ -300,7 +300,7 @@ The UI follows the Vault design system (`docs/design/`) with existing components
 
 - **Untracked wallet:** Koinly's dormant wallets fold into one tax-only `untracked` wallet. It isn't shown in dashboard holdings, and selling from it is out of scope.
 - **Reconciliation direction:** where Koinly and CryptKeep disagree on quantity, CryptKeep's on-chain quantity is the truth for synced wallets. Koinly's excess goes to `untracked`; CryptKeep's excess becomes cost-0 lots.
-- **2025 transfer-ins:** these are dated at the transfer during back-fill, which means short-term if uncertain, and they are flagged. There were 5 in 2025.
+- **Transfer-ins in the imported year:** these are dated at the transfer during back-fill, which means short-term if uncertain, and they are flagged.
 - **Manual basis entries:** `costbasis.yaml` manual lots become wallet-scoped manual acquisitions. Asset-level overrides are retired.
 - **Printable reports:** 8949, Schedule D and the CPA package are print-to-PDF HTML pages, not generated PDFs.
 - **TurboTax:** both the TurboTax Online CSV and TXF for Desktop.

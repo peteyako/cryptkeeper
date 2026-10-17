@@ -109,7 +109,7 @@ func TestPnLUnionOfYearsAndMissingBasis(t *testing.T) {
 	rows := []PnLRow{
 		{
 			AssetKey: "BTC", Symbol: "BTC", Amount: 1.5, AvgCost: 20000, Basis: 30000, Value: 45000,
-			Unrealized: 15000, UnrealizedPct: 50, HasBasis: true,
+			Unrealized: 15000, UnrealizedPct: 50, HasBasis: true, MissingUnits: 0.25,
 			Realized: map[int]float64{2023: -100.5, 2021: 250},
 		},
 		{AssetKey: "spl:Mint111", Symbol: "WEIRD", Amount: 1000000, Value: 12, HasBasis: false},
@@ -122,10 +122,10 @@ func TestPnLUnionOfYearsAndMissingBasis(t *testing.T) {
 	if err := PnL(&buf, rows); err != nil {
 		t.Fatal(err)
 	}
-	golden(t, buf, `asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,realized_2021,realized_2022,realized_2023
-BTC,1.5,20000,30000,45000,15000,50,250,,-100.5
-WEIRD,1000000,,,12,,,,,
-ETH,0,,,0,,,,80,
+	golden(t, buf, `asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,missing_basis_units,realized_2021,realized_2022,realized_2023
+BTC,1.5,20000,30000,45000,15000,50,0.25,250,,-100.5
+WEIRD,1000000,,,12,,,0,,,
+ETH,0,,,0,,,0,,80,
 `)
 }
 
@@ -135,7 +135,7 @@ func TestPnLWithoutAnyRealized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	golden(t, buf, "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct\nBTC,1,10,10,12,2,20\n")
+	golden(t, buf, "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,missing_basis_units\nBTC,1,10,10,12,2,20,0\n")
 }
 
 func TestActivityOneRowPerLeg(t *testing.T) {
@@ -240,5 +240,5 @@ func TestNonFiniteNumbersAreBlank(t *testing.T) {
 	if err := PnL(&buf, []PnLRow{{AssetKey: "BTC", Symbol: "BTC", Amount: 1, AvgCost: nan, HasBasis: true}}); err != nil {
 		t.Fatal(err)
 	}
-	golden(t, buf, "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct\nBTC,1,,0,0,0,0\n")
+	golden(t, buf, "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,missing_basis_units\nBTC,1,,0,0,0,0,0\n")
 }

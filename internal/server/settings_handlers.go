@@ -125,6 +125,7 @@ func (s *Server) settingsPrices(w http.ResponseWriter, r *http.Request) {
 func (s *Server) backupStores() backup.Stores {
 	return backup.Stores{
 		Sources: s.Registry, Portfolios: s.Portfolios, Alerts: s.AlertRules, CostBasis: s.CostBasis,
+		Tax: s.TaxSettings, TaxYears: s.TaxYears,
 		OnSourceRemoved: func(id string) { s.cleanupSource(context.Background(), id) },
 	}
 }
@@ -179,7 +180,7 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 			res, err = backup.Import(s.backupStores(), raw, r.PostFormValue("mode") == "replace")
 		}
 		switch {
-		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis:
+		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis && !res.TouchedTax():
 			outcome.Message = "Nothing was restored: " + err.Error()
 		case err != nil:
 			outcome.Message = res.Summary() + " Then stopped: " + err.Error()
@@ -190,7 +191,9 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 				outcome.Message += " Exchange sources restored without secrets need their keys re-entered (Edit)."
 			}
 		}
-		s.costs.invalidate()
+		if res.TouchedTax() {
+			s.invalidateTax()
+		}
 		s.Refresher.Kick()
 		if s.Syncer != nil {
 			s.Syncer.Kick()
@@ -207,6 +210,6 @@ func (s *Server) cleanupSource(ctx context.Context, id string) {
 		if err := s.Activity.DeleteSource(ctx, id); err != nil {
 			s.Log.Warn("delete activity", "source", id, "err", err)
 		}
-		s.costs.invalidate()
+		s.invalidateTax()
 	}
 }

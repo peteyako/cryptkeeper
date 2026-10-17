@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"encoding/base64"
 	"flag"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"crypto-portfolio/internal/costbasis"
+	"crypto-portfolio/internal/tax"
 )
 
 func TestParseInterspersed(t *testing.T) {
@@ -110,5 +115,81 @@ func TestExportCommandsEncryptWithKey(t *testing.T) {
 		if !strings.Contains(read(filepath.Join(dst, "sources.yaml")), "Kids") {
 			t.Fatalf("%s import did not restore the source", name)
 		}
+	}
+}
+
+func TestSyncSince(t *testing.T) {
+	dir := t.TempDir()
+	years, err := tax.NewYearStore(filepath.Join(dir, "tax"), filepath.Join(dir, "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2027, 3, 1, 12, 0, 0, 0, time.UTC)
+	// No closed year: just the backfill window.
+	if got, want := syncSince(now, 90, years, time.UTC), now.AddDate(0, 0, -90); !got.Equal(want) {
+		t.Errorf("no closed year: %v, want %v", got, want)
+	}
+	// 2025 closed: the open year starts 2026-01-01, earlier than 90 days back.
+	if err := years.Save(tax.Year{Year: 2025, Source: "koinly"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := syncSince(now, 90, years, time.UTC), time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("open year earlier: %v, want %v", got, want)
+	}
+	// A backfill window reaching further back wins.
+	if got, want := syncSince(now, 800, years, time.UTC), now.AddDate(0, 0, -800); !got.Equal(want) {
+		t.Errorf("backfill earlier: %v, want %v", got, want)
+	}
+}
+
+func TestMigrateCostBasisLots(t *testing.T) {
+	dir := t.TempDir()
+	bk := filepath.Join(dir, "backups")
+	cb, err := costbasis.NewManualStore(filepath.Join(dir, "costbasis.yaml"), bk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cb.Set(costbasis.Manual{
+		Assets: []costbasis.ManualAsset{{Asset: "BTC", Amount: 1, CostUSD: 10}},
+		Lots: []costbasis.ManualLot{
+			{Asset: "SOL", Amount: 4, CostUSD: 80, Date: costbasis.DateOf(time.Date(2022, 3, 4, 0, 0, 0, 0, time.UTC)), Note: "gift"},
+			{Asset: "ETH", Amount: 1, CostUSD: 5},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	taxPath := filepath.Join(dir, "tax.yaml")
+	ts, err := tax.NewSettingsStore(taxPath, bk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	migrateCostBasis(cb, ts, log)
+
+	lots := ts.Get().ManualLots
+	if len(lots) != 2 {
+		t.Fatalf("lots = %+v", lots)
+	}
+	if l := lots[0]; l.Wallet != tax.Untracked || l.Asset != "SOL" || l.Amount != 4 || l.CostUSD != 80 || !l.Acquired.Equal(time.Date(2022, 3, 4, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("lot 0 = %+v", l)
+	}
+	if l := lots[1]; !l.Acquired.Equal(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("lot 1 = %+v", l)
+	}
+	if !strings.Contains(logs.String(), "moved 2 manual lots from costbasis.yaml to tax.yaml (wallet: untracked); edit tax.yaml to assign wallets") {
+		t.Fatalf("log = %q", logs.String())
+	}
+	if !strings.Contains(logs.String(), "asset override") {
+		t.Fatalf("no asset override warning: %q", logs.String())
+	}
+
+	// Second run: tax.yaml now exists, nothing changes.
+	if err := ts.Update(func(s *tax.Settings) { s.ManualLots = s.ManualLots[:1] }); err != nil {
+		t.Fatal(err)
+	}
+	migrateCostBasis(cb, ts, log)
+	if n := len(ts.Get().ManualLots); n != 1 {
+		t.Fatalf("second run changed lots: %d", n)
 	}
 }

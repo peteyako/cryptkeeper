@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,31 +58,11 @@ func activityRoutes(r chi.Router) {
 
 // ---- reports ------------------------------------------------------------------------------
 
-// repState is what the preview remembers between Reports requests: the manual costs.
-var repState = struct {
-	sync.Mutex
-	manual []templates.ManualBasisRow
-	init   bool
-}{}
-
-func manualCosts() []templates.ManualBasisRow {
-	if !repState.init {
-		repState.manual = demo.Reports(time.Now()).Manual
-		repState.init = true
-	}
-	return repState.manual
-}
-
 func reportsPage(r *http.Request) templates.ReportsPage {
-	repState.Lock()
-	defer repState.Unlock()
-	if r.URL.Query().Get("reset") != "" {
-		repState.init = false
-	}
 	if r.URL.Query().Get("empty") != "" {
 		return demo.ReportsEmpty(time.Now())
 	}
-	return demo.ReportsWith(time.Now(), manualCosts())
+	return demo.Reports(time.Now())
 }
 
 func patchReports(sse *datastar.ServerSentEventGenerator, r *http.Request, mutate func(*templates.ReportsPage)) {
@@ -92,60 +71,12 @@ func patchReports(sse *datastar.ServerSentEventGenerator, r *http.Request, mutat
 		mutate(&p)
 	}
 	_ = sse.PatchElementTempl(templates.PnLTable(p))
-	_ = sse.PatchElementTempl(templates.CostBasisPanel(p))
 	_ = sse.PatchElementTempl(templates.CSVResultView(p.Import))
 }
 
 func reportsRoutes(r chi.Router) {
 	r.Get("/reports", func(w http.ResponseWriter, r *http.Request) {
 		render(w, r, templates.ReportsFull(reportsPage(r)))
-	})
-	r.Post("/reports/basis", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		asset := strings.ToUpper(strings.TrimSpace(r.PostFormValue("asset")))
-		amount, err1 := strconv.ParseFloat(strings.ReplaceAll(strings.TrimSpace(r.PostFormValue("amount")), ",", ""), 64)
-		cost, err2 := strconv.ParseFloat(strings.ReplaceAll(strings.TrimPrefix(strings.TrimSpace(r.PostFormValue("cost")), "$"), ",", ""), 64)
-		var msg string
-		switch {
-		case asset == "":
-			msg = "Choose an asset."
-		case err1 != nil || amount <= 0:
-			msg = "Enter the amount you hold, e.g. 0.5."
-		case err2 != nil || cost < 0:
-			msg = "Enter the total you paid in USD, e.g. 15000."
-		default:
-			repState.Lock()
-			rows := manualCosts()
-			entry := templates.ManualBasisRow{Asset: asset, Amount: amount, CostUSD: cost, Note: strings.TrimSpace(r.PostFormValue("note"))}
-			replaced := false
-			for i := range rows {
-				if rows[i].Asset == asset {
-					rows[i], replaced = entry, true
-				}
-			}
-			if !replaced {
-				rows = append(rows, entry)
-			}
-			repState.manual = rows
-			repState.Unlock()
-		}
-		sse := datastar.NewSSE(w, r)
-		time.Sleep(400 * time.Millisecond)
-		patchReports(sse, r, func(p *templates.ReportsPage) { p.BasisErr = msg })
-	})
-	r.Post("/reports/basis/{asset}/delete", func(w http.ResponseWriter, r *http.Request) {
-		asset, _ := url.PathUnescape(chi.URLParam(r, "asset"))
-		repState.Lock()
-		var keep []templates.ManualBasisRow
-		for _, m := range manualCosts() {
-			if m.Asset != asset {
-				keep = append(keep, m)
-			}
-		}
-		repState.manual = keep
-		repState.Unlock()
-		sse := datastar.NewSSE(w, r)
-		patchReports(sse, r, nil)
 	})
 	r.Post("/reports/import", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseMultipartForm(1 << 20)
@@ -166,7 +97,7 @@ func reportsRoutes(r chi.Router) {
 	for name, body := range map[string]string{
 		"holdings": "asset,symbol,amount,price_usd,value_usd\nBTC,BTC,0.47114114,64120.00,30208.98\n",
 		"history":  "time,value_usd\n2026-10-09T12:00:00Z,47900.00\n2026-10-16T12:00:00Z,48214.77\n",
-		"pnl":      "asset,amount,avg_cost,basis,value,unrealized\nBTC,0.47114114,42800.00,17980.40,30208.98,12228.58\n",
+		"pnl":      "asset,amount,avg_cost,basis,value,unrealized,unrealized_pct,missing_basis_units\nBTC,0.47114114,42800.00,17980.40,30208.98,12228.58,68.01,0.05\n",
 		"activity": "time,source,kind,asset,amount,usd\n2026-10-16T11:28:00Z,Cold storage,transfer,BTC,0.05,3206.00\n",
 	} {
 		r.Get("/export/"+name+".csv", func(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +106,33 @@ func reportsRoutes(r chi.Router) {
 			_, _ = w.Write([]byte(body))
 		})
 	}
+
+	// The Koinly import wizard: ?empty=1 before any upload, ?blocked=1 without the holdings
+	// report. Its POSTs re-render the demo wizard; accept goes back to Reports.
+	koinlyPage := func(r *http.Request) templates.KoinlyPage {
+		switch q := r.URL.Query(); {
+		case q.Get("empty") != "":
+			return demo.KoinlyEmpty(time.Now())
+		case q.Get("blocked") != "":
+			return demo.KoinlyBlocked(time.Now())
+		}
+		return demo.Koinly(time.Now())
+	}
+	r.Get("/reports/koinly", func(w http.ResponseWriter, r *http.Request) {
+		render(w, r, templates.KoinlyFull(koinlyPage(r)))
+	})
+	for _, action := range []string{"upload", "map", "discard"} {
+		r.Post("/reports/koinly/"+action, func(w http.ResponseWriter, r *http.Request) {
+			p := koinlyPage(r)
+			if action == "discard" {
+				p = demo.KoinlyEmpty(time.Now())
+			}
+			_ = datastar.NewSSE(w, r).PatchElementTempl(templates.KoinlyWizardView(p.Wizard))
+		})
+	}
+	r.Post("/reports/koinly/accept", func(w http.ResponseWriter, r *http.Request) {
+		_ = datastar.NewSSE(w, r).Redirect("/reports")
+	})
 }
 
 // ---- alerts -------------------------------------------------------------------------------

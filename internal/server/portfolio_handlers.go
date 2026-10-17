@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ type portfolioView struct {
 	share   float64
 	watch   []string
 	known   bool
+	// lotWallets picks the wallets whose tax lots cost this view's holdings: nil (every
+	// wallet but the untracked one) unless the portfolio lists its wallets.
+	lotWallets func(string) bool
 }
 
 func (s *Server) resolvePortfolio(pf string, all portfolio.Snapshot) (portfolioView, bool) {
@@ -39,13 +43,19 @@ func (s *Server) resolvePortfolio(pf string, all portfolio.Snapshot) (portfolioV
 		return portfolioView{name: "All holdings", snap: all}, false
 	}
 	filtered := portfolios.Apply(p, all)
+	var lotWallets func(string) bool
+	if !p.Wallets.All {
+		ids := slices.Clone(p.Wallets.IDs)
+		lotWallets = func(id string) bool { return slices.Contains(ids, id) }
+	}
 	return portfolioView{
-		name:    p.Name,
-		snap:    filtered,
-		include: portfolios.Include(p),
-		share:   portfolios.NetWorthShare(filtered, all),
-		watch:   portfolios.WatchKeys(p),
-		known:   true,
+		name:       p.Name,
+		snap:       filtered,
+		include:    portfolios.Include(p),
+		share:      portfolios.NetWorthShare(filtered, all),
+		watch:      portfolios.WatchKeys(p),
+		known:      true,
+		lotWallets: lotWallets,
 	}, true
 }
 

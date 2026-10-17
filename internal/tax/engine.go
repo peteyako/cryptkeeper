@@ -96,6 +96,9 @@ func Compute(in Input) Result {
 		e.addLot(l)
 	}
 	for _, p := range in.OpeningParked {
+		if !(p.Amount > dust) { // also drops NaN
+			continue
+		}
 		e.park(p.Wallet, p.Asset, p.Amount)
 	}
 	txs := txsFrom(in.Txs, in.From)

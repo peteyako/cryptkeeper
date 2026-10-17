@@ -36,7 +36,7 @@
   - `income_report`:
     - Title `Income report YYYY`.
     - Header `Date,Asset,Amount,Value (USD),Type,Description,Wallet Name`.
-  - Numbers may be quoted and carry thousands separators (`"30,954.12"`). Empty cells are 0.
+  - Numbers may be quoted and carry thousands separators (`"20,000.00"`). Empty cells are 0.
 - **Cutover** = 00:00 on 1 January of the year after the imported year, in the tax timezone. For this user it is 2026-01-01.
 - **Tax timezone:** config `tax.timezone` (an IANA name). An empty value means `time.Local`. **Ruling:** it lives only in `config.yaml`, not in `tax.yaml`. The spec lists it in both places; config wins because it is set once per install.
 - **"Before the imported year" lots:** `Various: true`, `Acquired` = 1 January of the imported year 00:00 in the tax timezone, minus 1 second. For 2025 that is 2024-12-31 23:59:59. 8949 prints them as VARIOUS.
@@ -54,7 +54,7 @@
 
 ## Review Focus
 
-1. **Two Koinly assets share a symbol** (`JUP (Jupiter)` and `JUP (Jupiter Price)`). Back-fill of transaction-history rows (symbol only) must use the mapped holding with the larger Koinly cost, and the other must not steal its lots. Test: Task 5 `TestOpeningSymbolCollision`.
+1. **Two Koinly assets share a symbol** (`JUP (Jupiter)` and `JUP (Some Clone)`). Back-fill of transaction-history rows (symbol only) must use the mapped holding with the larger Koinly cost, and the other must not steal its lots. Test: Task 5 `TestOpeningSymbolCollision`.
 2. **A Koinly wallet maps to a source that has no snapshot row for the asset** (CryptKeep shows 0). All of Koinly's quantity goes to `untracked`, and no negative lot is ever produced. Test: Task 5 `TestOpeningAllUntracked`.
 3. **The dated back-fill cost exceeds Koinly's total cost** for an asset. The remainder is clamped to 0 and a problem is reported; the result never has a negative cost. Test: Task 5 `TestOpeningNegativeRemainderClamped`.
 4. **A re-upload after 2026 is already closed.** Accept is refused with a clear message. Test: Task 7 `TestKoinlyAcceptRefusedWhenLaterYearClosed`.
@@ -172,10 +172,10 @@ func ParseIncome(raw []byte, loc *time.Location) ([]tax.Income, error)
 
 ```go
 func TestDetect(t *testing.T)            // each fixture → its Kind; a random CSV → error "not a Koinly report"
-func TestParseHoldings(t *testing.T)     // fixture row `BTC (Bitcoin),0.71318207,"30,954.12","62,401.60",...` → {Asset "BTC (Bitcoin)", Symbol "BTC", Name "Bitcoin", Quantity 0.71318207, CostUSD 30954.12}; the Total row is skipped; asOf = 2025-12-31 23:59
+func TestParseHoldings(t *testing.T)     // fixture row `BTC (Bitcoin),0.5,"20,000.00","45,000.00",...` → {Asset "BTC (Bitcoin)", Symbol "BTC", Name "Bitcoin", Quantity 0.5, CostUSD 20000}; the Total row is skipped; asOf = 2025-12-31 23:59
 func TestParseHoldingsNFTName(t *testing.T) // `TNFT#42 (TestPass)` → Symbol "TNFT#42", Name "TestPass"; `$ CLAIM AT EXAMPLE.COM ($ Example.com)` → Symbol "$ CLAIM AT EXAMPLE.COM", Name "$ Example.com" (split at the LAST " (")
 func TestParseTransactions(t *testing.T) // an exchange row → SentAmount 0.12345678 SOL, SentCost 15, RecvAmount 31.250123 USDC, RecvCost 31.25, Gain 16.25; Time 2025-03-14 09:30:00 UTC; empty cells → 0
-func TestParseGains(t *testing.T)        // `02/11/2025 14:27,08/19/2024 10:52,SOL,0.0025,0.30,0.50,0.20,"",Solana (SOL) - K1S,Short term` with loc NY → Sold 2025-02-11 14:27 NY, Term ShortTerm, Wallet "Solana (SOL) - K1S"
+func TestParseGains(t *testing.T)        // `02/11/2025 14:27,08/19/2024 10:52,SOL,0.0025,0.30,0.50,0.20,"",Test Wallet A,Short term` with loc NY → Sold 2025-02-11 14:27 NY, Term ShortTerm, Wallet "Test Wallet A"
 func TestParseIncome(t *testing.T)       // one row → tax.Income{Type verbatim, Wallet verbatim}
 ```
 
@@ -198,7 +198,7 @@ Expected: FAIL.
 
 **Interfaces:**
 - Produces: `func RollBackParked(positions map[string]map[string]float64, txs []core.Tx, cutover time.Time) []Parked`. `positions` holds the current amount inside positions per source and asset (snapshot rows with `Position != ""`). For each tx with `!Time.Before(cutover)` that is a position move (`Kind == core.TxPosition`, or tagged `position` in `Settings.Tags`; the caller passes the tag set as a `func(txID string) bool`), add its signed legs: parked at the cutover = parked now + Σ signed legs. Negative results become 0. The result is sorted.
-- Produces: `func RollBack(current map[string]map[string]float64, txs []core.Tx, cutover time.Time) map[string]map[string]float64`. The maps are source ID → asset key → amount.
+- Produces: `func RollBack(current map[string]map[string]float64, txs []core.Tx, cutover time.Time, isPosition func(txID string) bool) map[string]map[string]float64`. Txs tagged `position` (`isPosition`) are zero-net, like `Kind == core.TxPosition`. The maps are source ID → asset key → amount.
   - For each tx with `!Time.Before(cutover)`, subtract its effect from its `SourceID`:
     - failed tx: the fee only
     - `stake` and `position`: no effect (the units stay inside the wallet's holdings)
@@ -258,10 +258,10 @@ func WalletNames(txns []Txn, gains []tax.Disposal) []string // every Koinly wall
 - [ ] **Step 1: Write failing tests**
 
 ```go
-func TestSuggestWalletByAddress(t *testing.T)  // Koinly "Solana (SOL) - K1S" receives with TxDest "4QVq…"; wallet {ID "sol-main", Addresses ["4QVq…"]} → "sol-main"
+func TestSuggestWalletByAddress(t *testing.T)  // Koinly "Solana (SOL) - Main" receives with TxDest "SoLAddr1"; wallet {ID "sol-main", Addresses ["SoLAddr1"]} → "sol-main"
 func TestSuggestWalletByName(t *testing.T)     // "Kraken (API keys)" and one kraken source "kraken" → "kraken"
 func TestSuggestWalletUntracked(t *testing.T)  // "Ethereum (ETH & Tokens) Main" → tax.Untracked
-func TestSuggestAssets(t *testing.T)           // BTC→"BTC"; "JUP (Jupiter)" with known JUP{Name "Jupiter"} and spl:X{Symbol "JUP", Name "Jupiter Price"} → "JUP"; "JUP (Jupiter Price)" → "spl:X"; XMR (no match, value>0) → "XMR"; "TNFT#42 (TestPass)" cost 0 value 0 → ""
+func TestSuggestAssets(t *testing.T)           // BTC→"BTC"; "JUP (Jupiter)" with known JUP{Name "Jupiter"} and spl:X{Symbol "JUP", Name "Some Clone"} → "JUP"; "JUP (Some Clone)" → "spl:X"; XMR (no match, value>0) → "XMR"; "TNFT#42 (TestPass)" cost 0 value 0 → ""
 func TestSuggestAssetsAmbiguous(t *testing.T)  // two known with Symbol "BOZO" and neither name matches → "" and ambiguous lists both keys
 ```
 
@@ -327,12 +327,12 @@ func BuildOpening(in OpeningInput) Opening
 
 ```go
 func TestOpeningBackfillNewestFirst(t *testing.T) // Q=10 C=1500 SOL; W[sol]=10; 2025 deposits into the Koinly wallet mapped to sol: Jun 3@450, Sep 4@800 → lots: Sep 4 @800, Jun 3 @450, Various 3 @250 (1500−1250); Σ amount 10, Σ cost 1500
-func TestOpeningUntrackedExcess(t *testing.T)     // Q=1.17 ETH C=1966.25; no source holds ETH → one Various lot in Untracked, 1.17 @1966.25
+func TestOpeningUntrackedExcess(t *testing.T)     // Q=1.5 ETH C=2400; no source holds ETH → one Various lot in Untracked, 1.5 @2400
 func TestOpeningAllUntracked(t *testing.T)        // mapped wallet exists but Balances has no row for the asset → all to Untracked; no negative amounts
-func TestOpeningMissingBasisExcess(t *testing.T)  // Q=99.657 C=24242.66; CK=101.0 across two wallets (60/41); ExtraBasis 0 → missing-basis lots total 1.343 split 60:41, cost 0, FlagMissingBasis, Acquired = 2026-01-01 00:00 loc; Σ cost 24242.66
+func TestOpeningMissingBasisExcess(t *testing.T)  // Q=100 C=20000; CK=101.5 across two wallets (60/41.5); ExtraBasis 0 → missing-basis lots total 1.5 split 60:41.5, cost 0, FlagMissingBasis, Acquired = 2026-01-01 00:00 loc; Σ cost 20000
 func TestOpeningNegativeRemainderClamped(t *testing.T) // dated cost 2000 > C 1500 → Various cost 0; problem string present; Σ cost 2000 (dated lots kept exact)
 func TestOpeningTransferFlag(t *testing.T)        // a `transfer` row into the wallet → lot Flag FlagTransferDate
-func TestOpeningSymbolCollision(t *testing.T)     // holdings "JUP (Jupiter)" cost 10771 → JUP and "JUP (Jupiter Price)" cost 0 → spl:X; txn RecvCurrency "JUP" back-fills JUP only
+func TestOpeningSymbolCollision(t *testing.T)     // holdings "JUP (Jupiter)" cost 5000 → JUP and "JUP (Some Clone)" cost 0 → spl:X; txn RecvCurrency "JUP" back-fills JUP only
 func TestOpeningSkippedAsset(t *testing.T)        // AssetMap value "" → no row, no lots
 func TestOpeningVariousDate(t *testing.T)         // Various lot Acquired == 2024-12-31 23:59:59 in loc, Various true
 ```
