@@ -11,7 +11,6 @@
 package templates
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -307,53 +306,6 @@ func Ago(t, now time.Time) string {
 func num1(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
 
 func numTrim(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
-
-// SVGPath turns chart points into SVG path data for a viewBox of w by h, like the
-// Portfolio board: points are spread evenly along x, and y is padded so the line uses
-// about 85% of the height (7.5% above, 7.5% below). The area path is the line closed down
-// to the bottom edge. A flat series is drawn through the middle. Non-finite values are
-// skipped; with no usable points both results are empty.
-func SVGPath(points []portfolio.Point, w, h float64) (line, area string) {
-	vals := make([]float64, 0, len(points))
-	for _, p := range points {
-		if finite(p.V) {
-			vals = append(vals, p.V)
-		}
-	}
-	n := len(vals)
-	if n == 0 {
-		return "", ""
-	}
-	lo, hi := vals[0], vals[0]
-	for _, v := range vals {
-		lo, hi = math.Min(lo, v), math.Max(hi, v)
-	}
-	top, usable := h*0.075, h*0.85
-	y := func(v float64) float64 {
-		if hi == lo {
-			return h / 2
-		}
-		return top + usable - (v-lo)/(hi-lo)*usable
-	}
-	var b strings.Builder
-	if n == 1 {
-		fmt.Fprintf(&b, "M0 %s L%s %s", num1(y(vals[0])), num1(w), num1(y(vals[0])))
-	} else {
-		for i, v := range vals {
-			if i == 0 {
-				b.WriteByte('M')
-			} else {
-				b.WriteString(" L")
-			}
-			b.WriteString(num1(float64(i) * w / float64(n-1)))
-			b.WriteByte(' ')
-			b.WriteString(num1(y(v)))
-		}
-	}
-	line = b.String()
-	area = line + " L" + numTrim(w) + " " + numTrim(h) + " L0 " + numTrim(h) + " Z"
-	return line, area
-}
 
 // DiscKey maps a ticker to its coin-mark tint: "btc", "eth", "sol", "usd" or "neutral".
 // Wrapped and staked variants follow their base asset (WBTC, stETH, jitoSOL, USDC...).

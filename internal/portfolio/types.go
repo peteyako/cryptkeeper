@@ -28,6 +28,25 @@ type Snapshot struct {
 	Prices    map[string]core.Price `json:"prices"`
 }
 
+// StableShare is the share (0..1) of the snapshot's value held as cash or USD
+// stablecoins; ok is false when nothing is valued. The rest is invested.
+func (s Snapshot) StableShare() (share float64, ok bool) {
+	total, stable := 0.0, 0.0
+	for _, a := range s.Assets {
+		if a.ValueUSD <= 0 {
+			continue
+		}
+		total += a.ValueUSD
+		if core.IsStable(a.AssetKey, a.Symbol) {
+			stable += a.ValueUSD
+		}
+	}
+	if total <= 0 {
+		return 0, false
+	}
+	return stable / total, true
+}
+
 // AssetRow is one asset merged across all wallets in the snapshot.
 type AssetRow struct {
 	AssetKey  string      `json:"assetKey"`

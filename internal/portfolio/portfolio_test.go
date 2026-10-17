@@ -349,3 +349,69 @@ func TestValueAt(t *testing.T) {
 		t.Fatal("no row within tolerance")
 	}
 }
+
+func TestSeriesSkipsPartialRows(t *testing.T) {
+	db := openDB(t)
+	hist := &History{DB: db, Interval: time.Minute}
+	ctx := context.Background()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	price := map[string]core.Price{"BTC": {USD: 100}, "SOL": {USD: 10}}
+	cold := WalletView{ID: "cold", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("cold", "BTC", 1), ValueUSD: 100}}}
+	sol := WalletView{ID: "sol", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("sol", "SOL", 50), ValueUSD: 500}}}
+	solDown := WalletView{ID: "sol", Status: StatusError}
+	// t1: sol's fetch failed, so the row holds cold only.
+	hist.Record(ctx, Snapshot{UpdatedAt: base, Prices: price, Wallets: []WalletView{cold, sol}})
+	hist.Record(ctx, Snapshot{UpdatedAt: base.Add(time.Hour), Prices: price, Wallets: []WalletView{cold, solDown}})
+	hist.Record(ctx, Snapshot{UpdatedAt: base.Add(2 * time.Hour), Prices: price, Wallets: []WalletView{cold, sol}})
+	cur := Snapshot{UpdatedAt: base.Add(3 * time.Hour), Wallets: []WalletView{cold, sol}}
+	pts, err := hist.Series(ctx, time.Time{}, nil, &cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pts) != 3 || !pts[1].T.Equal(base.Add(2*time.Hour)) {
+		t.Fatalf("the partial row must be left out, not charted as a dip: %+v", pts)
+	}
+	for _, p := range pts {
+		if p.V != 600 {
+			t.Fatalf("dip: %+v", pts)
+		}
+	}
+}
+
+func TestStableShare(t *testing.T) {
+	s := Snapshot{Assets: []AssetRow{
+		{AssetKey: "BTC", Symbol: "BTC", ValueUSD: 600},
+		{AssetKey: "USDC", Symbol: "USDC", ValueUSD: 300},
+		{AssetKey: "spl:dai", Symbol: "DAI", ValueUSD: 100},
+		{AssetKey: "spl:junk", Symbol: "JUNK", ValueUSD: 0},
+	}}
+	share, ok := s.StableShare()
+	if !ok || share < 0.3999 || share > 0.4001 {
+		t.Fatalf("share=%v ok=%v", share, ok)
+	}
+	if _, ok := (Snapshot{}).StableShare(); ok {
+		t.Fatal("nothing valued must not report a share")
+	}
+}
+
+func TestYearToDateRange(t *testing.T) {
+	now := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
+	if got := RangeStart("YTD", now); !got.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("RangeStart(YTD) = %v", got)
+	}
+	if !RangeStart("All", now).IsZero() || !RangeStart("1W", now).Equal(now.AddDate(0, 0, -7)) {
+		t.Fatal("other ranges changed")
+	}
+	// Daily rows from Jan 1 cover the window; rows starting Jan 3 do not.
+	var pts []Point
+	for d := RangeStart("YTD", now); d.Before(now); d = d.AddDate(0, 0, 1) {
+		pts = append(pts, Point{T: d.Add(23 * time.Hour), V: 100 + float64(len(pts))})
+	}
+	if c := ChangeFor("YTD", pts, now); !c.Valid || c.Label != "this year" {
+		t.Fatalf("%+v", c)
+	}
+	// The window may start up to a tenth late (about a week here), not later.
+	if c := ChangeFor("YTD", pts[10:], now); c.Valid {
+		t.Fatalf("history from Jan 11 must not count as the year: %+v", c)
+	}
+}

@@ -126,3 +126,14 @@ func IsSPLKey(key string) (string, bool) {
 
 // Stablecoins pegged to 1 USD when no price is available.
 var Pegged = map[string]bool{"USD": true, "USDC": true, "USDT": true}
+
+// stableSymbols are the USD stablecoins (and cash) by ticker, for IsStable.
+var stableSymbols = map[string]bool{
+	"USD": true, "USDC": true, "USDT": true, "DAI": true, "PYUSD": true, "USDS": true, "FDUSD": true,
+	"TUSD": true, "USDE": true, "USDG": true, "USD1": true, "USDP": true, "GUSD": true, "BUSD": true,
+}
+
+// IsStable reports whether a holding is cash or a USD stablecoin, by asset key or ticker.
+func IsStable(assetKey, symbol string) bool {
+	return Pegged[assetKey] || stableSymbols[strings.ToUpper(symbol)]
+}

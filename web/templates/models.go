@@ -17,7 +17,7 @@ type Shell struct {
 	Active     string // "overview","wallets","activity","reports","alerts","settings","portfolios"
 	Portfolios []PortfolioNav
 	PF         string // current portfolio id or "all"
-	Range      string // "1D","1W","1M","1Y","All"
+	Range      string // "1D","1W","1M","YTD","1Y","All"
 	ShowLogos  bool
 	AuthUser   string // "" when auth is off
 }
@@ -140,6 +140,8 @@ type PortfolioItem struct {
 	ID, Name    string
 	ValueUSD    float64
 	Share       float64  // 0..1 of net worth
+	StableShare float64  // 0..1 of the value held as cash or stablecoins
+	HasValue    bool     // StableShare is meaningful (something is valued)
 	WalletsText string   // "All wallets" | "3 wallets" | "No wallets"
 	AssetsText  string   // "All assets" | "BTC, SOL +2" (first 3 symbols, then "+N")
 	WatchCount  int      // assets on the watch list

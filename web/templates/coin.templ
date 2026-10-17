@@ -143,7 +143,7 @@ templ CoinChart(p CoinPage) {
 		if p.Loading {
 			<div hidden data-indicator="coinCharting" data-init={ coinRangeClick(p.AssetKey, p.Range) }></div>
 		}
-		@chartFigure(p.Points, p.Symbol+" price, "+coinRangeLabel(p.Range), coinEmptyNote(p))
+		@chartFigure(p.Points, p.Symbol+" price, "+coinRangeLabel(p.Range), coinEmptyNote(p), false, PriceFiat)
 	</section>
 }
 

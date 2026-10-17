@@ -176,8 +176,10 @@ func (s *Server) portfoliosPage(r *http.Request) templates.PortfoliosPage {
 	}
 	for _, pf := range s.Portfolios.List() {
 		f := portfolios.Apply(pf, snap)
+		stable, hasValue := f.StableShare()
 		p.Items = append(p.Items, templates.PortfolioItem{
 			ID: pf.ID, Name: pf.Name, ValueUSD: f.TotalUSD, Share: portfolios.NetWorthShare(f, snap),
+			StableShare: stable, HasValue: hasValue,
 			WalletsText: walletsText(pf.Wallets), AssetsText: assetsText(pf.Assets, snap),
 			WatchCount: len(pf.Watch), Missing: portfolios.MissingWallets(pf, known),
 		})

@@ -1,5 +1,5 @@
 // Package static embeds the web assets: design tokens, component styles, the vendored
-// Datastar bundle, self-hosted fonts, icons and the PWA manifest. Serve FS under /static/,
+// Datastar bundle, the chart hover script, self-hosted fonts, icons and the PWA manifest. Serve FS under /static/,
 // and serve manifest.webmanifest at /manifest.webmanifest.
 package static
 
@@ -10,7 +10,7 @@ import (
 	"io/fs"
 )
 
-//go:embed tokens.css app.css datastar.js fonts icons manifest.webmanifest
+//go:embed tokens.css app.css datastar.js chart.js fonts icons manifest.webmanifest
 var FS embed.FS
 
 // Version is a short content hash of every embedded file. Pages reference assets as

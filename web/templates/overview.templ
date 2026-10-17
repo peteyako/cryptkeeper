@@ -74,6 +74,9 @@ templ ValueCard(p OverviewPage) {
 				@FigFiat(p.Snap.TotalUSD)
 			</span>
 			@changeLine(p.Change)
+			if stable, ok := p.Snap.StableShare(); ok {
+				@splitLine(stable)
+			}
 			if p.Snap.HasStale {
 				<p class="note note--warn">
 					<span aria-hidden="true">◐</span>
@@ -114,6 +117,34 @@ func sharePct(f float64) string {
 	return strconv.Itoa(int(f*100+0.5)) + "%"
 }
 
+// SplitText is the invested / stable split as text: "82% invested · 18% stablecoins".
+// Shares are rounded so the two always add up to 100%.
+func SplitText(stable float64) string {
+	s := int(min(max(stable, 0), 1)*100 + 0.5)
+	return strconv.Itoa(100-s) + "% invested · " + strconv.Itoa(s) + "% stablecoins"
+}
+
+// SplitShort is the split for a fact with the label "Invested / stablecoins": "82% / 18%".
+func SplitShort(stable float64) string {
+	s := int(min(max(stable, 0), 1)*100 + 0.5)
+	return strconv.Itoa(100-s) + "% / " + strconv.Itoa(s) + "%"
+}
+
+// splitLine is the invested / stable split: a two-tone bar and its text. Shares are
+// not amounts, so the privacy mode leaves it alone.
+templ splitLine(stable float64) {
+	<div class="split" role="img" aria-label={ SplitText(stable) }>
+		<span class="split__bar">
+			<span class="split__invested" style={ splitStyle(1 - stable) }></span>
+		</span>
+		<span class="split__text">{ SplitText(stable) }</span>
+	</div>
+}
+
+func splitStyle(invested float64) templ.SafeCSS {
+	return templ.SafeCSS("width:" + strconv.FormatFloat(min(max(invested, 0), 1)*100, 'f', 1, 64) + "%;")
+}
+
 templ changeLine(c portfolio.Change) {
 	if c.Valid {
 		{{ dir := Direction(c.Pct) }}
@@ -140,28 +171,70 @@ func chartLabel(label string) string {
 	return "Portfolio value, " + label
 }
 
-// chartSVG is the server-rendered area chart: 3 gridlines, an accent area at 8% and a 2px
-// line. preserveAspectRatio="none" lets CSS set its height per breakpoint.
+// chartSVG is the server-rendered portfolio value chart. Its values are private figures.
 templ chartSVG(points []portfolio.Point, label string) {
-	@chartFigure(points, chartLabel(label), "History fills in as CryptKeep records your balances.")
+	@chartFigure(points, chartLabel(label), "History fills in as CryptKeep records your balances.", true, Fiat)
 }
 
-// chartFigure is the chart with its accessible name and the note shown when there is
-// nothing to draw; the portfolio value chart and the coin price chart share it.
-templ chartFigure(points []portfolio.Point, aria, emptyNote string) {
+// chartFigure is the chart with its accessible name, the value labels on its gridlines,
+// the times along its bottom, the hover readout chart.js drives, and the note shown when
+// there is nothing to draw; the portfolio value chart and the coin price chart share it.
+// It is an area chart: 3 gridlines, an accent area at 8% and a 2px line, in a viewBox
+// that preserveAspectRatio="none" lets CSS stretch per breakpoint (so the text stays
+// outside the SVG). private wraps every value as a figure the privacy mode masks; format
+// turns a value into text.
+templ chartFigure(points []portfolio.Point, aria, emptyNote string, private bool, format func(float64) string) {
 	{{ line, area := SVGPath(points, 800, 220) }}
-	<div class="chart-wrap">
-		<svg class="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label={ aria }>
-			<path class="chart__grid" d="M0 55H800M0 110H800M0 165H800"></path>
-			if line != "" && len(points) >= 2 {
-				<path class="chart__area" d={ area }></path>
-				<path class="chart__line" d={ line }></path>
+	{{ axes := ChartAxesOf(points, 800, 220, format) }}
+	{{ hover := ChartHoverJSON(points, 800, 220, format) }}
+	<div class="chart-wrap" data-chart?={ hover != "" } data-chart={ hover }>
+		<div class="chart__y">
+			for i, l := range axes.Y {
+				<span class={ "chart__ylab", "chart__ylab--" + strconv.Itoa(i) }>
+					if l != "" {
+						@chartValue(l, private)
+					}
+				</span>
 			}
-		</svg>
-		if len(points) < 2 {
-			<p class="chart__empty">{ emptyNote }</p>
-		}
+		</div>
+		<div class="chart__plot">
+			<svg class="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label={ aria }>
+				<path class="chart__grid" d={ gridPath(800, 220) }></path>
+				if line != "" && len(points) >= 2 {
+					<path class="chart__area" d={ area }></path>
+					<path class="chart__line" d={ line }></path>
+				}
+			</svg>
+			if hover != "" {
+				<div class="chart__hover" hidden>
+					<div class="chart__cross"></div>
+					<div class="chart__dot"></div>
+					<div class="chart__tip" role="status">
+						<span class="chart__tip-t"></span>
+						@chartValue("—", private)
+					</div>
+				</div>
+			}
+			if len(points) < 2 {
+				<p class="chart__empty">{ emptyNote }</p>
+			}
+		</div>
+		<div class="chart__x">
+			for _, t := range axes.X {
+				<span class="chart__xlab" style={ templ.SafeCSS(tickStyle(t)) }>{ t.Label }</span>
+			}
+		</div>
 	</div>
+}
+
+// chartValue is a chart's value text: a private figure (masked by the privacy mode) or
+// plain. In the tip, chart.js fills in the figure's value (or the plain span) on hover.
+templ chartValue(text string, private bool) {
+	if private {
+		@FigText(text, "$ ••••")
+	} else {
+		<span class="chart__tip-v">{ text }</span>
+	}
 }
 
 func allocStyle(s AllocSlice) templ.SafeCSS {

@@ -82,6 +82,7 @@ templ fullPage(s Shell, bare bool, body templ.Component) {
 			<link rel="stylesheet" href={ asset("tokens.css") }/>
 			<link rel="stylesheet" href={ asset("app.css") }/>
 			<script type="module" src={ asset("datastar.js") }></script>
+			<script defer src={ asset("chart.js") }></script>
 		</head>
 		<body
 			data-signals={ bodySignals(s) }

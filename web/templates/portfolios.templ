@@ -99,6 +99,12 @@ templ portfolioCard(it PortfolioItem) {
 				<dt>Assets</dt>
 				<dd>{ it.AssetsText }</dd>
 			</div>
+			if it.HasValue {
+				<div class="pf-fact">
+					<dt>Invested / stablecoins</dt>
+					<dd>{ SplitShort(it.StableShare) }</dd>
+				</div>
+			}
 			<div class="pf-fact">
 				<dt>Watching</dt>
 				<dd>

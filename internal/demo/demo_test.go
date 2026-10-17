@@ -95,7 +95,7 @@ func TestFixtureShape(t *testing.T) {
 
 func TestChartAndChange(t *testing.T) {
 	total := Snapshot(now).TotalUSD
-	for _, rng := range []string{"1D", "1W", "1M", "1Y", "All", "bogus"} {
+	for _, rng := range []string{"1D", "1W", "1M", "YTD", "1Y", "All", "bogus"} {
 		pts := Chart(rng, now)
 		if len(pts) < 2 {
 			t.Fatalf("%s: %d points", rng, len(pts))

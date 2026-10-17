@@ -86,7 +86,8 @@ type Include func(walletID, assetKey string) bool
 //
 // The series starts once every wallet in current has history: otherwise adding a source
 // would show up as a cliff of "growth" (and removing one as a crash). Wallets no longer in
-// current are ignored in older rows for the same reason.
+// current are ignored in older rows, and rows recorded without one of the live wallets
+// (it was failing or still loading) are left out, for the same reason.
 func (h *History) Series(ctx context.Context, from time.Time, inc Include, current *Snapshot) ([]Point, error) {
 	rows, err := h.DB.QueryContext(ctx, `SELECT ts, prices, amounts FROM history WHERE ts >= ? ORDER BY ts`, from.Unix())
 	if err != nil {
@@ -146,7 +147,7 @@ func (h *History) Series(ctx context.Context, from time.Time, inc Include, curre
 	}
 	var pts []Point
 	for _, r := range all {
-		if r.ts.Before(start) {
+		if r.ts.Before(start) || partialRow(r.amounts, live) {
 			continue
 		}
 		v := 0.0
@@ -176,6 +177,16 @@ func (h *History) Series(ctx context.Context, from time.Time, inc Include, curre
 	return Downsample(pts, 500), nil
 }
 
+// partialRow reports whether a row lacks one of the live wallets.
+func partialRow(amounts map[string]map[string]float64, live map[string]bool) bool {
+	for wid := range live {
+		if _, ok := amounts[wid]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
 // Downsample keeps at most max points, always keeping the first and last.
 func Downsample(pts []Point, max int) []Point {
 	if len(pts) <= max || max < 2 {
@@ -189,25 +200,39 @@ func Downsample(pts []Point, max int) []Point {
 	return out
 }
 
-// Ranges maps the UI range keys to look-back windows (0 = all history).
+// Ranges maps the UI range keys to look-back windows. YTD (since January 1st, so its
+// window depends on the date; see RangeWindow) and All (all history) are 0 here.
 var Ranges = map[string]time.Duration{
-	"1D": 24 * time.Hour, "1W": 7 * 24 * time.Hour, "1M": 30 * 24 * time.Hour, "1Y": 365 * 24 * time.Hour, "All": 0,
+	"1D": 24 * time.Hour, "1W": 7 * 24 * time.Hour, "1M": 30 * 24 * time.Hour, "YTD": 0, "1Y": 365 * time.Hour * 24, "All": 0,
 }
 
 var rangeLabels = map[string]string{
-	"1D": "past 24 hours", "1W": "past week", "1M": "past month", "1Y": "past year", "All": "since tracking began",
+	"1D": "past 24 hours", "1W": "past week", "1M": "past month", "YTD": "this year", "1Y": "past year", "All": "since tracking began",
 }
 
-// RangeStart returns the series start for a range key (unknown keys default to 1W).
-func RangeStart(rng string, now time.Time) time.Time {
+// YearStart is midnight on January 1st of now's year, in now's zone.
+func YearStart(now time.Time) time.Time {
+	return time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
+}
+
+// RangeWindow is how far back a range reaches from now (0 for All; unknown keys are 1W).
+func RangeWindow(rng string, now time.Time) time.Duration {
+	if rng == "YTD" {
+		return now.Sub(YearStart(now))
+	}
 	d, ok := Ranges[rng]
 	if !ok {
 		d = Ranges["1W"]
 	}
-	if d == 0 {
+	return d
+}
+
+// RangeStart returns the series start for a range key (unknown keys default to 1W).
+func RangeStart(rng string, now time.Time) time.Time {
+	if rng == "All" {
 		return time.Time{}
 	}
-	return now.Add(-d)
+	return now.Add(-RangeWindow(rng, now))
 }
 
 // ChangeFor computes the change across pts for a range. It is valid only when history
@@ -224,7 +249,7 @@ func ChangeFor(rng string, pts []Point, now time.Time) Change {
 		return c
 	}
 	first, last := pts[0], pts[len(pts)-1]
-	if d := Ranges[rng]; d > 0 {
+	if d := RangeWindow(rng, now); d > 0 {
 		tol := d / 10
 		if d >= 7*24*time.Hour {
 			tol = max(tol, 24*time.Hour)

@@ -313,6 +313,9 @@ var (
 
 var datastarScript = `<script type="module" src="/static/datastar.js?v=` + static.Version + `"></script>`
 
+// chartScript is the chart hover script, the only other script a page may carry.
+var chartScript = `<script defer src="/static/chart.js?v=` + static.Version + `"></script>`
+
 // TestSilentFailureGuards catches the Datastar mistakes that compile and render but do
 // nothing in the browser, and a few other cheap structural rules.
 func TestSilentFailureGuards(t *testing.T) {
@@ -343,11 +346,12 @@ func TestSilentFailureGuards(t *testing.T) {
 				}
 			}
 
-			// Scripts: exactly the Datastar module on whole pages, none in fragments.
+			// Scripts: exactly the Datastar module and the chart script on whole pages, none
+			// in fragments.
 			n := len(reScript.FindAllString(p.html, -1))
 			switch {
-			case p.full && (n != 1 || !strings.Contains(p.html, datastarScript)):
-				t.Errorf("want exactly the Datastar module script, found %d <script", n)
+			case p.full && (n != 2 || !strings.Contains(p.html, datastarScript) || !strings.Contains(p.html, chartScript)):
+				t.Errorf("want exactly the Datastar module and chart scripts, found %d <script", n)
 			case !p.full && n != 0:
 				t.Errorf("fragment contains %d <script", n)
 			}
@@ -474,7 +478,7 @@ func TestSignalsEscapeServerValues(t *testing.T) {
 	ov, _ := demo.OverviewFor("all", "1W", now)
 	ov.Shell = sh
 	out := render(t, templates.OverviewFull(ov))
-	if strings.Count(out, "<script") != 1 || strings.Contains(out, "</script><b>") || strings.Contains(out, "<b>") {
+	if strings.Count(out, "<script") != 2 || strings.Contains(out, "</script><b>") || strings.Contains(out, "<b>") {
 		t.Errorf("hostile portfolio id broke out of the page")
 	}
 	if !strings.Contains(html.UnescapeString(out), `pf: 'a\'b\u003c/script\u003e\u003cb\u003e'`) {
@@ -497,7 +501,7 @@ func TestHostileDataIsEscaped(t *testing.T) {
 			t.Errorf("unescaped %q in output", bad)
 		}
 	}
-	if strings.Count(out, "<script") != 1 {
+	if strings.Count(out, "<script") != 2 {
 		t.Errorf("script injected")
 	}
 	un := html.UnescapeString(out)
@@ -1157,7 +1161,7 @@ func TestPortfolioPagesEscapeHostileValues(t *testing.T) {
 				t.Errorf("%s: unescaped %q in output", name, bad)
 			}
 		}
-		if strings.Count(o, "<script") != 1 {
+		if strings.Count(o, "<script") != 2 {
 			t.Errorf("%s: script injected", name)
 		}
 	}
@@ -1405,7 +1409,7 @@ func TestActivityHostileValues(t *testing.T) {
 			t.Errorf("unescaped or unsafe %q in output", bad)
 		}
 	}
-	if strings.Count(out, "<script") != 1 {
+	if strings.Count(out, "<script") != 2 {
 		t.Error("script injected")
 	}
 	un := html.UnescapeString(out)
@@ -1559,7 +1563,7 @@ func TestKoinlyHostileNamesAreEscaped(t *testing.T) {
 	p.Wizard.Problems = append(p.Wizard.Problems, evil)
 	p.Wizard.Files = append(p.Wizard.Files, evil)
 	out := render(t, templates.KoinlyFull(p))
-	if strings.Contains(out, "<img") || strings.Count(out, "<script") != 1 {
+	if strings.Contains(out, "<img") || strings.Count(out, "<script") != 2 {
 		t.Errorf("hostile Koinly names broke out of the page")
 	}
 	if !strings.Contains(out, `name="w.x&#34;&gt;&lt;img src=x onerror=alert(1)&gt;&#39;"`) {
@@ -1842,7 +1846,7 @@ func TestAlertAndReportPagesEscapeHostileValues(t *testing.T) {
 				t.Errorf("%s: unescaped %q in output", name, bad)
 			}
 		}
-		if strings.Count(o, "<script") != 1 {
+		if strings.Count(o, "<script") != 2 {
 			t.Errorf("%s: script injected", name)
 		}
 	}

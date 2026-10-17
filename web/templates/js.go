@@ -48,7 +48,7 @@ func JSString(s string) string {
 }
 
 // Ranges are the chart ranges, in display order.
-var Ranges = []string{"1D", "1W", "1M", "1Y", "All"}
+var Ranges = []string{"1D", "1W", "1M", "YTD", "1Y", "All"}
 
 // liveFilter limits the signals sent to the server to the two it reads.
 const liveFilter = `{filterSignals: {include: /^(pf|range)$/}}`

@@ -330,16 +330,21 @@ var ranges = map[string]struct {
 	"1D":  {[]float64{47.6, 47.9, 47.7, 48.0, 47.8, 48.1, 48.3, 48.0, 48.2, 48.4, 48.1, 48.21}, 24 * time.Hour, "past 24 hours"},
 	"1W":  {[]float64{46.9, 47.2, 46.6, 46.8, 47.5, 47.3, 47.9, 47.6, 48.4, 48.0, 48.5, 48.21}, 7 * 24 * time.Hour, "past week"},
 	"1M":  {[]float64{44.2, 45.1, 44.6, 43.8, 45.0, 46.2, 45.7, 46.9, 47.4, 46.8, 47.9, 48.21}, 30 * 24 * time.Hour, "past month"},
+	"YTD": {[]float64{36.4, 35.1, 38.2, 37.5, 40.8, 39.9, 42.6, 44.1, 43.3, 46.0, 47.2, 48.21}, 0, "this year"},
 	"1Y":  {[]float64{29.4, 31.2, 30.1, 33.8, 36.0, 34.2, 38.5, 41.0, 39.6, 43.2, 46.1, 48.21}, 365 * 24 * time.Hour, "past year"},
 	"All": {[]float64{6.2, 9.8, 14.5, 12.1, 18.9, 24.0, 21.4, 29.6, 33.0, 38.7, 43.9, 48.21}, 730 * 24 * time.Hour, "since first deposit"},
 }
 
-// Chart returns the chart series for a range ("1D","1W","1M","1Y","All"; anything else is
-// 1W), scaled so the last point equals the snapshot total.
+// Chart returns the chart series for a range ("1D","1W","1M","YTD","1Y","All"; anything
+// else is 1W), scaled so the last point equals the snapshot total. YTD spans the year so
+// far (at least a day, so January 1st still draws something).
 func Chart(rng string, now time.Time) []portfolio.Point {
 	r, ok := ranges[rng]
 	if !ok {
 		r = ranges["1W"]
+	}
+	if rng == "YTD" {
+		r.span = max(now.Sub(portfolio.YearStart(now)), 24*time.Hour)
 	}
 	total := Snapshot(now).TotalUSD
 	last := r.series[len(r.series)-1]
@@ -677,8 +682,10 @@ func Portfolios(now time.Time) templates.PortfoliosPage {
 	net := Snapshot(now).TotalUSD
 	item := func(id, name, wallets string, syms []string, watch int) templates.PortfolioItem {
 		snap, _ := SnapshotFor(id, now)
+		stable, hasValue := snap.StableShare()
 		return templates.PortfolioItem{
 			ID: id, Name: name, ValueUSD: snap.TotalUSD, Share: snap.TotalUSD / net,
+			StableShare: stable, HasValue: hasValue,
 			WalletsText: wallets, AssetsText: assetsText(syms), WatchCount: watch,
 		}
 	}

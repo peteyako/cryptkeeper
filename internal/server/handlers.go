@@ -130,14 +130,22 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		p.Chart = pts
 		p.Change = portfolio.ChangeFor(v.Range, pts, now)
 		if !p.Change.Valid {
-			p.BackfillDays = backfillDays[v.Range]
+			p.BackfillDays = backfillDaysFor(v.Range, now)
 		}
 	}
 	return p
 }
 
-// backfillDays is how many days "Load last N days" fills for a range; 1D and All have none.
+// backfillDays is how many days "Load last N days" fills for a range; 1D and All have none,
+// and YTD (see backfillDaysFor) the days since January 1st.
 var backfillDays = map[string]int{"1W": 7, "1M": 30, "1Y": 365}
+
+func backfillDaysFor(rng string, now time.Time) int {
+	if rng == "YTD" {
+		return int(now.Sub(portfolio.YearStart(now)).Hours() / 24)
+	}
+	return backfillDays[rng]
+}
 
 func ptrIf[T any](ok bool, v *T) *T {
 	if ok {
