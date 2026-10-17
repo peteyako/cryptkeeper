@@ -4562,3 +4562,53 @@ body.amounts-hidden .fig-m {
 .act-dates {
   display: contents;
 }
+
+/* Needs review (Reports) */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review__group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.review__group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.review__title {
+  font-weight: 600;
+}
+
+.review__section {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.review__list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.review__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

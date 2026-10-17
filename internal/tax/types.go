@@ -32,6 +32,8 @@ const (
 	TagSale         Tag = "sale"
 	TagGift         Tag = "gift"
 	TagLost         Tag = "lost"
+	// TagPositionGain marks a position withdrawal whose excess is a realized gain, not income.
+	TagPositionGain Tag = "position-gain"
 )
 
 // Lot flags mark lots whose basis or date is not firm.
@@ -89,6 +91,17 @@ type Parked struct {
 	Amount float64 `yaml:"amount"`
 }
 
+// WriteOff disposes of parked units that will never come back (a position that was
+// liquidated), for ProceedsUSD (0 is a total loss).
+type WriteOff struct {
+	Wallet      string    `yaml:"wallet" json:"wallet"`
+	Asset       string    `yaml:"asset" json:"asset"`
+	Amount      float64   `yaml:"amount" json:"amount"`
+	Date        time.Time `yaml:"date" json:"date"`
+	ProceedsUSD float64   `yaml:"proceedsUsd" json:"proceedsUsd"`
+	Note        string    `yaml:"note,omitempty" json:"note,omitempty"`
+}
+
 // IssueKind names a problem the engine could not resolve on its own.
 type IssueKind string
 
@@ -99,6 +112,8 @@ const (
 	IssueMissingBasis     IssueKind = "missing-basis"
 	IssuePositionExcess   IssueKind = "position-excess"
 	IssueTransferUnpaired IssueKind = "transfer-unpaired"
+	// IssueWriteOffExceedsParked: a write-off asked for more than the wallet had parked.
+	IssueWriteOffExceedsParked IssueKind = "writeoff-exceeds-parked"
 )
 
 // Issue is a data problem the user should review. Amount is always positive: the size of

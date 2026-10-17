@@ -302,6 +302,20 @@ func koinlyAcceptClick(year int) string {
 // koinlyDiscardClick asks first, then forgets the uploaded reports and mappings.
 const koinlyDiscardClick = `confirm('Discard this import? The uploaded reports and the mappings you chose are forgotten.') && @post('/reports/koinly/discard')`
 
+// ---- tax review ---------------------------------------------------------------------------
+
+// reviewFormSubmit posts a review form (tag, price, write-off); the reply patches the panel.
+const reviewFormSubmit = `@post(el.action, {contentType: 'form'})`
+
+// reviewPostClick posts to path (a delete button).
+func reviewPostClick(path string) string { return "@post(" + JSString(path) + ")" }
+
+// reviewBulkSubmit asks first, then tags the whole group.
+func reviewBulkSubmit(count int, symbol string) string {
+	msg := "Tag all " + strconv.Itoa(count) + " " + symbol + " transactions with this tag?"
+	return "confirm(" + JSString(msg) + ") && @post('/reports/tax/tag-bulk', {contentType: 'form'})"
+}
+
 // ---- alerts -----------------------------------------------------------------------------
 
 // alertTestClick sends a test notification.

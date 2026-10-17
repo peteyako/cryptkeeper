@@ -56,6 +56,7 @@ type env struct {
 	price    map[string]float64
 	taxSet   *tax.SettingsStore
 	taxYears *tax.YearStore
+	deps     Deps // what the server was built from, for tests that call its methods directly
 }
 
 func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
@@ -150,7 +151,7 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	srv := httptest.NewServer(New(d))
 	t.Cleanup(srv.Close)
 	return &env{t: t, srv: srv, act: act, rules: rules, ps: ps, reg: reg, ref: ref, syncer: syncer, dataDir: dir, db: db, box: box,
-		price: priceOf, taxSet: taxSet, taxYears: taxYears}
+		price: priceOf, taxSet: taxSet, taxYears: taxYears, deps: d}
 }
 
 func (e *env) do(method, path string, body io.Reader, hdr map[string]string) (*http.Response, string) {

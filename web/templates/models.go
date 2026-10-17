@@ -7,6 +7,7 @@ import (
 
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/internal/tax"
 )
 
 // Shell is what every full page needs to draw the app chrome.
@@ -273,6 +274,78 @@ type ReportsPage struct {
 	// then points at the Koinly import).
 	MissingBasisSales int
 	Now               time.Time
+	Review            ReviewPage // the "Needs review" card
+}
+
+// ---- Needs review -----------------------------------------------------------------------
+
+// ReviewTagged is the Kind of the collapsed group of already-tagged transactions.
+const ReviewTagged tax.IssueKind = "tagged"
+
+// ReviewPage is the "Needs review" panel: the tax engine's open issues grouped by kind and
+// asset, what is parked in positions, and tags that point at transactions that no longer
+// exist. Its root is #review-panel.
+type ReviewPage struct {
+	Groups   []ReviewGroup
+	Parked   []ParkedRow
+	Stale    []StaleTag
+	OpenYear int
+	// WriteOffs are the saved write-offs, in tax.yaml order (Index is the position).
+	WriteOffs []WriteOffRow
+	// Err is the message shown at the top after a refused action.
+	Err string
+	// Close is the close/reopen card at the top of the panel.
+	Close CloseCard
+	// UndatedLots counts manual lots without a date; they are ignored once a year is closed.
+	UndatedLots int
+	// EarlyLots counts, once a year is closed, the manual lots dated before OpenStart: the
+	// closed years hold them, so they are ignored.
+	EarlyLots int
+	// OpenStart is the first day of the open year as shown ("Jan 2, 2006"); set with
+	// EarlyLots.
+	OpenStart string
+	// TagsChecked is false when the activity could not be loaded: the Tagged and stale
+	// sections are then left out.
+	TagsChecked bool
+}
+
+// ReviewGroup is the issues of one kind for one asset. Count is all of them; Items is the
+// newest few (the rest is "+N more").
+type ReviewGroup struct {
+	Kind          tax.IssueKind
+	Title         string
+	Asset, Symbol string
+	Count         int
+	Items         []ReviewItem
+}
+
+// ReviewItem is one transaction to review. Direction is "in" or "out" ("" when the
+// transaction is unknown). Amount is formatted; PriceKey is set for a missing price.
+type ReviewItem struct {
+	TxID, WalletLabel, Time, Direction, Asset, Symbol, Amount string
+	USD                                                       *float64
+	Explorer, Tag, Note, PriceKey                             string
+	TagOptions                                                []string
+}
+
+// ParkedRow is an amount a wallet holds inside a position.
+type ParkedRow struct {
+	Wallet, WalletLabel, Asset, Symbol string
+	Amount                             float64
+}
+
+// WriteOffRow is a saved write-off.
+type WriteOffRow struct {
+	Index               int
+	WalletLabel, Symbol string
+	Amount, ProceedsUSD float64
+	Date, Note          string
+}
+
+// StaleTag is a tag in tax.yaml whose transaction is gone.
+type StaleTag struct {
+	TxID string
+	Tag  tax.Tag
 }
 
 // ---- Koinly import ----------------------------------------------------------------------
@@ -376,4 +449,15 @@ type AlertFormPage struct {
 	PortfolioOptions []PortfolioNav // includes {ID: "all", Name: "All holdings"}
 	AssetOptions     []AssetOption
 	Errors           map[string]string // field -> message; "" = form level
+}
+
+// CloseCard is the close/reopen year card. Confirm is "" (idle), "close" or "reopen" (asking
+// to confirm Year, with Msg). CloseYear / ReopenYear are the years the idle card offers (0 =
+// none).
+type CloseCard struct {
+	Confirm    string
+	Year       int
+	Msg        string
+	CloseYear  int
+	ReopenYear int
 }

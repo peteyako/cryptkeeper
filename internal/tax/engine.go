@@ -26,17 +26,37 @@ var fiat = map[string]bool{"USD": true, "EUR": true, "GBP": true, "CAD": true, "
 
 // Input is everything Compute needs for the open tax year.
 type Input struct {
-	From    time.Time      // start of the first open tax year; earlier txs are ignored
+	// From is the start of the first open tax year (zero when no year is closed). Earlier
+	// txs are not replayed, and earlier manual lots and write-offs are not applied: they are
+	// already in Opening and OpeningParked.
+	From time.Time
+	// To is the exclusive end (zero = no end): txs at or after it are not replayed, though a
+	// transfer half in the window still pairs with them (see transfer), and manual lots and
+	// write-offs at or after it are ignored.
+	To      time.Time
 	Loc     *time.Location // tax timezone; nil = UTC
 	Opening []Lot          // closing lots of the last closed year
 	// OpeningParked is what the wallets held in positions at From, so a withdrawal of it is
 	// not income.
 	OpeningParked []Parked
-	Manual        []Lot              // manual acquisitions, applied at Acquired (zero → From)
-	Txs           []core.Tx          // activity of every wallet, in any order
-	Tags          map[string]Tag     // by Tx.ID
-	Prices        map[string]float64 // PriceKey / FeePriceKey → USD
-	Spam          map[string]bool    // asset keys ignored entirely
+	// PairedBeforeFrom is the IDs of the transfer halves the close of the last year carried
+	// (its Year.CarriedPeers: halves at or after its end whose pair that close processed).
+	// Only such a half is skipped silently when its peer is before From; any other half
+	// with its peer before From raises IssueTransferUnpaired (see transfer).
+	PairedBeforeFrom map[string]bool
+	// Manual is the manual acquisitions, applied at Acquired. An undated one (zero Acquired)
+	// applies at the start when From is zero, and is dropped like any lot before From once a
+	// year is closed.
+	Manual []Lot
+	// Txs is the activity of every wallet, in any order: all of it, not only [From, To), so
+	// a transfer half can find its peer across the boundaries.
+	Txs    []core.Tx
+	Tags   map[string]Tag     // by Tx.ID
+	Prices map[string]float64 // PriceKey / FeePriceKey → USD
+	Spam   map[string]bool    // asset keys ignored entirely
+	// WriteOffs dispose of parked units at their Date (those before From are dropped); TxID
+	// "writeoff:<index>", the index into WriteOffs.
+	WriteOffs []WriteOff
 }
 
 // Result is the open year's lots, realized gains, income and review issues.
@@ -47,14 +67,21 @@ type Result struct {
 	GiftsLost []Disposal
 	Issues    []Issue
 	Parked    []Parked // non-zero balances held in positions at the end, by Wallet, Asset
+	// CarriedPeers is the sorted IDs of the transfer halves at or after To whose pair this
+	// computation processed (see transfer).
+	CarriedPeers []string
 }
 
 // Compute replays the open year over one FIFO queue per (wallet, asset), where the wallet
 // is the tx's SourceID.
 //
-// Order: the opening lots, then every tx at or after From, by Time then ID. A manual lot
-// (an undated one counts as acquired at From) joins its queue before the first tx at or
-// after its Acquired.
+// Order: the opening lots, then every tx in [From, To) (To zero = no end), by Time then ID.
+// A manual lot joins its queue before the first tx at or after its Acquired. A write-off
+// (see writeOff) is applied in the same merge, after the manual lots and before the txs at
+// its instant. Manual lots and write-offs at or after To are ignored. Those before From are
+// ignored too when From is set, since the opening lots and parked balances (the last closed
+// year's closing ones) already include them; an undated manual lot counts as before From.
+// With From zero (nothing closed) an undated manual lot is applied first, at the zero time.
 //
 // Per tx:
 //
@@ -69,8 +96,14 @@ type Result struct {
 //     disposal of the sender with Note "Fee", and received − sent an acquisition, except
 //     that a difference the tx's own Fee already pays is not disposed twice. A value-less
 //     side takes the other side's value. An asset on one half only is settled on its half
-//     the same way (a "Fee" disposal or an acquisition), with no unmatched issue. A half
-//     whose peer is not replayed changes no lots and raises IssueTransferUnpaired.
+//     the same way (a "Fee" disposal or an acquisition), with no unmatched issue. The peer
+//     is looked up among all of Input.Txs, so a pair can straddle From or To (see transfer):
+//     a half whose peer is at or after To processes the pair when it comes up, with every
+//     row dated at that half's time, and lists the peer in Result.CarriedPeers; a half in
+//     Input.PairedBeforeFrom whose peer is before From changes nothing (the prior close
+//     processed the pair). A half whose peer is missing, failed or not linked back, or
+//     before From without the half in PairedBeforeFrom, changes no lots and raises
+//     IssueTransferUnpaired.
 //   - trade / swap: each negative leg is a disposal at its value, each positive leg a lot
 //     with its value as cost.
 //   - fee: each negative leg is a disposal at its value with Note "Fee".
@@ -78,7 +111,8 @@ type Result struct {
 //     value, each negative leg a disposal at its value. A reward's positive leg also books
 //     Income of Type "reward"; the others raise IssueUnmatchedReceive / IssueUnmatchedSend
 //     per leg (a reward raises none). Dust legs are ignored.
-//   - position: see position; the kind decides, whatever the tag (spam aside).
+//   - position: see position; the kind decides, whatever the tag (spam aside; a
+//     position-gain tag turns the excess into a gain).
 //   - stake, and transfer without a PeerID: no lot changes.
 //   - A known Tags entry on a receive, send or other tx without a PeerID replaces the
 //     movement rule (see tagged; a position tag goes to position); an unknown tag string is
@@ -101,18 +135,18 @@ func Compute(in Input) Result {
 		}
 		e.park(p.Wallet, p.Asset, p.Amount)
 	}
-	txs := txsFrom(in.Txs, in.From)
-	e.index(txs)
-	manual := manualLots(in.Manual, in.From)
+	txs := txsBefore(txsFrom(in.Txs, in.From), in.To)
+	e.index(in.Txs) // all txs: a transfer's peer may be outside [From, To)
+	events := preTxEvents(manualLots(in.Manual, in.From), in.WriteOffs, in.From, in.To)
 	next := 0
 	for _, tx := range txs {
-		for ; next < len(manual) && !manual[next].Acquired.After(tx.Time); next++ {
-			e.addLot(manual[next])
+		for ; next < len(events) && !events[next].at.After(tx.Time); next++ {
+			e.applyEvent(events[next])
 		}
 		e.apply(tx)
 	}
-	for _, l := range manual[next:] {
-		e.addLot(l)
+	for _, ev := range events[next:] {
+		e.applyEvent(ev)
 	}
 	return e.result()
 }
@@ -126,9 +160,62 @@ func txsFrom(txs []core.Tx, from time.Time) []core.Tx {
 	return out
 }
 
-// manualLots returns the manual lots by Acquired, an undated lot dated from.
+// txsBefore drops the txs at or after to; a zero to keeps them all.
+func txsBefore(txs []core.Tx, to time.Time) []core.Tx {
+	if to.IsZero() {
+		return txs
+	}
+	return slices.DeleteFunc(txs, func(tx core.Tx) bool { return !tx.Time.Before(to) })
+}
+
+// event is a manual lot or a write-off, applied before the txs at the same instant.
+type event struct {
+	at       time.Time
+	lot      Lot
+	writeOff WriteOff
+	index    int // of the write-off in Input.WriteOffs
+	isWO     bool
+}
+
+// preTxEvents merges the manual lots (already ordered and filtered by from, see manualLots)
+// and the write-offs in [from, to) (to zero = no end) by time. At one instant manual lots
+// come first, then write-offs by index. A write-off before from is already in the opening
+// parked balances and lots, so it is dropped (with from zero none is before it).
+func preTxEvents(manual []Lot, wos []WriteOff, from, to time.Time) []event {
+	var out []event
+	for _, l := range manual {
+		if !to.IsZero() && !l.Acquired.Before(to) {
+			continue
+		}
+		out = append(out, event{at: l.Acquired, lot: l})
+	}
+	for i, w := range wos {
+		if w.Date.Before(from) || (!to.IsZero() && !w.Date.Before(to)) {
+			continue
+		}
+		out = append(out, event{at: w.Date, writeOff: w, index: i, isWO: true})
+	}
+	slices.SortStableFunc(out, func(a, b event) int {
+		return cmp.Or(a.at.Compare(b.at), cmp.Compare(b2i(a.isWO), b2i(b.isWO)), cmp.Compare(a.index, b.index))
+	})
+	return out
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// manualLots returns the manual lots that apply, by Acquired. With from zero (nothing
+// closed) that is all of them, an undated one dated from. Otherwise a lot before from, or
+// undated, is already in the opening lots and is dropped.
 func manualLots(lots []Lot, from time.Time) []Lot {
 	out := slices.Clone(lots)
+	if !from.IsZero() {
+		out = slices.DeleteFunc(out, func(l Lot) bool { return l.Acquired.IsZero() || l.Acquired.Before(from) })
+	}
 	for i := range out {
 		if out[i].Acquired.IsZero() {
 			out[i].Acquired = from
@@ -136,6 +223,15 @@ func manualLots(lots []Lot, from time.Time) []Lot {
 	}
 	slices.SortStableFunc(out, func(a, b Lot) int { return a.Acquired.Compare(b.Acquired) })
 	return out
+}
+
+// applyEvent adds a manual lot or applies a write-off.
+func (e *engine) applyEvent(ev event) {
+	if ev.isWO {
+		e.writeOff(ev.index, ev.writeOff)
+		return
+	}
+	e.addLot(ev.lot)
 }
 
 // engine is the replay state. Each tx kind has its own method, so new treatments plug into
@@ -180,13 +276,21 @@ func (e *engine) byKind(tx core.Tx, legs []*valued) {
 		// Staking, or a self-send inside one wallet (a transfer without a PeerID): no lot
 		// changes, only the fee.
 	case core.TxPosition:
-		// The kind is authoritative: any tag but spam (handled by apply) is ignored.
-		e.position(tx, legs)
+		// The kind is authoritative: any tag but spam (handled by apply) and position-gain
+		// is ignored.
+		tag, _ := e.tagOf(tx)
+		e.position(tx, legs, tag == TagPositionGain)
 	default: // receive, send, reward, other and any unknown kind
 		if tag, ok := e.tagOf(tx); ok {
-			if tag == TagPosition {
-				e.position(tx, legs)
-			} else {
+			switch {
+			case tag == TagPosition:
+				e.position(tx, legs, false)
+			case tag == TagPositionGain && tx.Kind != core.TxSend:
+				// position-gain means "this is a position withdrawal whose excess is a gain",
+				// so a non-position receive tagged with it is treated as that withdrawal. On
+				// a send it does not fit and falls back to the plain treatment.
+				e.position(tx, legs, true)
+			default:
 				e.tagged(tx, tag, legs)
 			}
 			return
@@ -405,5 +509,7 @@ func (e *engine) result() Result {
 	slices.SortStableFunc(r.Disposals, func(a, b Disposal) int {
 		return cmp.Or(a.Sold.Compare(b.Sold), strings.Compare(a.TxID, b.TxID))
 	})
+	slices.Sort(r.CarriedPeers)
+	r.CarriedPeers = slices.Compact(r.CarriedPeers)
 	return r
 }

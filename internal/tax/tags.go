@@ -9,7 +9,18 @@ import (
 // knownTag are the tags that take effect.
 var knownTag = map[Tag]bool{
 	TagPurchase: true, TagIncome: true, TagAirdrop: true, TagGiftReceived: true, TagOwnWallet: true,
-	TagPosition: true, TagSpam: true, TagSale: true, TagGift: true, TagLost: true,
+	TagPosition: true, TagPositionGain: true, TagSpam: true, TagSale: true, TagGift: true, TagLost: true,
+}
+
+// ReceiveTags are the tags that fit a receive, in display order. TagPositionGain also fits a
+// receive, but only a position move; callers add it for those.
+func ReceiveTags() []Tag {
+	return []Tag{TagPurchase, TagIncome, TagAirdrop, TagGiftReceived, TagOwnWallet, TagPosition, TagSpam}
+}
+
+// SendTags are the tags that fit a send, in display order.
+func SendTags() []Tag {
+	return []Tag{TagSale, TagGift, TagLost, TagOwnWallet, TagPosition, TagSpam}
 }
 
 // tagOf returns the tag that applies to tx. Tags only apply to receive, send, other and
@@ -30,7 +41,8 @@ func (e *engine) tagOf(tx core.Tx) (Tag, bool) {
 // tagged applies tag to the legs of a receive, send or other tx. A tagged tx never raises
 // an unmatched issue. A tag that does not fit a leg's direction (gift on a receive, income
 // on a send) falls back to the plain treatment: an acquisition or disposal at market value.
-// TagPosition is routed to position by byKind and never reaches here.
+// TagPosition and TagPositionGain (on a non-send) are routed to position by byKind and never
+// reach here; a position-gain on a send falls to the plain treatment.
 func (e *engine) tagged(tx core.Tx, tag Tag, legs []*valued) {
 	for _, v := range legs {
 		if math.Abs(v.Amount) <= dust {

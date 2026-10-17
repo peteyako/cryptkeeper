@@ -32,6 +32,7 @@ type Settings struct {
 	Tags       map[string]TagEntry `yaml:"tags,omitempty"`       // by Tx.ID
 	Prices     map[string]float64  `yaml:"prices,omitempty"`     // PriceKey / FeePriceKey → USD
 	WalletBox  map[string]string   `yaml:"walletBox,omitempty"`  // source ID → 8949 box letter
+	WriteOffs  []WriteOff          `yaml:"writeOffs,omitempty"`  // parked units written off
 }
 
 // ParseSettings decodes and validates a tax.yaml. Decoding is strict (unknown fields are
@@ -73,6 +74,20 @@ func (s Settings) normalized() (Settings, error) {
 			return Settings{}, fmt.Errorf("tax.yaml: manualLots[%d] (%s): costUsd must be a number >= 0", i, l.Asset)
 		}
 	}
+	for i, w := range s.WriteOffs {
+		switch {
+		case w.Wallet == "":
+			return Settings{}, fmt.Errorf("tax.yaml: writeOffs[%d]: wallet is required", i)
+		case w.Asset == "":
+			return Settings{}, fmt.Errorf("tax.yaml: writeOffs[%d]: asset is required", i)
+		case math.IsNaN(w.Amount) || math.IsInf(w.Amount, 0) || w.Amount <= 0:
+			return Settings{}, fmt.Errorf("tax.yaml: writeOffs[%d] (%s): amount must be a positive number", i, w.Asset)
+		case math.IsNaN(w.ProceedsUSD) || math.IsInf(w.ProceedsUSD, 0) || w.ProceedsUSD < 0:
+			return Settings{}, fmt.Errorf("tax.yaml: writeOffs[%d] (%s): proceedsUsd must be a number >= 0", i, w.Asset)
+		case w.Date.IsZero():
+			return Settings{}, fmt.Errorf("tax.yaml: writeOffs[%d] (%s): date is required", i, w.Asset)
+		}
+	}
 	out := s.clone()
 	out.Version = settingsVersion
 	return out, nil
@@ -91,6 +106,10 @@ func (s Settings) clone() Settings {
 	s.ManualLots = slices.Clone(s.ManualLots)
 	if len(s.ManualLots) == 0 {
 		s.ManualLots = nil
+	}
+	s.WriteOffs = slices.Clone(s.WriteOffs)
+	if len(s.WriteOffs) == 0 {
+		s.WriteOffs = nil
 	}
 	return s
 }

@@ -189,6 +189,7 @@ func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 			p.TaxErr = "data/tax.yaml has an error and was not reloaded: " + err.Error()
 		}
 	}
+	p.Review = s.reviewPage(r.Context())
 	res, ok := s.taxResult(r.Context())
 	p.Realized = s.realizedYears(res, ok)
 	if !ok {

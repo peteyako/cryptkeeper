@@ -1,0 +1,208 @@
+package templates
+
+import (
+	"net/url"
+	"strconv"
+)
+
+// ReviewPanel is the "Needs review" card: the tax engine's open issues by kind and asset,
+// what is parked in positions, and tags whose transaction is gone. Its root is
+// #review-panel.
+templ ReviewPanel(p ReviewPage) {
+	<section id="review-panel" class="card review" aria-labelledby="review-h">
+		<div class="review__head">
+			<h2 id="review-h" class="h-card">Needs review</h2>
+			<p class="muted-text">Transactions the { strconv.Itoa(p.OpenYear) } tax figures could not settle on their own. Tag them to fix the numbers.</p>
+		</div>
+		@CloseCardView(p.Close)
+		if p.UndatedLots > 0 && p.Close.ReopenYear > 0 {
+			<p class="muted-text" role="status">{ strconv.Itoa(p.UndatedLots) } manual lot(s) without a date are ignored once a year is closed — give them a date</p>
+		}
+		if p.EarlyLots > 0 && p.Close.ReopenYear > 0 {
+			<p class="muted-text" role="status">{ strconv.Itoa(p.EarlyLots) } manual lot(s) dated before { p.OpenStart } are ignored — they belong to a closed year</p>
+		}
+		if p.Err != "" {
+			<div role="alert">
+				@Notice("loss", "alert") {
+					{ p.Err }
+				}
+			</div>
+		}
+		if p.TagsChecked && len(p.Groups) == 0 && len(p.Parked) == 0 && len(p.Stale) == 0 && len(p.WriteOffs) == 0 {
+			<p class="muted-text">Nothing needs review.</p>
+		}
+		if !p.TagsChecked {
+			<p class="muted-text">Activity couldn't be loaded; tags not checked</p>
+		}
+		for _, g := range p.Groups {
+			@reviewGroup(g)
+		}
+		if len(p.Parked) > 0 {
+			<div class="review__section">
+				<h3 class="label">Parked in positions</h3>
+				<ul class="review__list">
+					for _, r := range p.Parked {
+						<li class="review__row">
+							<span>{ r.WalletLabel }</span>
+							<span class="num">
+								@FigText(CoinAmount(r.Amount, r.Symbol)+" "+r.Symbol, "•••• "+r.Symbol)
+							</span>
+							<form class="review__form" method="post" action="/reports/tax/writeoff" data-on:submit={ reviewFormSubmit }>
+								<input type="hidden" name="wallet" value={ r.Wallet }/>
+								<input type="hidden" name="asset" value={ r.Asset }/>
+								<input class="input" name="amount" inputmode="decimal" aria-label="Amount to write off" value={ strconv.FormatFloat(r.Amount, 'f', -1, 64) }/>
+								<input class="input" type="date" name="date" aria-label="Write-off date" required/>
+								<input class="input" name="proceeds" inputmode="decimal" aria-label="Proceeds in USD" placeholder="Proceeds USD (0)"/>
+								<input class="input" name="note" aria-label="Note" placeholder="Note"/>
+								<button class="btn" type="submit">Write off</button>
+							</form>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+		if len(p.WriteOffs) > 0 {
+			<div class="review__section">
+				<h3 class="label">Write-offs</h3>
+				<ul class="review__list">
+					for _, w := range p.WriteOffs {
+						<li class="review__row">
+							<span class="muted-text">{ w.Date }</span>
+							<span>{ w.WalletLabel }</span>
+							<span class="num">{ CoinAmount(w.Amount, w.Symbol) } { w.Symbol }</span>
+							<span class="muted-text num">{ "proceeds $" + strconv.FormatFloat(w.ProceedsUSD, 'f', 2, 64) }</span>
+							if w.Note != "" {
+								<span class="muted-text">{ w.Note }</span>
+							}
+							<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/writeoff/"+strconv.Itoa(w.Index)+"/delete") }>Delete</button>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+		if len(p.Stale) > 0 {
+			<div class="review__section">
+				<h3 class="label">Tags for transactions that no longer exist</h3>
+				<ul class="review__list">
+					for _, t := range p.Stale {
+						<li class="review__row">
+							<code>{ t.TxID }</code>
+							<span class="badge">{ string(t.Tag) }</span>
+							<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/tag/"+url.PathEscape(t.TxID)+"/delete") }>Remove</button>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+	</section>
+}
+
+templ reviewGroup(g ReviewGroup) {
+	<details class="review__group" open?={ g.Kind != ReviewTagged }>
+		<summary>
+			<span class="review__title">{ g.Title }</span>
+			if g.Symbol != "" {
+				<span class="muted-text">{ g.Symbol }</span>
+			}
+			<span class="badge">{ strconv.Itoa(g.Count) }</span>
+		</summary>
+		if g.Kind != ReviewTagged && len(g.Items) > 0 && len(g.Items[0].TagOptions) > 0 {
+			<form class="review__form" method="post" action="/reports/tax/tag-bulk" data-on:submit={ reviewBulkSubmit(g.Count, g.Symbol) }>
+				<input type="hidden" name="kind" value={ string(g.Kind) }/>
+				<input type="hidden" name="asset" value={ g.Asset }/>
+				<select class="input" name="tag" aria-label={ "Tag all " + g.Symbol }>
+					for _, o := range g.Items[0].TagOptions {
+						<option value={ o }>{ o }</option>
+					}
+				</select>
+				<button class="btn" type="submit">{ "Tag all " + strconv.Itoa(g.Count) }</button>
+			</form>
+		}
+		<ul class="review__list">
+			for _, it := range g.Items {
+				@reviewItem(it)
+			}
+		</ul>
+		if g.Count > len(g.Items) {
+			<p class="muted-text">+{ strconv.Itoa(g.Count - len(g.Items)) } more</p>
+		}
+	</details>
+}
+
+templ reviewItem(it ReviewItem) {
+	<li class="review__row" data-tx={ it.TxID }>
+		<span class="muted-text">{ it.Time }</span>
+		<span>{ it.WalletLabel }</span>
+		<span class="num">
+			if it.Direction == "in" {
+				@FigText("+"+it.Amount+" "+it.Symbol, "•••• "+it.Symbol)
+			} else if it.Direction == "out" {
+				@FigText(Minus+it.Amount+" "+it.Symbol, "•••• "+it.Symbol)
+			} else {
+				@FigText(it.Amount+" "+it.Symbol, "•••• "+it.Symbol)
+			}
+		</span>
+		if it.USD != nil {
+			<span class="muted-text">
+				@FigFiat(*it.USD)
+			</span>
+		}
+		if it.Tag != "" {
+			<span class="badge">{ it.Tag }</span>
+		}
+		if it.Note != "" {
+			<span class="muted-text">{ it.Note }</span>
+		}
+		if u := SafeExplorerURL(it.Explorer); u != "" {
+			<a href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">Explorer</a>
+		}
+		if len(it.TagOptions) > 0 {
+			<form class="review__form" method="post" action="/reports/tax/tag" data-on:submit={ reviewFormSubmit } data-on:change={ reviewFormSubmit }>
+				<input type="hidden" name="tx" value={ it.TxID }/>
+				<input type="hidden" name="asset" value={ it.Asset }/>
+				<select class="input" name="tag" aria-label="Tag">
+					<option value="">No tag</option>
+					for _, o := range it.TagOptions {
+						<option value={ o } selected?={ o == it.Tag }>{ o }</option>
+					}
+				</select>
+				<input class="input" name="note" aria-label="Note" placeholder="Note" value={ it.Note }/>
+			</form>
+		}
+		if it.PriceKey != "" {
+			<form class="review__form" method="post" action="/reports/tax/price" data-on:submit={ reviewFormSubmit }>
+				<input type="hidden" name="key" value={ it.PriceKey }/>
+				<input class="input" name="usd" inputmode="decimal" aria-label="Price in USD" placeholder="USD price"/>
+				<button class="btn" type="submit">Set price</button>
+			</form>
+		}
+	</li>
+}
+
+// CloseCardView is the close/reopen year card. Its root is #close-card.
+templ CloseCardView(c CloseCard) {
+	<div id="close-card" class={ templ.KV("review__section", c.Confirm != "" || c.CloseYear > 0 || c.ReopenYear > 0) }>
+		if c.Confirm != "" {
+			<p role="status">{ c.Msg }</p>
+			<form class="review__form" method="post" action={ "/reports/tax/" + c.Confirm } data-on:submit={ reviewFormSubmit }>
+				<input type="hidden" name="year" value={ strconv.Itoa(c.Year) }/>
+				<input type="hidden" name="confirm" value="1"/>
+				<button class="btn" type="submit">Confirm</button>
+				<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/close-cancel") }>Cancel</button>
+			</form>
+		} else {
+			if c.CloseYear > 0 {
+				<form class="review__form" method="post" action="/reports/tax/close" data-on:submit={ reviewFormSubmit }>
+					<input type="hidden" name="year" value={ strconv.Itoa(c.CloseYear) }/>
+					<button class="btn" type="submit">{ "Close " + strconv.Itoa(c.CloseYear) }</button>
+				</form>
+			}
+			if c.ReopenYear > 0 {
+				<form class="review__form" method="post" action="/reports/tax/reopen" data-on:submit={ reviewFormSubmit }>
+					<input type="hidden" name="year" value={ strconv.Itoa(c.ReopenYear) }/>
+					<button class="btn btn--ghost" type="submit">{ "Reopen " + strconv.Itoa(c.ReopenYear) }</button>
+				</form>
+			}
+		}
+	</div>
+}

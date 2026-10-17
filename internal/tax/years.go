@@ -35,19 +35,25 @@ type Summary struct {
 // Year is a closed tax year: the frozen result plus the lots and parked balances the next
 // year opens with.
 type Year struct {
-	Version   int        `yaml:"version"`
-	Year      int        `yaml:"year"`
-	Source    string     `yaml:"source"` // "koinly" | "cryptkeep"
-	ClosedAt  time.Time  `yaml:"closedAt"`
-	Summary   Summary    `yaml:"summary"`
-	Disposals []Disposal `yaml:"disposals,omitempty"`
-	Income    []Income   `yaml:"income,omitempty"`
-	GiftsLost []Disposal `yaml:"giftsLost,omitempty"`
+	Version  int       `yaml:"version"`
+	Year     int       `yaml:"year"`
+	Source   string    `yaml:"source"` // "koinly" | "cryptkeep"
+	ClosedAt time.Time `yaml:"closedAt"`
+	// OpenIssues is how many review items of the year were still open when it was closed.
+	OpenIssues int        `yaml:"openIssues,omitempty"`
+	Summary    Summary    `yaml:"summary"`
+	Disposals  []Disposal `yaml:"disposals,omitempty"`
+	Income     []Income   `yaml:"income,omitempty"`
+	GiftsLost  []Disposal `yaml:"giftsLost,omitempty"`
 	// ClosingLots are the lots held at year end.
 	ClosingLots []Lot `yaml:"closingLots,omitempty"`
 	// ClosingParked are balances inside the user's own positions at year end (locked JUP,
 	// perps collateral).
 	ClosingParked []Parked `yaml:"closingParked,omitempty"`
+	// CarriedPeers are the IDs of the transfer halves after the year whose pair its close
+	// processed (Result.CarriedPeers), sorted: the next year skips them silently
+	// (Input.PairedBeforeFrom).
+	CarriedPeers []string `yaml:"carriedPeers,omitempty"`
 }
 
 // Summarize totals disposals by term and income. Every row, Note "Fee" rows included, is
@@ -108,6 +114,14 @@ func (y Year) validate() error {
 			return fmt.Errorf("tax year %d: closingParked[%d] (%s): amount must be above dust", y.Year, i, p.Asset)
 		}
 	}
+	for i, id := range y.CarriedPeers {
+		switch {
+		case id == "":
+			return fmt.Errorf("tax year %d: carriedPeers[%d]: tx ID is required", y.Year, i)
+		case i > 0 && y.CarriedPeers[i-1] >= id:
+			return fmt.Errorf("tax year %d: carriedPeers[%d] (%s): IDs must be sorted and unique", y.Year, i, id)
+		}
+	}
 	return nil
 }
 
@@ -117,6 +131,7 @@ func (y Year) clone() Year {
 	y.GiftsLost = slices.Clone(y.GiftsLost)
 	y.ClosingLots = slices.Clone(y.ClosingLots)
 	y.ClosingParked = slices.Clone(y.ClosingParked)
+	y.CarriedPeers = slices.Clone(y.CarriedPeers)
 	return y
 }
 

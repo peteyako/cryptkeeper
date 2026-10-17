@@ -60,9 +60,9 @@ func (s *Server) taxResult(ctx context.Context) (tax.Result, bool) {
 
 // taxInput assembles the engine's input:
 //
-//   - From, Opening and OpeningParked come from the last closed year. With no closed year
-//     (before a Koinly import) From is the zero time: every activity counts, with no
-//     opening lots.
+//   - From, Opening, OpeningParked and PairedBeforeFrom (its CarriedPeers) come from the
+//     last closed year. With no closed year (before a Koinly import) From is the zero
+//     time: every activity counts, with no opening lots. A Koinly year carries no peers.
 //   - Manual lots, tags and price overrides come from data/tax.yaml.
 //   - Txs is all activity, without CSV rows the live API already synced.
 //   - Spam is spamSet of the configured hidden mints and the latest snapshot.
@@ -80,17 +80,24 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 	}
 	snap, ready := s.latest()
 	in = tax.Input{
-		Loc:    loc,
-		Manual: settings.ManualLots,
-		Txs:    txs,
-		Tags:   tagMap(settings.Tags),
-		Prices: settings.Prices,
-		Spam:   spamSet(s.Cfg.Solana.HideMints, snap),
+		Loc:       loc,
+		Manual:    settings.ManualLots,
+		WriteOffs: settings.WriteOffs,
+		Txs:       txs,
+		Tags:      tagMap(settings.Tags),
+		Prices:    settings.Prices,
+		Spam:      spamSet(s.Cfg.Solana.HideMints, snap),
 	}
 	if s.TaxYears != nil {
 		last, ok := s.TaxYears.LastClosed()
 		in.From = tax.OpenYearStart(last, ok, loc)
 		in.Opening, in.OpeningParked = last.ClosingLots, last.ClosingParked
+		if len(last.CarriedPeers) > 0 {
+			in.PairedBeforeFrom = make(map[string]bool, len(last.CarriedPeers))
+			for _, id := range last.CarriedPeers {
+				in.PairedBeforeFrom[id] = true
+			}
+		}
 	}
 	return in, ready, nil
 }

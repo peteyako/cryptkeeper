@@ -3,6 +3,8 @@ package tax
 import (
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -125,5 +127,39 @@ func TestOpenYearStart(t *testing.T) {
 	}
 	if !OpenYearStart(Year{}, false, ny).IsZero() {
 		t.Error("!ok: want zero time")
+	}
+}
+
+// A closed year keeps the peers its close carried (sorted, unique, non-empty IDs) across a
+// reload, and Get returns a copy of them.
+func TestYearCarriedPeers(t *testing.T) {
+	s, dir := newYearStore(t)
+	want := []string{"a:send", "b:recv"}
+	if err := s.Save(Year{Year: 2026, Source: "cryptkeep", CarriedPeers: slices.Clone(want)}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Get(2026)
+	got.CarriedPeers[0] = "changed"
+	s2, err := NewYearStore(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range []*YearStore{s, s2} {
+		if y, _ := st.Get(2026); !slices.Equal(y.CarriedPeers, want) {
+			t.Errorf("CarriedPeers = %v, want %v", y.CarriedPeers, want)
+		}
+	}
+	for name, ids := range map[string][]string{
+		"empty":    {"", "a:send"},
+		"unsorted": {"b:recv", "a:send"},
+		"repeated": {"a:send", "a:send"},
+	} {
+		err := s.Save(Year{Year: 2027, Source: "cryptkeep", CarriedPeers: ids})
+		if err == nil || !strings.Contains(err.Error(), "carriedPeers") {
+			t.Errorf("%s: err = %v, want a carriedPeers error", name, err)
+		}
+	}
+	if _, ok := s.Get(2027); ok {
+		t.Error("an invalid year must not be stored")
 	}
 }

@@ -63,6 +63,8 @@ type Deps struct {
 type Server struct {
 	Deps
 	taxes taxCache
+	// closeMu serialises closing and reopening a tax year (check, compute, save).
+	closeMu sync.Mutex
 	// draftMu serialises the Koinly import draft's load → change → save.
 	draftMu sync.Mutex
 }
@@ -130,6 +132,15 @@ func New(d Deps) http.Handler {
 		r.Post("/reports/koinly/map", s.koinlyMap)
 		r.Post("/reports/koinly/accept", s.koinlyAccept)
 		r.Post("/reports/koinly/discard", s.koinlyDiscard)
+		r.Post("/reports/tax/close", s.taxClose)
+		r.Post("/reports/tax/close-cancel", s.taxCloseCancel)
+		r.Post("/reports/tax/reopen", s.taxReopen)
+		r.Post("/reports/tax/tag", s.taxTag)
+		r.Post("/reports/tax/tag-bulk", s.taxTagBulk)
+		r.Post("/reports/tax/tag/{tx}/delete", s.taxTagDelete)
+		r.Post("/reports/tax/price", s.taxPrice)
+		r.Post("/reports/tax/writeoff", s.taxWriteOff)
+		r.Post("/reports/tax/writeoff/{i}/delete", s.taxWriteOffDelete)
 
 		r.Get("/export/holdings.csv", s.exportHoldings)
 		r.Get("/export/history.csv", s.exportHistory)

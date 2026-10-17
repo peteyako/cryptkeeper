@@ -6,8 +6,9 @@ import (
 	"crypto-portfolio/internal/core"
 )
 
-// index records the txs a transfer half can pair with: the replayed ones (at or after
-// From) that did not fail and are linked to a peer themselves.
+// index records the txs a transfer half can pair with: those that did not fail and are
+// linked to a peer themselves. It is given all of Input.Txs, not only the replayed ones,
+// so a pair that straddles From or To is still found (see transfer).
 func (e *engine) index(txs []core.Tx) {
 	for _, tx := range txs {
 		if tx.Status != core.TxFailed && tx.PeerID != "" {
@@ -27,20 +28,42 @@ func (e *engine) index(txs []core.Tx) {
 // negative leg as a disposal with Note "Fee", a positive one as an acquisition. Neither
 // raises an unmatched issue, as the tx is a transfer.
 //
-// A half whose peer is missing from the replay (before From, failed, or not linked back)
-// changes no lots and raises IssueTransferUnpaired per leg.
+// The peer may be outside the replayed [From, To):
+//
+//   - at or after To (closing a year): the pair is processed now, when this half comes up,
+//     as if both halves were replayed, so the closing lots hold the moved lots, and the
+//     peer's ID goes to Result.CarriedPeers. Every row the pair creates (a difference, an
+//     extra, a shortfall lot, a one-sided leg, an issue) is dated at this half's time, so a
+//     closed year holds no row of the next one. The peer's own Tx.Fee is not disposed here:
+//     the next year disposes it, at the peer's time, when it skips the pair.
+//   - before From: when this half's ID is in Input.PairedBeforeFrom (the close of the prior
+//     year carried it, as above), that close processed the pair and the lots are in the
+//     opening lots, so this half changes nothing and raises nothing. Otherwise nothing says
+//     the lots moved (the pair was linked after the close, the prior year is a Koinly
+//     import, or the other half was ignored as spam) and the half is unpaired, as below.
+//
+// A half whose peer is not in Input.Txs, failed, or is not linked back changes no lots and
+// raises IssueTransferUnpaired per leg.
 func (e *engine) transfer(tx core.Tx) {
 	if e.paired[tx.ID] {
 		return
 	}
 	peer, ok := e.peers[tx.PeerID]
-	if !ok || peer.ID == tx.ID || peer.PeerID != tx.ID {
+	before := ok && peer.Time.Before(e.in.From)
+	if !ok || peer.ID == tx.ID || peer.PeerID != tx.ID || (before && !e.in.PairedBeforeFrom[tx.ID]) {
 		for _, v := range e.legs(tx) {
 			e.issue(IssueTransferUnpaired, tx, v.AssetKey, v.Amount)
 		}
 		return
 	}
 	e.paired[tx.ID], e.paired[peer.ID] = true, true
+	if before {
+		return
+	}
+	if !e.in.To.IsZero() && !peer.Time.Before(e.in.To) {
+		e.out.CarriedPeers = append(e.out.CarriedPeers, peer.ID)
+		peer.Time = tx.Time // a local copy: the rows booked on the peer stay in this year
+	}
 
 	theirs := e.legs(peer)
 	byAsset := make(map[string]*valued, len(theirs))

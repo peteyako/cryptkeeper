@@ -1,7 +1,11 @@
 package tax
 
 import (
+	"cmp"
 	"math"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -282,17 +286,222 @@ func TestManualLotAppliedAtDate(t *testing.T) {
 	near(t, "BTC cost", btc[0].CostUSD, 25000)
 }
 
-func TestManualLotWithoutDateIsAtFrom(t *testing.T) {
+// With nothing closed (From zero) an undated manual lot applies at the start of history.
+func TestNoClosedYearStillAppliesUndatedManual(t *testing.T) {
 	r := Compute(Input{
-		From:   from2026,
 		Manual: []Lot{lot("btc", "BTC", 1, 50000, time.Time{})},
 		Txs: []core.Tx{mk("s1", "btc", at(2026, 1, 15, 0), core.TxTrade,
 			lg("BTC", -0.5, usd(-20000)), lg("USD", 20000, nil))},
 	})
-	if len(r.Disposals) != 1 || r.Disposals[0].Note != "" || !r.Disposals[0].Acquired.Equal(from2026) {
-		t.Fatalf("disposals = %+v, want one from the manual lot acquired at From", r.Disposals)
+	if len(r.Disposals) != 1 || r.Disposals[0].Note != "" || !r.Disposals[0].Acquired.IsZero() {
+		t.Fatalf("disposals = %+v, want one from the undated manual lot", r.Disposals)
 	}
 	near(t, "cost", r.Disposals[0].CostUSD, 25000)
+	near(t, "BTC held", heldIn(r, "btc", "BTC"), 0.5)
+	if len(r.Issues) != 0 {
+		t.Errorf("issues = %+v, want none", r.Issues)
+	}
+}
+
+// from2027 is the start of the open year once 2026 is closed, in UTC.
+var from2027 = at(2027, 1, 1, 0)
+
+// Once a year is closed, the manual lots and write-offs before From are already in the
+// opening lots and parked balances (the closed year's closing ones): they are not applied
+// again. An undated manual lot counts as before From. Those at or after From still apply.
+func TestManualAndWriteOffBeforeFromDropped(t *testing.T) {
+	manual2026 := lot("btc", "BTC", 1, 50000, at(2026, 2, 1, 0))
+	r := Compute(Input{
+		From: from2027,
+		Opening: []Lot{
+			manual2026, // the 2026 manual lot, carried into the closing lots of 2026
+			lot("w", "SOL", 6, 600, at(2025, 1, 1, 0)),
+		},
+		OpeningParked: []Parked{{Wallet: "w", Asset: "SOL", Amount: 6}},
+		Manual: []Lot{
+			manual2026,
+			lot("btc", "BTC", 3, 900, time.Time{}),           // undated: applied when nothing was closed
+			lot("btc", "BTC", 0.25, 100, from2027),           // exactly at From: applies
+			lot("btc", "BTC", 0.5, 30000, at(2027, 3, 1, 0)), // in the open year: applies
+		},
+		WriteOffs: []WriteOff{
+			{Wallet: "w", Asset: "SOL", Amount: 6, Date: at(2026, 6, 1, 0)}, // already in 2026
+			{Wallet: "w", Asset: "SOL", Amount: 1, Date: at(2027, 4, 1, 0), ProceedsUSD: 5},
+		},
+	})
+	btc := lotsIn(r, "btc", "BTC")
+	if len(btc) != 3 {
+		t.Fatalf("BTC lots = %+v, want the opening lot, the From lot and the 2027 lot", btc)
+	}
+	near(t, "BTC held", heldIn(r, "btc", "BTC"), 1.75)
+	if !btc[0].Acquired.Equal(at(2026, 2, 1, 0)) || !btc[1].Acquired.Equal(from2027) || !btc[2].Acquired.Equal(at(2027, 3, 1, 0)) {
+		t.Errorf("BTC lots = %+v, want acquired 2026-02-01, 2027-01-01 and 2027-03-01", btc)
+	}
+	for _, d := range r.Disposals {
+		if d.Sold.Before(from2027) {
+			t.Errorf("disposal %+v is dated before From", d)
+		}
+	}
+	if len(r.Disposals) != 1 {
+		t.Fatalf("disposals = %+v, want only the 2027 write-off", r.Disposals)
+	}
+	d := r.Disposals[0]
+	near(t, "write-off amount", d.Amount, 1)
+	near(t, "write-off cost", d.CostUSD, 100)
+	near(t, "write-off proceeds", d.ProceedsUSD, 5)
+	if d.TxID != "writeoff:1" || !d.Sold.Equal(at(2027, 4, 1, 0)) {
+		t.Errorf("write-off = %+v, want writeoff:1 on 2027-04-01", d)
+	}
+	near(t, "SOL held", heldIn(r, "w", "SOL"), 5)
+	if len(r.Parked) != 1 || r.Parked[0] != (Parked{Wallet: "w", Asset: "SOL", Amount: 5}) {
+		t.Errorf("parked = %+v, want SOL 5 in w (6 opening, minus only the 2027 write-off)", r.Parked)
+	}
+	if len(r.Issues) != 0 {
+		t.Errorf("issues = %+v, want none", r.Issues)
+	}
+}
+
+// idSet is a set of tx IDs; nil when there are none.
+func idSet(ids []string) map[string]bool {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out
+}
+
+// Closing 2025 and 2026 in turn and then computing 2027, each year from the one before (its
+// closing lots, parked balances and carried peers) with the same tax.yaml and activity,
+// ends with exactly the lots of one pass over everything, and the three years' disposals
+// are the one pass's, row for row. Pairs straddle both year ends in both orders, and one
+// late sender's difference is its own fee. The only row that differs is the one a close
+// dates at the half inside its year (clamped): only its date moves.
+func TestCloseRoundTrip(t *testing.T) {
+	dt := func(y, m, d, h, min int) time.Time { return time.Date(y, time.Month(m), d, h, min, 0, 0, time.UTC) }
+	// 2025/2026: a send first (a → b), and a receive first whose late sender pays a
+	// difference (a → c).
+	send1, recv1 := linked(
+		withFee(mk("send1", "a", dt(2025, 12, 31, 23, 58), core.TxTransfer, lg("BTC", -0.4, usd(-40000))), lg("BTC", -0.0001, usd(-10))),
+		mk("recv1", "b", dt(2026, 1, 1, 0, 3), core.TxTransfer, lg("BTC", 0.4, usd(40000))),
+	)
+	send2, recv2 := linked(
+		mk("send2", "a", dt(2026, 1, 1, 0, 1), core.TxTransfer, lg("SOL", -5, usd(-1000))),
+		mk("recv2", "c", dt(2025, 12, 31, 23, 50), core.TxTransfer, lg("SOL", 4.9, usd(980))),
+	)
+	// 2026/2027: a receive first whose difference is the late sender's own fee (a → b), and
+	// a send first (a → c).
+	send3, recv3 := linked(
+		withFee(mk("send3", "a", dt(2027, 1, 1, 0, 2), core.TxTransfer, lg("BTC", -0.4, usd(-40000))), lg("BTC", -0.0001, usd(-10))),
+		mk("recv3", "b", dt(2026, 12, 31, 23, 55), core.TxTransfer, lg("BTC", 0.3999, usd(39990))),
+	)
+	send4, recv4 := linked(
+		mk("send4", "a", dt(2026, 12, 31, 23, 59), core.TxTransfer, lg("ETH", -1, usd(-2500))),
+		mk("recv4", "c", dt(2027, 1, 1, 0, 10), core.TxTransfer, lg("ETH", 1, usd(2500))),
+	)
+	dep := mk("dep", "a", at(2025, 6, 1, 0), core.TxSend, lg("SOL", -10, usd(-2000)))
+	wd := mk("wd", "a", at(2027, 3, 1, 0), core.TxReceive, lg("SOL", 3, usd(750)))
+	txs := []core.Tx{
+		mk("buy", "a", at(2025, 3, 1, 0), core.TxTrade, lg("USD", -6000, nil), lg("SOL", 30, usd(6000))),
+		dep, send1, recv1, send2, recv2,
+		mk("sell", "b", at(2026, 2, 1, 0), core.TxTrade, lg("BTC", -0.2, usd(-22000)), lg("USD", 22000, nil)),
+		send3, recv3, send4, recv4, wd,
+		mk("eth", "c", at(2027, 5, 1, 0), core.TxTrade, lg("ETH", -0.5, usd(-1500)), lg("USD", 1500, nil)),
+	}
+	in := Input{
+		Manual: []Lot{
+			lot("a", "ETH", 2, 3000, time.Time{}),
+			lot("a", "BTC", 1, 40000, at(2025, 2, 1, 0)),
+			lot("c", "BTC", 0.5, 20000, at(2026, 4, 1, 0)),
+			lot("c", "SOL", 1, 150, at(2027, 4, 1, 0)),
+		},
+		WriteOffs: []WriteOff{
+			{Wallet: "a", Asset: "SOL", Amount: 4, Date: at(2025, 9, 1, 0), ProceedsUSD: 100},
+			{Wallet: "a", Asset: "SOL", Amount: 2, Date: at(2026, 5, 1, 0)},
+			{Wallet: "a", Asset: "SOL", Amount: 1, Date: at(2027, 6, 1, 0), ProceedsUSD: 5},
+		},
+		Txs:  txs,
+		Tags: map[string]Tag{dep.ID: TagPosition, wd.ID: TagPosition},
+	}
+
+	close25 := in
+	close25.To = from2026
+	res2025 := Compute(close25)
+	close26 := in
+	close26.From, close26.To = from2026, from2027
+	close26.Opening, close26.OpeningParked, close26.PairedBeforeFrom = res2025.Lots, res2025.Parked, idSet(res2025.CarriedPeers)
+	res2026 := Compute(close26)
+	open27 := in
+	open27.From = from2027
+	open27.Opening, open27.OpeningParked, open27.PairedBeforeFrom = res2026.Lots, res2026.Parked, idSet(res2026.CarriedPeers)
+	res2027 := Compute(open27)
+	onePass := Compute(in)
+
+	if want := []string{"a:send2", "b:recv1"}; !slices.Equal(res2025.CarriedPeers, want) {
+		t.Errorf("2025 CarriedPeers = %v, want %v", res2025.CarriedPeers, want)
+	}
+	if want := []string{"a:send3", "c:recv4"}; !slices.Equal(res2026.CarriedPeers, want) {
+		t.Errorf("2026 CarriedPeers = %v, want %v", res2026.CarriedPeers, want)
+	}
+	if res2027.CarriedPeers != nil || onePass.CarriedPeers != nil {
+		t.Errorf("CarriedPeers without To: 2027 %v, one pass %v, want none", res2027.CarriedPeers, onePass.CarriedPeers)
+	}
+	years := []struct {
+		r        Result
+		from, to time.Time
+	}{{res2025, time.Time{}, from2026}, {res2026, from2026, from2027}, {res2027, from2027, time.Time{}}}
+	for _, y := range years {
+		for _, d := range y.r.Disposals {
+			if d.Sold.Before(y.from) || (!y.to.IsZero() && !d.Sold.Before(y.to)) {
+				t.Errorf("disposal %+v is outside [%v, %v)", d, y.from, y.to)
+			}
+		}
+		if len(y.r.Issues) != 0 || len(y.r.Income) != 0 || len(y.r.GiftsLost) != 0 {
+			t.Errorf("issues = %+v income = %+v gifts = %+v, want none", y.r.Issues, y.r.Income, y.r.GiftsLost)
+		}
+	}
+	if len(onePass.Issues) != 0 {
+		t.Errorf("one pass issues = %+v, want none", onePass.Issues)
+	}
+	if !reflect.DeepEqual(res2027.Lots, onePass.Lots) {
+		t.Errorf("2027 lots =\n%+v\nwant the one pass's\n%+v", res2027.Lots, onePass.Lots)
+	}
+	if !reflect.DeepEqual(res2027.Parked, onePass.Parked) || len(onePass.Parked) != 0 {
+		t.Errorf("2027 parked = %+v, one pass %+v, want both empty", res2027.Parked, onePass.Parked)
+	}
+
+	// Row for row, once a clamped row (booked by a close on a carried peer, dated at the
+	// half inside the year) gets its peer's own time back.
+	when := map[string]time.Time{}
+	for _, tx := range txs {
+		when[tx.ID] = tx.Time
+	}
+	var chain []Disposal
+	clamped := 0
+	for _, y := range years {
+		carried := idSet(y.r.CarriedPeers)
+		for _, d := range y.r.Disposals {
+			if carried[d.TxID] {
+				if d.TxID != send2.ID || !d.Sold.Equal(recv2.Time) {
+					t.Errorf("clamped row %+v, want a:send2's difference dated at c:recv2", d)
+				}
+				d.Sold = when[d.TxID]
+				clamped++
+			}
+			chain = append(chain, d)
+		}
+	}
+	if clamped != 1 {
+		t.Errorf("clamped rows = %d, want 1 (a:send2's difference)", clamped)
+	}
+	slices.SortStableFunc(chain, func(a, b Disposal) int {
+		return cmp.Or(a.Sold.Compare(b.Sold), strings.Compare(a.TxID, b.TxID))
+	})
+	if len(chain) != 8 || !reflect.DeepEqual(chain, onePass.Disposals) {
+		t.Errorf("disposals of the three years =\n%+v\nwant the one pass's (8)\n%+v", chain, onePass.Disposals)
+	}
 }
 
 func TestFiatAndSpamIgnored(t *testing.T) {
