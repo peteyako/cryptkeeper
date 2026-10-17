@@ -29,6 +29,7 @@ const (
 	KindLP     = "lp"
 	KindPerp   = "perp"
 	KindLocked = "locked"
+	KindLimit  = "limit" // a Jupiter limit-order vault (read by the solana package, not an adapter)
 )
 
 // TokenBalance is one of the wallet's token holdings, NFTs included (amount 1, decimals 0).

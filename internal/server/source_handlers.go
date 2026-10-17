@@ -76,6 +76,7 @@ func formValues(d sources.Def) map[string]string {
 		v["scriptType"] = d.ScriptType
 	case sources.TypeSolana:
 		v["address"] = d.Address
+		v["jupiterVault"] = d.JupiterVault
 	case sources.TypeManual:
 		v["holdings"] = manual.FormatLines(d.Holdings)
 	}
@@ -167,6 +168,7 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 		if d.Address == "" {
 			errs["address"] = "Paste the wallet's public address."
 		}
+		d.JupiterVault = f("jupiterVault")
 	case sources.TypeManual:
 		hs, err := manual.ParseLines(r.PostFormValue("holdings"))
 		if err != nil {
@@ -175,8 +177,10 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 		d.Holdings = hs
 		d.Kind = core.KindManual
 	}
-	if lower := strings.ToLower(r.PostFormValue("key") + r.PostFormValue("address")); sources.LooksLikeSeed(lower) {
-		errs[""] = "That looks like a seed phrase or private key. CryptKeep only needs public keys — never enter a seed phrase here."
+	for _, field := range []string{"key", "address", "jupiterVault"} {
+		if sources.LooksLikeSeed(strings.ToLower(strings.TrimSpace(r.PostFormValue(field)))) {
+			errs[""] = "That looks like a seed phrase or private key. CryptKeep only needs public keys — never enter a seed phrase here."
+		}
 	}
 	return d, errs
 }

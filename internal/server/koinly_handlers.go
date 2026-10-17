@@ -371,7 +371,7 @@ func (s *Server) koinlyWallets(ctx context.Context, addresses bool) []koinly.Wal
 	for _, e := range s.Registry.Entries() {
 		w := koinly.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type}
 		if addresses {
-			for _, a := range []string{e.Def.Address, e.Def.Key} {
+			for _, a := range []string{e.Def.Address, e.Def.JupiterVault, e.Def.Key} {
 				if a != "" {
 					w.Addresses = append(w.Addresses, a)
 				}

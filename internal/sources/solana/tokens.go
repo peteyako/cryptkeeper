@@ -97,13 +97,18 @@ type tokenAcctRef struct {
 // tokenAccounts lists the owner's token accounts under both token programs and sums them per
 // mint with exact integer arithmetic.
 func (s *Source) tokenAccounts(ctx context.Context) (*tokenSet, error) {
+	return s.tokenAccountsOf(ctx, s.cfg.Address)
+}
+
+// tokenAccountsOf lists owner's token accounts under both token programs.
+func (s *Source) tokenAccountsOf(ctx context.Context, owner string) (*tokenSet, error) {
 	ts := &tokenSet{byMint: map[string]*mintBalance{}}
 	for _, prog := range []struct{ id, label string }{
 		{TokenProgramID, "Token"}, {Token2022ProgramID, "Token-2022"},
 	} {
 		var out tokenAccountsResult
 		err := s.rpc.call(ctx, "getTokenAccountsByOwner", []any{
-			s.cfg.Address,
+			owner,
 			map[string]string{"programId": prog.id},
 			map[string]string{"encoding": "jsonParsed"},
 		}, &out)

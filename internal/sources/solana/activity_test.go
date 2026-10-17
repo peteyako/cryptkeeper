@@ -1840,3 +1840,74 @@ func TestActivityKindPositionRules(t *testing.T) {
 		}
 	}
 }
+
+// TestActivityJupiterVault: with a Jupiter limit-order vault configured, the vault's balances
+// are the wallet's own, so depositing into it is a move (no legs), the order filling inside it
+// is a swap, and withdrawing the proceeds is a move.
+func TestActivityJupiterVault(t *testing.T) {
+	vault := wallet("vault")
+	vaultWSOL, vaultUSDC, pool, limitProg := testMint("vault/wsol"), testMint("vault/usdc"), testMint("pool"), testMint("limit-program")
+	ownerATA := testMint("ata/owner-usdc")
+	l, s := newLedgerWith(t, testOwner, func(c *Config) { c.JupiterVault = vault })
+	l.chain.vault = vault
+	l.chain.addVaultAccount(TokenProgramID, fakeAcct{pubkey: vaultWSOL, mint: WrappedSOLMint, amount: "0", decimals: 9})
+	l.chain.addVaultAccount(TokenProgramID, fakeAcct{pubkey: vaultUSDC, mint: usdcMint, amount: "0", decimals: 6})
+	l.chain.addTokenAccount(TokenProgramID, fakeAcct{pubkey: ownerATA, mint: usdcMint, amount: "104100000", decimals: 6})
+
+	deposit := l.add(txSpec{
+		at: 1_700_000_000, fee: 5000, keys: []string{testOwner, vaultWSOL, vault, TokenProgramID},
+		delta: map[string]int64{testOwner: -1_000_000_000, vaultWSOL: 1_000_000_000},
+		toks:  []tokBal{{acct: vaultWSOL, owner: vault, mint: WrappedSOLMint, program: TokenProgramID, pre: "", post: "1000000000", dec: 9}},
+		ixs:   []map[string]any{ixSOL(testOwner, vaultWSOL, 1_000_000_000)},
+	})
+	fill := l.add(txSpec{
+		at: 1_700_001_000, fee: 5000, keys: []string{vault, vaultWSOL, vaultUSDC, pool, limitProg},
+		toks: []tokBal{
+			{acct: vaultWSOL, owner: vault, mint: WrappedSOLMint, program: TokenProgramID, pre: "1000000000", post: "0", dec: 9},
+			{acct: vaultUSDC, owner: vault, mint: usdcMint, program: TokenProgramID, pre: "", post: "104100000", dec: 6},
+		},
+		ixs: []map[string]any{ixRaw(limitProg)},
+	})
+	withdraw := l.add(txSpec{
+		at: 1_700_002_000, fee: 5000, keys: []string{vault, vaultUSDC, ownerATA, TokenProgramID},
+		toks: []tokBal{
+			{acct: vaultUSDC, owner: vault, mint: usdcMint, program: TokenProgramID, pre: "104100000", post: "0", dec: 6},
+			{acct: ownerATA, owner: testOwner, mint: usdcMint, program: TokenProgramID, pre: "", post: "104100000", dec: 6},
+		},
+		ixs: []map[string]any{ixSPL(TokenProgramID, vaultUSDC, ownerATA, vault, usdcMint, "104100000", 6)},
+	})
+
+	txs, _, _ := l.drain(t, s, nil, time.Time{}, 0)
+	assertNoDupes(t, txs)
+	byID := map[string]core.Tx{}
+	for _, tx := range txs {
+		byID[tx.ExternalID] = tx
+	}
+	if len(byID) != 3 {
+		t.Fatalf("got %d txs: %+v", len(byID), txs)
+	}
+	if tx := byID[deposit]; tx.Kind != core.TxFee || len(tx.Legs) != 0 || tx.Counterparty != "" {
+		t.Errorf("deposit should be a fee-only move: %+v", tx)
+	}
+	wantFee(t, byID[deposit], -0.000005)
+	if tx := byID[fill]; tx.Kind != core.TxSwap {
+		t.Errorf("fill should be a swap: %+v", tx)
+	}
+	wantLegs(t, byID[fill], map[string]float64{"SOL": -1, "USDC": 104.1})
+	wantFee(t, byID[fill], -0.000005) // paid by the vault
+	if tx := byID[withdraw]; tx.Kind != core.TxFee || len(tx.Legs) != 0 || tx.Counterparty != "" {
+		t.Errorf("withdrawal should be a fee-only move: %+v", tx)
+	}
+}
+
+func TestActivityStateRestartsWhenVaultChanges(t *testing.T) {
+	_, s := newLedgerWith(t, testOwner, func(c *Config) { c.JupiterVault = wallet("vault") })
+	raw, _ := json.Marshal(activityState{V: activityStateVersion, Owner: testOwner, Accts: map[string]*acctCursor{testOwner: {Newest: "x"}}})
+	if _, fresh := s.loadActivityState(raw); !fresh {
+		t.Fatal("state recorded without the vault must start over so the vault's history is read")
+	}
+	raw, _ = json.Marshal(activityState{V: activityStateVersion, Owner: testOwner, Vault: wallet("vault"), Accts: map[string]*acctCursor{testOwner: {Newest: "x"}}})
+	if _, fresh := s.loadActivityState(raw); fresh {
+		t.Fatal("matching state must be kept")
+	}
+}

@@ -84,6 +84,7 @@ var (
 type activityState struct {
 	V     int                    `json:"v"`
 	Owner string                 `json:"owner"`
+	Vault string                 `json:"vault,omitempty"` // the Jupiter vault watched with the owner
 	Since int64                  `json:"since,omitempty"` // earliest unix time backfilled to (0 = whole history)
 	Seq   uint64                 `json:"seq"`             // call counter, for round-robin
 	Accts map[string]*acctCursor `json:"accts"`
@@ -115,7 +116,7 @@ type gap struct {
 func (s *Source) loadActivityState(raw []byte) (st *activityState, fresh bool) {
 	if len(raw) > 0 {
 		var got activityState
-		if json.Unmarshal(raw, &got) == nil && got.V == activityStateVersion && got.Owner == s.cfg.Address && got.Accts != nil {
+		if json.Unmarshal(raw, &got) == nil && got.V == activityStateVersion && got.Owner == s.cfg.Address && got.Vault == s.cfg.JupiterVault && got.Accts != nil {
 			for k, a := range got.Accts {
 				if a == nil {
 					delete(got.Accts, k)
@@ -124,7 +125,7 @@ func (s *Source) loadActivityState(raw []byte) (st *activityState, fresh bool) {
 			return &got, false
 		}
 	}
-	return &activityState{V: activityStateVersion, Owner: s.cfg.Address, Accts: map[string]*acctCursor{}}, true
+	return &activityState{V: activityStateVersion, Owner: s.cfg.Address, Vault: s.cfg.JupiterVault, Accts: map[string]*acctCursor{}}, true
 }
 
 func (st *activityState) cursor(addr string) *acctCursor {
@@ -271,34 +272,41 @@ func (r *activityRun) fail(err error) {
 	}
 }
 
-// discover registers the owner and its token accounts. Listing them costs two requests (one per
-// token program) and happens once per call. If it cannot be done the accounts known from earlier
-// calls are still worked on, but backfill is not reported complete.
+// discover registers the owner (and the Jupiter vault) and their token accounts. Listing them
+// costs two requests per owner (one per token program) and happens once per call. If it cannot
+// be done the accounts known from earlier calls are still worked on, but backfill is not
+// reported complete.
 func (r *activityRun) discover() (watched map[string]bool, listed bool) {
-	owner := r.s.cfg.Address
-	watched = map[string]bool{owner: true}
-	r.st.cursor(owner)
-	if r.left < 2 || r.ctx.Err() != nil {
+	owners := r.s.owners()
+	watched = map[string]bool{}
+	for _, o := range owners {
+		watched[o] = true
+		r.st.cursor(o)
+	}
+	known := func() (map[string]bool, bool) {
 		for addr := range r.st.Accts {
 			watched[addr] = true
 		}
 		return watched, false
 	}
-	r.left -= 2
-	ts, err := r.s.tokenAccounts(r.ctx)
-	if err != nil {
-		r.fail(err)
-		for addr := range r.st.Accts {
-			watched[addr] = true
-		}
-		return watched, false
+	if r.left < 2*len(owners) || r.ctx.Err() != nil {
+		return known()
 	}
-	refs := slices.Clone(ts.addrs)
+	var refs []tokenAcctRef
+	for _, o := range owners {
+		r.left -= 2
+		ts, err := r.s.tokenAccountsOf(r.ctx, o)
+		if err != nil {
+			r.fail(err)
+			return known()
+		}
+		refs = append(refs, ts.addrs...)
+	}
 	slices.SortStableFunc(refs, func(a, b tokenAcctRef) int {
 		return cmp.Compare(boolInt(a.Empty), boolInt(b.Empty)) // holding accounts first
 	})
 	for _, ref := range refs {
-		if len(watched)-1 >= maxWatchedTokenAccts {
+		if len(watched)-len(owners) >= maxWatchedTokenAccts {
 			break
 		}
 		if ref.Pubkey == "" || watched[ref.Pubkey] {
@@ -651,21 +659,21 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 	if m == nil {
 		return core.Tx{}, false
 	}
-	owner := s.cfg.Address
+	owners := s.ownerSet()
 	keys := tx.Transaction.Message.AccountKeys
 
-	// Native SOL: the owner's own balance change, with the fee split out when the owner paid it.
+	// Native SOL: the owner's (and the vault's) own balance change, with the fee split out
+	// when one of them paid it.
 	lamports := new(big.Int)
 	feePayer := false
 	for i, k := range keys {
-		if k.Pubkey != owner {
+		if !owners[k.Pubkey] {
 			continue
 		}
 		if i < len(m.PreBalances) && i < len(m.PostBalances) {
-			lamports.Sub(new(big.Int).SetUint64(m.PostBalances[i]), new(big.Int).SetUint64(m.PreBalances[i]))
+			lamports.Add(lamports, new(big.Int).Sub(new(big.Int).SetUint64(m.PostBalances[i]), new(big.Int).SetUint64(m.PreBalances[i])))
 		}
-		feePayer = i == 0
-		break
+		feePayer = feePayer || i == 0
 	}
 	var fee *core.Leg
 	if feePayer && m.Fee > 0 {
@@ -687,7 +695,7 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 			if b.AccountIndex >= 0 && b.AccountIndex < len(keys) && b.Owner != "" {
 				tokenOwner[keys[b.AccountIndex].Pubkey] = b.Owner
 			}
-			if b.Owner != owner {
+			if !owners[b.Owner] {
 				continue
 			}
 			n, ok := b.raw()
@@ -756,6 +764,15 @@ func (s *Source) classify(e sigEntry, tx *rpcTx) (core.Tx, bool) {
 		t.Counterparty = s.counterparty(tx, tokenOwner)
 	}
 	return t, true
+}
+
+// ownerSet is owners() as a set: the addresses whose balance changes are the wallet's own.
+func (s *Source) ownerSet() map[string]bool {
+	set := map[string]bool{}
+	for _, o := range s.owners() {
+		set[o] = true
+	}
+	return set
 }
 
 // rentDust is the SOL amount below which a leg is account rent (about 0.002-0.003 SOL per
@@ -838,7 +855,7 @@ func usesProgram(tx *rpcTx, programID string) bool {
 // move between token accounts, so those are mapped to their owning wallets. It is empty when
 // there is no transfer or the far end is ambiguous (several different parties).
 func (s *Source) counterparty(tx *rpcTx, tokenOwner map[string]string) string {
-	owner := s.cfg.Address
+	owners := s.ownerSet()
 	others := map[string]bool{}
 	for _, ix := range tx.Transaction.Message.Instructions {
 		p, ok := ix.parse()
@@ -856,9 +873,9 @@ func (s *Source) counterparty(tx *rpcTx, tokenOwner map[string]string) string {
 			continue
 		}
 		switch {
-		case from == owner && to != owner:
+		case owners[from] && !owners[to]:
 			others[to] = true
-		case to == owner && from != owner:
+		case owners[to] && !owners[from]:
 			others[from] = true
 		}
 	}

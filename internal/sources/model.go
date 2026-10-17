@@ -45,6 +45,9 @@ type Def struct {
 	ImportedVia string `yaml:"importedVia,omitempty"` // "wallet file" when the descriptor came from an upload
 	// solana
 	Address string `yaml:"address,omitempty"`
+	// JupiterVault is the wallet's Jupiter limit-order vault (Limit V2 keeps the funds of
+	// open orders in a custodial account of its own), counted with the wallet when set.
+	JupiterVault string `yaml:"jupiterVault,omitempty"`
 	// manual
 	Holdings []manual.Holding `yaml:"holdings,omitempty"`
 
@@ -78,7 +81,7 @@ var idRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 // Validate checks the type-independent shape. Type-specific validation (parsing keys,
 // addresses) happens when the factory builds the source.
 func (d *Def) Validate() error {
-	for _, v := range []string{d.Key, d.Descriptor, d.Address} {
+	for _, v := range []string{d.Key, d.Descriptor, d.Address, d.JupiterVault} {
 		if LooksLikeSeed(strings.ToLower(strings.TrimSpace(v))) {
 			return fmt.Errorf("%s: that looks like a seed phrase or private key; CryptKeep only needs public keys, so it is never stored", d.ID)
 		}

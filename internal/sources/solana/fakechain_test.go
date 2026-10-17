@@ -55,11 +55,17 @@ type fakeChain struct {
 
 	mu         sync.Mutex
 	balance    uint64
-	tokenAccts map[string][]fakeAcct     // token program id -> accounts
-	mintInfo   map[string]map[string]any // mint -> getAccountInfo(jsonParsed) value
-	metaAccts  map[string][]byte         // metaplex PDA -> raw account data
-	stake      []fakeStakeAcct
-	stakeFail  string // "", "rpc" (JSON-RPC error object), "http" (HTTP 403) or "down" (HTTP 503)
+	tokenAccts map[string][]fakeAcct // token program id -> accounts
+	// vault is a second owner (the Jupiter limit-order vault) with its own balance and
+	// accounts; vaultDown makes its lookups fail with a JSON-RPC error.
+	vault        string
+	vaultBalance uint64
+	vaultAccts   map[string][]fakeAcct
+	vaultDown    bool
+	mintInfo     map[string]map[string]any // mint -> getAccountInfo(jsonParsed) value
+	metaAccts    map[string][]byte         // metaplex PDA -> raw account data
+	stake        []fakeStakeAcct
+	stakeFail    string // "", "rpc" (JSON-RPC error object), "http" (HTTP 403) or "down" (HTTP 503)
 	// Staking rewards: getEpochInfo answers epoch (epoch k starts at slot k*fakeSlotsPerEpoch);
 	// getInflationReward answers from rewards (epoch -> stake pubkey -> lamports) with
 	// effectiveSlot = rewardSlot(epoch); getBlockTime answers from slotTimes (slot -> unix time),
@@ -175,6 +181,7 @@ func newFakeChain(t *testing.T) *fakeChain {
 	return &fakeChain{
 		t: t, owner: testOwner,
 		tokenAccts:  map[string][]fakeAcct{},
+		vaultAccts:  map[string][]fakeAcct{},
 		mintInfo:    map[string]map[string]any{},
 		metaAccts:   map[string][]byte{},
 		jupiter:     map[string]map[string]any{},
@@ -229,6 +236,13 @@ func (f *fakeChain) addTokenAccount(program string, a fakeAcct) {
 		a.pubkey = testMint("acct/" + a.mint + "/" + a.amount + fmt.Sprint(len(f.tokenAccts[program])))
 	}
 	f.tokenAccts[program] = append(f.tokenAccts[program], a)
+}
+
+func (f *fakeChain) addVaultAccount(program string, a fakeAcct) {
+	if a.pubkey == "" {
+		a.pubkey = testMint("vault-acct/" + a.mint + "/" + a.amount + fmt.Sprint(len(f.vaultAccts[program])))
+	}
+	f.vaultAccts[program] = append(f.vaultAccts[program], a)
 }
 
 func (f *fakeChain) addMetaplex(mint, name, symbol string) {
@@ -354,18 +368,23 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Method {
 	case "getBalance":
-		if str(0) != f.owner {
+		f.mu.Lock()
+		bal, vault, vbal, down := f.balance, f.vault, f.vaultBalance, f.vaultDown
+		f.mu.Unlock()
+		switch {
+		case str(0) == f.owner:
+		case vault != "" && str(0) == vault:
+			if down {
+				rpcErrorReply(w, -32005, "node is behind")
+				return
+			}
+			bal = vbal
+		default:
 			f.t.Errorf("getBalance for %s", str(0))
 		}
-		f.mu.Lock()
-		bal := f.balance
-		f.mu.Unlock()
 		rpcReply(w, map[string]any{"context": ctx, "value": bal})
 
 	case "getTokenAccountsByOwner":
-		if str(0) != f.owner {
-			f.t.Errorf("getTokenAccountsByOwner for %s", str(0))
-		}
 		var prog string
 		json.Unmarshal(opts(1)["programId"], &prog)
 		var enc string
@@ -375,7 +394,21 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		accts := append([]fakeAcct(nil), f.tokenAccts[prog]...)
+		vault, down := f.vault, f.vaultDown
+		if vault != "" && str(0) == vault {
+			accts = append([]fakeAcct(nil), f.vaultAccts[prog]...)
+		}
 		f.mu.Unlock()
+		switch {
+		case str(0) == f.owner:
+		case vault != "" && str(0) == vault:
+			if down {
+				rpcErrorReply(w, -32005, "node is behind")
+				return
+			}
+		default:
+			f.t.Errorf("getTokenAccountsByOwner for %s", str(0))
+		}
 		value := []any{}
 		for _, a := range accts {
 			value = append(value, map[string]any{
@@ -385,7 +418,7 @@ func (f *fakeChain) serveRPC(w http.ResponseWriter, r *http.Request) {
 					"data": map[string]any{
 						"program": "spl-token", "space": 165,
 						"parsed": map[string]any{"type": "account", "info": map[string]any{
-							"mint": a.mint, "owner": f.owner, "state": "initialized", "isNative": false,
+							"mint": a.mint, "owner": str(0), "state": "initialized", "isNative": false,
 							// uiAmountString is deliberately useless: code must use the integer "amount".
 							"tokenAmount": map[string]any{"amount": a.amount, "decimals": a.decimals, "uiAmount": 0.0, "uiAmountString": "ignored"},
 						}},

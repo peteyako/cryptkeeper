@@ -3,12 +3,14 @@ package solana
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"crypto-portfolio/internal/config"
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/sources/solana/defi"
 )
 
 // Compile-time checks that the source plugs into the rest of the app.
@@ -624,5 +626,72 @@ func TestFetchHonoursContextCancellation(t *testing.T) {
 	cancel()
 	if _, err := s.Fetch(ctx); err == nil {
 		t.Error("expected an error from a cancelled context")
+	}
+}
+
+func TestFetchJupiterVault(t *testing.T) {
+	f := newFakeChain(t)
+	f.balance = 2_000_000_000
+	f.vault = testMint("vault")
+	f.vaultBalance = 10_000_000 // rent
+	f.addVaultAccount(TokenProgramID, fakeAcct{mint: WrappedSOLMint, amount: "40000000000", decimals: 9})
+	f.addVaultAccount(TokenProgramID, fakeAcct{mint: usdcMint, amount: "0", decimals: 6})
+	s := f.source(func(c *Config) { c.JupiterVault = f.vault; c.IncludeStake = false })
+
+	res, err := s.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plain, vault []core.Holding
+	for _, h := range res.Holdings {
+		if h.Vault {
+			vault = append(vault, h)
+		} else {
+			plain = append(plain, h)
+		}
+	}
+	if len(plain) != 1 || plain[0].AssetKey != "SOL" || plain[0].Amount != 2 {
+		t.Fatalf("wallet holdings = %+v", plain)
+	}
+	if len(vault) != 1 {
+		t.Fatalf("vault holdings = %+v", vault)
+	}
+	v := vault[0]
+	if v.AssetKey != "SOL" || v.Amount != 40.01 || v.Protocol != "jupiter" || v.PositionKind != defi.KindLimit ||
+		v.Position != shortKey(f.vault) || v.Note != "Limit-order vault" {
+		t.Errorf("vault SOL = %+v", v)
+	}
+	if !slices.Contains(res.Meta, core.KV{K: "Limit-order vault", V: shortKey(f.vault)}) {
+		t.Errorf("meta = %+v", res.Meta)
+	}
+	addrs, err := s.Addresses(context.Background())
+	if err != nil || len(addrs) != 2 || addrs[1].Address != f.vault || addrs[1].Balance != 0.01 {
+		t.Errorf("addresses = %+v (%v)", addrs, err)
+	}
+
+	// The vault being unreadable is a warning: the wallet's own balances still stand.
+	f.mu.Lock()
+	f.vaultDown = true
+	f.mu.Unlock()
+	res, err = s.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range res.Holdings {
+		if h.Vault {
+			t.Errorf("vault row despite the vault being down: %+v", h)
+		}
+	}
+	if !slices.Contains(res.Warnings, vaultWarning) {
+		t.Errorf("warnings = %q", res.Warnings)
+	}
+}
+
+func TestNewRejectsVaultEqualToAddress(t *testing.T) {
+	if _, err := New(Config{ID: "w", Label: "w", Address: testOwner, JupiterVault: testOwner}, nil, nil); err == nil {
+		t.Fatal("the vault must not be the wallet's own address")
+	}
+	if _, err := New(Config{ID: "w", Label: "w", Address: testOwner, JupiterVault: "not a key"}, nil, nil); err == nil {
+		t.Fatal("an invalid vault address must be refused")
 	}
 }

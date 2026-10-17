@@ -151,3 +151,15 @@ func TestImportMergeReplaceAndSecrets(t *testing.T) {
 		t.Fatalf("strict parse: %v", err)
 	}
 }
+
+func TestValidateRefusesSeedInVault(t *testing.T) {
+	d := Def{ID: "sol", Type: TypeSolana, Label: "Phantom", Kind: core.KindHot, Address: "7xKXabc",
+		JupiterVault: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"}
+	if err := d.Validate(); err == nil || !strings.Contains(err.Error(), "seed phrase") {
+		t.Fatalf("err = %v", err)
+	}
+	d.JupiterVault = "4N1FkXvBrAoyTwzM3R97RbDLpTZV9Jo17UYRnFnvNeDk"
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

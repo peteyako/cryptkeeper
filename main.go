@@ -263,7 +263,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 			}, a.client))
 		case sources.TypeSolana:
 			return asSource(solana.New(solana.Config{
-				ID: d.ID, Label: d.Label, Address: d.Address, RPCURL: a.cfg.Solana.RPCURL,
+				ID: d.ID, Label: d.Label, Address: d.Address, JupiterVault: d.JupiterVault, RPCURL: a.cfg.Solana.RPCURL,
 				IncludeStake: a.cfg.Solana.IncludeStakeAccounts, HideMints: a.cfg.Solana.HideMints, AllowMints: a.cfg.Solana.AllowMints, Overrides: a.cfg.Solana.TokenOverrides,
 				DeFi: a.cfg.Solana.DeFi,
 			}, a.client, meta))

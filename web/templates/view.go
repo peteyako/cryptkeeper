@@ -247,6 +247,8 @@ func PositionKindLabel(kind string) string {
 		return "Perpetuals"
 	case "locked":
 		return "Locked"
+	case "limit":
+		return "Limit orders"
 	}
 	return ""
 }

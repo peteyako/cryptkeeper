@@ -184,7 +184,7 @@ sources:
   - { id: kraken, type: kraken, label: Kraken, kind: exchange, apiKey: "enc:v1:…", secret: "enc:v1:…" }
   - { id: cold, type: bitcoin, label: "Cold storage", kind: hardware, key: "zpub6r…" }
   - { id: vault, type: bitcoin, label: "2-of-3 multisig", kind: hardware, descriptor: "wsh(sortedmulti(2,…))#chk" }
-  - { id: phantom, type: solana, label: "Phantom", kind: hot, address: "7xKX…" }
+  - { id: phantom, type: solana, label: "Phantom", kind: hot, address: "7xKX…", jupiterVault: "E8XE…" }
   - { id: mom-safe, type: manual, label: "Paper wallet at mom's", kind: manual,
       holdings: [ { asset: BTC, amount: 0.25 }, { asset: ETH, amount: 2, note: "…" } ] }
 ```
