@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
+	"sort"
 	"time"
 
 	"crypto-portfolio/internal/core"
@@ -36,24 +38,31 @@ func (e *PriceError) Error() string {
 
 func (e *PriceError) Unwrap() error { return e.Err }
 
-// Backfill writes past DAILY history rows, stamped at the END of each UTC day (23:59:59) for the last days days, built from
-// the current holdings rolled back through txs and historical prices. It only adds rows
-// for days strictly before the earliest recorded row's UTC day (or the last days+1 days
-// ending yesterday when the table is empty), never replaces a row, and returns how many
-// rows were inserted. While a wallet in current is in error or was never fetched it refuses
-// with a *NotSyncedError.
+// Backfill fills past DAILY history for the last days days (days+1 UTC days ending
+// yesterday, so the oldest row lies at least `days` back), built from the current holdings
+// rolled back through txs and historical prices. It works per wallet: a wallet is filled
+// for the days strictly before its first recorded row (every day when it has none). On a
+// day with no row at all it writes a new row stamped at the END of the UTC day (23:59:59),
+// but only before the earliest recorded row's UTC day: gaps after that are left alone. On
+// a day that has rows, the wallets missing from them are merged into every row of that day,
+// so a source added after a backfill still gets its past; the rows' own amounts and prices
+// are kept. It returns how many rows it inserted or extended. While a wallet in current is
+// in error or was never fetched it refuses with a *NotSyncedError.
 //
-// Each row holds end-of-day amounts (after day D's txs) and day D's daily close price.
-// Amounts for day D are the current amount minus the signed effect of every tx at or
-// after D+1d 00:00 UTC, clamped at 0, for wallets in current only; assets at 0 are left
-// out. The rules mirror tax.RollBack (portfolio must not import tax): a failed tx only cost
-// its fee; stake and position txs, and those isPosition reports (tagged position moves; nil
-// is tolerated), keep units inside the wallet (legs ignored) but still pay their fee.
+// A filled wallet holds end-of-day amounts (after day D's txs) and day D's daily close
+// price (a merged row keeps the price it already has). Amounts for day D are the current
+// amount minus the signed effect of every tx at or after D+1d 00:00 UTC, clamped at 0,
+// for wallets in current only; assets at 0 are left out (a wallet holding nothing that
+// day is written with no assets, so it still counts as recorded). The rules mirror tax.RollBack
+// (portfolio must not import tax): a failed tx only cost its fee; stake and position txs,
+// and those isPosition reports (tagged position moves; nil is tolerated), keep units
+// inside the wallet (legs ignored) but still pay their fee.
 //
 // All price lookups happen first, before the write transaction opens (the store has a
-// single connection, and price lookups may use it), and only for the days that can be
-// written. Then all rows are written in one transaction: a cancelled context or error,
-// including a failed price lookup (*PriceError), writes nothing.
+// single connection, and price lookups may use it), and only for the days and wallets that
+// can be written. Then all rows are written in one transaction: a cancelled context or
+// error, including a failed price lookup (*PriceError), writes nothing. A row that changed
+// since the lookups is left as it is.
 //
 // Prices are an estimate: price(...) when it has one, else the asset's current snapshot
 // price (a flat line), else 1 for pegged stablecoins.
@@ -72,14 +81,8 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 		}
 	}
 	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
-	first := today.AddDate(0, 0, -days-1) // days+1 days so the oldest row lies at least `days` back
-	last, err := lastFillable(ctx, h.DB.QueryRowContext, today)
-	if err != nil {
-		return 0, err
-	}
-	if last.Before(first) {
-		return 0, nil
-	}
+	first := today.AddDate(0, 0, -days-1)
+	yesterday := today.AddDate(0, 0, -1)
 
 	// Current amounts, mints and snapshot prices.
 	cur := map[string]map[string]float64{}
@@ -104,6 +107,32 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 			}
 		}
 	}
+
+	// What is recorded already: each wallet's first day, and the rows of the days in range.
+	rec, err := recordedBefore(ctx, h.DB.QueryContext, first, today)
+	if err != nil {
+		return 0, err
+	}
+	// newUntil is the newest day a new row may be written on; fillUntil the newest day each
+	// wallet may be filled on.
+	newUntil := yesterday
+	if !rec.earliest.IsZero() && rec.earliest.AddDate(0, 0, -1).Before(newUntil) {
+		newUntil = rec.earliest.AddDate(0, 0, -1)
+	}
+	fillUntil := map[string]time.Time{}
+	for w := range cur {
+		until := yesterday
+		if fs, ok := rec.firstSeen[w]; ok && fs.AddDate(0, 0, -1).Before(until) {
+			until = fs.AddDate(0, 0, -1)
+		}
+		if !until.Before(first) {
+			fillUntil[w] = until
+		}
+	}
+	if len(fillUntil) == 0 {
+		return 0, nil
+	}
+
 	// Only txs of wallets we are writing matter.
 	var rel []core.Tx
 	for _, t := range txs {
@@ -117,33 +146,44 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 		}
 	}
 
-	// Pre-pass: build every row that can be written, doing all price lookups before any
-	// transaction is opened.
-	type dayRow struct {
-		ts      int64
-		day     time.Time
-		prices  string
-		amounts string
+	// Pre-pass: build every write, doing all price lookups before any transaction is opened.
+	type write struct {
+		ts         int64
+		prices     string
+		amounts    string
+		oldAmounts string // non-empty: an update of the row with these amounts
 	}
-	var rows []dayRow
-	for d := first; !d.After(last); d = d.AddDate(0, 0, 1) {
+	var writes []write
+	for d := first; !d.After(yesterday); d = d.AddDate(0, 0, 1) {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
+		existing := rec.rows[d.Unix()]
+		if len(existing) == 0 && d.After(newUntil) {
+			continue // a gap after the earliest recorded day
+		}
+		var need []string
+		for w, until := range fillUntil {
+			if !d.After(until) {
+				need = append(need, w)
+			}
+		}
+		if len(need) == 0 {
+			continue
+		}
+		sort.Strings(need)
 		cutoff := d.AddDate(0, 0, 1)
 		amounts := map[string]map[string]float64{}
-		for w, assets := range cur {
-			m := make(map[string]float64, len(assets))
-			for a, v := range assets {
-				m[a] = v
-			}
+		for _, w := range need {
+			m := make(map[string]float64, len(cur[w]))
+			maps.Copy(m, cur[w])
 			amounts[w] = m
 		}
 		for _, t := range rel {
-			if t.Time.Before(cutoff) {
+			m := amounts[t.SourceID]
+			if m == nil || t.Time.Before(cutoff) {
 				continue
 			}
-			m := amounts[t.SourceID]
 			if t.Status != core.TxFailed && t.Kind != core.TxStake && t.Kind != core.TxPosition &&
 				(isPosition == nil || !isPosition(t.ID)) {
 				for _, l := range t.Legs {
@@ -156,9 +196,9 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 		}
 		prices := map[string]float64{}
 		out := map[string]map[string]float64{}
-		for w, m := range amounts {
+		for _, w := range need {
 			o := map[string]float64{}
-			for a, v := range m {
+			for a, v := range amounts[w] {
 				if v < 1e-9 {
 					continue // nothing held: no amount, no price lookup
 				}
@@ -181,16 +221,40 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 					prices[a] = 1
 				}
 			}
-			if len(o) > 0 {
-				out[w] = o
-			}
+			out[w] = o
 		}
-		if len(out) == 0 {
+		if len(existing) == 0 {
+			pj, _ := json.Marshal(prices)
+			aj, _ := json.Marshal(out)
+			writes = append(writes, write{ts: d.Add(24*time.Hour - time.Second).Unix(), prices: string(pj), amounts: string(aj)})
 			continue
 		}
-		pj, _ := json.Marshal(prices)
-		aj, _ := json.Marshal(out)
-		rows = append(rows, dayRow{ts: d.Add(24*time.Hour - time.Second).Unix(), day: d, prices: string(pj), amounts: string(aj)})
+		for _, r := range existing {
+			changed := false
+			for w, o := range out {
+				if _, ok := r.amounts[w]; ok {
+					continue // recorded on that row already: keep it
+				}
+				r.amounts[w] = o
+				changed = true
+				for a := range o {
+					if _, ok := r.prices[a]; !ok {
+						if p, ok := prices[a]; ok {
+							r.prices[a] = p
+						}
+					}
+				}
+			}
+			if !changed {
+				continue
+			}
+			pj, _ := json.Marshal(r.prices)
+			aj, _ := json.Marshal(r.amounts)
+			writes = append(writes, write{ts: r.ts, prices: string(pj), amounts: string(aj), oldAmounts: r.rawAmounts})
+		}
+	}
+	if len(writes) == 0 {
+		return 0, nil
 	}
 
 	dbtx, err := h.DB.BeginTx(ctx, nil)
@@ -198,47 +262,88 @@ func (h *History) Backfill(ctx context.Context, days int, now time.Time, current
 		return 0, err
 	}
 	defer dbtx.Rollback() // no-op after Commit; all-or-nothing on any error or cancellation
-	// Re-read in the tx, so rows that appeared during the pre-pass are respected.
-	if last, err = lastFillable(ctx, dbtx.QueryRowContext, today); err != nil {
-		return 0, err
-	}
-	inserted := 0
-	for _, r := range rows {
-		if r.day.After(last) {
-			continue
-		}
+	written := 0
+	for _, w := range writes {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		res, err := dbtx.ExecContext(ctx, `INSERT OR IGNORE INTO history (ts, prices, amounts) VALUES (?, ?, ?)`,
-			r.ts, r.prices, r.amounts)
+		var res sql.Result
+		if w.oldAmounts == "" {
+			// A row that appeared during the pre-pass wins.
+			res, err = dbtx.ExecContext(ctx, `INSERT OR IGNORE INTO history (ts, prices, amounts) VALUES (?, ?, ?)`,
+				w.ts, w.prices, w.amounts)
+		} else {
+			// Only extend the row as it was read; a row that changed since is left alone.
+			res, err = dbtx.ExecContext(ctx, `UPDATE history SET prices = ?, amounts = ? WHERE ts = ? AND amounts = ?`,
+				w.prices, w.amounts, w.ts, w.oldAmounts)
+		}
 		if err != nil {
 			return 0, err
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
-			inserted++
+			written++
 		}
 	}
 	if err := dbtx.Commit(); err != nil {
 		return 0, err
 	}
-	return inserted, nil
+	return written, nil
 }
 
-// lastFillable is the newest day Backfill may write: yesterday, or the day before the earliest
-// recorded row's UTC day when that is older.
-func lastFillable(ctx context.Context, queryRow func(context.Context, string, ...any) *sql.Row, today time.Time) (time.Time, error) {
-	last := today.AddDate(0, 0, -1)
-	var minTS int64
-	if err := queryRow(ctx, `SELECT COALESCE(MIN(ts), 0) FROM history`).Scan(&minTS); err != nil {
-		return time.Time{}, err
+// recordedRow is a history row read back for merging.
+type recordedRow struct {
+	ts         int64
+	prices     map[string]float64
+	amounts    map[string]map[string]float64
+	rawAmounts string
+}
+
+// recorded is what Backfill learns from the rows before today: the UTC day of the earliest
+// row, each wallet's first UTC day, and the rows of each UTC day from `from` on, keyed by
+// the day's 00:00 UTC Unix time.
+type recorded struct {
+	earliest  time.Time
+	firstSeen map[string]time.Time
+	rows      map[int64][]*recordedRow
+}
+
+func recordedBefore(ctx context.Context, query func(context.Context, string, ...any) (*sql.Rows, error),
+	from, today time.Time) (recorded, error) {
+	rec := recorded{firstSeen: map[string]time.Time{}, rows: map[int64][]*recordedRow{}}
+	rows, err := query(ctx, `SELECT ts, prices, amounts FROM history WHERE ts < ? ORDER BY ts`, today.Unix())
+	if err != nil {
+		return rec, err
 	}
-	if minTS > 0 {
-		e := time.Unix(minTS, 0).UTC()
-		eDay := time.Date(e.Year(), e.Month(), e.Day(), 0, 0, 0, 0, time.UTC)
-		if p := eDay.AddDate(0, 0, -1); p.Before(last) {
-			last = p
+	defer rows.Close()
+	for rows.Next() {
+		var ts int64
+		var pj, aj string
+		if err := rows.Scan(&ts, &pj, &aj); err != nil {
+			return rec, err
+		}
+		r := &recordedRow{ts: ts, rawAmounts: aj}
+		if json.Unmarshal([]byte(pj), &r.prices) != nil || json.Unmarshal([]byte(aj), &r.amounts) != nil {
+			continue
+		}
+		if r.prices == nil {
+			r.prices = map[string]float64{}
+		}
+		if r.amounts == nil {
+			r.amounts = map[string]map[string]float64{}
+		}
+		t := time.Unix(ts, 0).UTC()
+		day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+		if rec.earliest.IsZero() {
+			rec.earliest = day
+		}
+		for w := range r.amounts {
+			if _, ok := rec.firstSeen[w]; !ok {
+				rec.firstSeen[w] = day
+			}
+		}
+		if !day.Before(from) {
+			rec.rows[day.Unix()] = append(rec.rows[day.Unix()], r)
 		}
 	}
-	return last, nil
+	return rec, rows.Err()
 }

@@ -368,3 +368,135 @@ func TestBackfillHonoursPositionTags(t *testing.T) {
 		t.Errorf("Oct 14 SOL = %v, want 10 (a tagged position move keeps its units)", got)
 	}
 }
+
+// bfSnap2 is bfSnap with a second wallet holding 4 SOL.
+func bfSnap2() Snapshot {
+	s := bfSnap()
+	s.Wallets = append(s.Wallets, WalletView{ID: "w2", Rows: []HoldingRow{
+		{Holding: core.Holding{WalletID: "w2", AssetKey: "SOL", Amount: 4}},
+	}})
+	return s
+}
+
+func TestBackfillAddsNewWalletToExistingRows(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	if _, err := h.Backfill(context.Background(), 7, bfNow, bfSnap(), nil, nil, bfPrice); err != nil {
+		t.Fatal(err)
+	}
+	// w2 is added later: the 8 rows gain it, w's amounts and the prices stay.
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap2(), nil, nil, bfPrice)
+	if err != nil || n != 8 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	rows := bfRows(t, h)
+	if len(rows) != 8 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	for ts, r := range rows {
+		if !near(r.Amounts["w"]["SOL"], 10) || !near(r.Amounts["w2"]["SOL"], 4) || !near(r.Prices["SOL"], 50) {
+			t.Fatalf("%d: %+v", ts, r)
+		}
+	}
+	// And the series now starts with both wallets.
+	snap := bfSnap2()
+	pts, err := h.Series(context.Background(), bfNow.AddDate(0, 0, -7), nil, &snap)
+	if err != nil || len(pts) < 7 {
+		t.Fatalf("pts=%d err=%v", len(pts), err)
+	}
+	// Nothing left to add.
+	if n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap2(), nil, nil, bfPrice); err != nil || n != 0 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+}
+
+func TestBackfillMergeKeepsRecordedRow(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	rec := bfNow.AddDate(0, 0, -3) // Oct 13 15:00, recorded live for w with SOL at 1
+	if _, err := h.DB.Exec(`INSERT INTO history (ts, prices, amounts) VALUES (?, '{"SOL":1}', '{"w":{"SOL":1}}')`, rec.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	// w2 has never been recorded: Oct 8..12 are new rows (w and w2), Oct 13 gains w2 and
+	// keeps its own SOL amount and price, Oct 14 and 15 stay gaps.
+	n, err := h.Backfill(context.Background(), 7, bfNow, bfSnap2(), nil, nil, bfPrice)
+	if err != nil || n != 6 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	rows := bfRows(t, h)
+	if len(rows) != 6 {
+		t.Fatalf("%d rows", len(rows))
+	}
+	r := rows[rec.Unix()]
+	if !near(r.Amounts["w"]["SOL"], 1) || !near(r.Amounts["w2"]["SOL"], 4) || !near(r.Prices["SOL"], 1) {
+		t.Fatalf("recorded row: %+v", r)
+	}
+	for i := 8; i <= 12; i++ {
+		r := rows[eod(time.Date(2026, 10, i, 0, 0, 0, 0, time.UTC))]
+		if !near(r.Amounts["w"]["SOL"], 10) || !near(r.Amounts["w2"]["SOL"], 4) {
+			t.Fatalf("Oct %d: %+v", i, r)
+		}
+	}
+}
+
+func TestBackfillMergeAddsMissingPrice(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	rec := bfNow.AddDate(0, 0, -3)
+	if _, err := h.DB.Exec(`INSERT INTO history (ts, prices, amounts) VALUES (?, '{"spl:X":2}', '{"w":{"spl:X":5}}')`, rec.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	snap := Snapshot{UpdatedAt: bfNow, Wallets: []WalletView{
+		{ID: "w", Rows: []HoldingRow{{Holding: core.Holding{WalletID: "w", AssetKey: "spl:X", Mint: "X", Amount: 5}}}},
+		{ID: "w2", Rows: []HoldingRow{{Holding: core.Holding{WalletID: "w2", AssetKey: "SOL", Amount: 4}}}},
+	}, Prices: map[string]core.Price{"SOL": {USD: 100}, "spl:X": {USD: 2}}}
+	if _, err := h.Backfill(context.Background(), 2, bfNow, snap, nil, nil, bfPrice); err != nil {
+		t.Fatal(err)
+	}
+	r := bfRows(t, h)[rec.Unix()]
+	if !near(r.Prices["SOL"], 50) || !near(r.Prices["spl:X"], 2) || !near(r.Amounts["w2"]["SOL"], 4) {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestBackfillMergeSkipsChangedRow(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	rec := bfNow.AddDate(0, 0, -3)
+	if _, err := h.DB.Exec(`INSERT INTO history (ts, prices, amounts) VALUES (?, '{"SOL":1}', '{"w":{"SOL":1}}')`, rec.Unix()); err != nil {
+		t.Fatal(err)
+	}
+	// The row is rewritten while prices are being looked up: it must not be clobbered.
+	price := func(c context.Context, key, mint string, d time.Time) (float64, bool, error) {
+		h.DB.Exec(`UPDATE history SET amounts = '{"w":{"SOL":2}}' WHERE ts = ?`, rec.Unix())
+		return bfPrice(c, key, mint, d)
+	}
+	if n, err := h.Backfill(context.Background(), 2, bfNow, bfSnap2(), nil, nil, price); err != nil || n != 0 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if r := bfRows(t, h)[rec.Unix()]; !near(r.Amounts["w"]["SOL"], 2) || r.Amounts["w2"] != nil {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestBackfillRecordsEmptyWallet(t *testing.T) {
+	h := &History{DB: openDB(t)}
+	// w2's only asset arrived on Oct 15: before that it is recorded as holding nothing,
+	// so the series can still count it as present.
+	snap := bfSnap()
+	snap.Wallets = append(snap.Wallets, WalletView{ID: "w2", Rows: []HoldingRow{
+		{Holding: core.Holding{WalletID: "w2", AssetKey: "SOL", Amount: 4}},
+	}})
+	txs := []core.Tx{{SourceID: "w2", Time: bfNow.AddDate(0, 0, -1), Legs: []core.Leg{{AssetKey: "SOL", Amount: 4}}}}
+	if _, err := h.Backfill(context.Background(), 7, bfNow, snap, txs, nil, bfPrice); err != nil {
+		t.Fatal(err)
+	}
+	rows := bfRows(t, h)
+	r := rows[eod(time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC))]
+	if m, ok := r.Amounts["w2"]; !ok || len(m) != 0 {
+		t.Fatalf("Oct 14: w2 = %v, %v", m, ok)
+	}
+	if !near(rows[eod(time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC))].Amounts["w2"]["SOL"], 4) {
+		t.Fatal("Oct 15: w2 should hold 4 SOL")
+	}
+	pts, err := h.Series(context.Background(), bfNow.AddDate(0, 0, -7), nil, &snap)
+	if err != nil || len(pts) < 8 {
+		t.Fatalf("pts=%d err=%v", len(pts), err)
+	}
+}

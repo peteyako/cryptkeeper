@@ -21,14 +21,15 @@ const backfillTimeout = 60 * time.Second
 // errNoSnapshot refuses a backfill before the first refresh: there are no holdings to roll back.
 var errNoSnapshot = errors.New("no snapshot yet")
 
-// chartBackfill writes the past daily history rows for the selected range, then patches the
-// value card. A failure or timeout patches the card with a note instead (the error itself
-// goes to the log), and so does a run that could add nothing.
+// chartBackfill writes the past daily history rows for the selected range (and adds wallets
+// missing from the rows already there), then patches the value card. A failure or timeout
+// patches the card with a note instead (the error itself goes to the log), and so does a
+// run that could add nothing.
 func (s *Server) chartBackfill(w http.ResponseWriter, r *http.Request) {
 	v := readView(r)
 	sse := datastar.NewSSE(w, r)
 	var errMsg, note string
-	if days := backfillDays[v.Range]; days > 0 && s.History != nil {
+	if days := backfillDaysFor(v.Range, s.Now()); days > 0 && s.History != nil {
 		ctx, cancel := context.WithTimeout(s.withActivity(r.Context()), backfillTimeout)
 		defer cancel()
 		n, err := s.runBackfill(ctx, days)
@@ -37,7 +38,7 @@ func (s *Server) chartBackfill(w http.ResponseWriter, r *http.Request) {
 			s.Log.Warn("history backfill", "err", err)
 			errMsg = backfillErrText(err)
 		case n == 0:
-			note = "History already covers what can be filled; gaps after the first recorded day can't be backfilled."
+			note = "History already covers these days for every wallet; gaps after a wallet's first recorded day can't be backfilled."
 		}
 	}
 	p := s.overviewPage(r, v)

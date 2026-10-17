@@ -116,7 +116,7 @@ func TestFIBackfillNothingToFillShowsNote(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := fiBackfill(e)
-	if !strings.Contains(body, "History already covers what can be filled; gaps after the first recorded day can't be backfilled.") {
+	if !strings.Contains(body, "History already covers these days for every wallet; gaps after a wallet's first recorded day can't be backfilled.") {
 		t.Errorf("note expected: %s", within(body, "value-card", 2000))
 	}
 	if strings.Contains(body, "Load last 7 days") || strings.Contains(body, "Couldn't") {
