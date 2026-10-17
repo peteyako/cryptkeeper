@@ -16,7 +16,8 @@ templ TaxSection(p TaxPage) {
 			</div>
 			if len(p.Years) > 0 {
 				<form method="post" action="/reports/tax/year" data-on:change="@post(el.action, {contentType: 'form'})">
-					<select class="input" name="year" aria-label="Tax year">
+					<label class="sr-only" for="tax-year">Tax year</label>
+					<select id="tax-year" class="input" name="year">
 						for _, y := range p.Years {
 							<option value={ strconv.Itoa(y) } selected?={ y == p.Year }>{ strconv.Itoa(y) }</option>
 						}

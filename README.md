@@ -132,36 +132,80 @@ syncs every `activityMinutes`; older history is backfilled gradually (down to
 `activity.backfillDays`) so free APIs aren't hammered. A withdrawal from an exchange that lands
 in one of your own wallets is shown once, as a **Transfer · Coinbase → Cold storage**.
 
-## Cost basis and reports
+## Taxes and cost basis
 
-**Reports** shows cost basis and unrealized P/L per asset (average cost across all wallets —
-moving coins between your own wallets never changes it), realized P/L by year, and CSV exports
-(holdings, history, P/L, activity). Basis comes from synced exchange trades and rewards, plus:
+**Reports** is a Koinly replacement for US crypto taxes. It tracks cost basis with **FIFO per
+wallet**: each wallet keeps its own tax lots, and moving coins between your own wallets carries
+the lots (and their acquisition dates) along instead of selling them. From that it builds
+capital gains, income (rewards, staking, airdrops), year-end holdings and a **Needs review**
+list of anything it can't decide on its own. Inputs are your synced exchange and on-chain
+activity (including Solana position moves and staking rewards), plus:
 
-- **Manual cost** for an asset (Reports → Manual cost basis, stored in `data/costbasis.yaml`).
-- **CSV import** for history older than the APIs reach: Coinbase *Transaction history* report and
-  Kraken *Ledgers* export. Re-importing the same file is safe.
+- **Manual lots** for history the APIs don't reach (in `data/tax.yaml`).
+- **CSV import** of the Coinbase *Transaction history* report and the Kraken *Ledgers* export
+  (Reports → CSV import). Re-importing the same file is safe.
 
-### Taxes
+Unrealized P/L per asset, realized P/L by year, and the holdings / history / P/L / activity CSV
+exports stay on the Reports page.
+
+### Switching over from Koinly
 
 **Reports → Import from Koinly** moves a Koinly tax history into CryptKeep so it can take over:
 
-1. Upload the four reports for the year you are closing: the year-end holdings, the transaction
-   history, the capital gains report and the income report (CSV).
-2. Map each Koinly wallet to a CryptKeep source (or `untracked`), and each Koinly asset to an
+1. In Koinly, export these reports for the year before you switch (CSV): **End of year holdings
+   report**, **Transaction history**, **Capital gains report** and **Income report**. The wizard
+   also recognises **Other gains report**.
+2. In CryptKeep go to Reports → Import from Koinly and upload them.
+3. Map each Koinly wallet to a CryptKeep source (or `untracked`), and each Koinly asset to an
    asset key (or skip it, e.g. spam).
-3. Reconcile: compare what Koinly held at year end with what CryptKeep holds, and fill in any
-   missing basis.
-4. Accept. The year is closed and CryptKeep carries its lots forward.
+4. Reconcile: CryptKeep compares Koinly's year-end quantities and cost with your wallets and lists
+   the problems and warnings. Review them and fix what you can (map assets, add a basis for
+   coins Koinly didn't know about). Accept is blocked only when the holdings report is missing,
+   the year hasn't ended or a later year is already closed, an ambiguous asset is still on Skip
+   without "Skip anyway", or nothing would carry over; other problems are listed but don't stop
+   you.
+5. Accept. The year is closed and CryptKeep carries its lots forward.
 
-Your choices live in `data/tax.yaml` (wallet and asset maps, manual lots, tags, prices, 8949
-boxes); each closed year is frozen in `data/tax/<year>.yaml`. Both are included in the Settings
-backup. Manual lots from an older `costbasis.yaml` are copied into `tax.yaml` once, in the
-`untracked` wallet; edit `tax.yaml` to assign wallets. The tax timezone (day boundaries for the
-year cutover) is `tax.timezone` in `config.yaml`, an IANA name such as `America/New_York`;
-empty means the server's local time.
+### What is stored
 
-Not tax advice.
+Your choices live in `data/tax.yaml`: wallet and asset maps, manual lots, tags, prices, and
+per-wallet Form 8949 box overrides. Each closed year is frozen in `data/tax/<year>.yaml`. Both
+are included in the Settings backup, so a restore brings back every closed year. Manual lots
+from an older `costbasis.yaml` are copied into `tax.yaml` once, in the `untracked` wallet; edit
+`tax.yaml` to assign wallets.
+
+### Needs review
+
+The **Tax** view (Reports → Tax, pick a year) has tabs for Capital gains, Income, Year-end
+holdings and **Needs review**. Needs review appears only while the year is open. It lists what a human must decide, with controls to:
+
+- **Tag** a transaction (e.g. purchase, sale, income, airdrop, gift received, gift, lost, own wallet, position, position gain, spam), singly or in bulk.
+- Set a **price** (USD) where none could be found.
+- Add a **write-off** for a worthless or lost position.
+
+Every change recomputes the reports.
+
+### Closing a year
+
+Close a year when its Needs review list is clear (or you accept what is left). A closed year is
+frozen in `data/tax/<year>.yaml` and later years start from its lots. Only the latest closed
+year can be **reopened**, which deletes its file; the next close writes a fresh one.
+
+### Downloads
+
+Each year's Tax view offers:
+
+- **Koinly-format CSVs:** capital gains, income, year-end holdings, transaction history and
+  other gains. The transaction history isn't available for Koinly-imported years (use Koinly's
+  own export).
+- **TurboTax:** CSV and TXF.
+- **Form 8949 and Schedule D**, as a printable page (print to PDF).
+- **Complete tax report** for your CPA, as a printable page.
+- **Filled IRS PDFs:** official Form 8949 and Schedule D. Name and SSN are left blank for you to
+  fill in. Newer form revisions are fetched from the IRS and cached in `data/irs/`.
+- **Everything (zip)** with all of the above.
+
+Not tax advice. Check the numbers, and the Form 8949 boxes, with a tax professional before filing.
 
 ## Alerts
 
@@ -233,6 +277,7 @@ the token issuers' servers. Dates and times are shown in the server's time zone;
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.
 A free CoinGecko demo key (`COINGECKO_API_KEY`, or the **Settings → Historical prices** card, stored encrypted) prices Solana tokens Coinbase doesn't list, for the last 365 days.
+For taxes, set `tax.timezone` (an IANA name such as `America/New_York`; empty means the server's local time) to decide where a tax day starts and ends. The CoinGecko key also prices Solana tokens by mint for tax reports; the environment variable wins over the one saved in Settings.
 
 ## Development
 

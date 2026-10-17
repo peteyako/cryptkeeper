@@ -4641,3 +4641,16 @@ body.amounts-hidden .fig-m {
 .tax .tabs {
   padding: 0;
 }
+
+.tbl--tax-gains {
+  min-width: 880px;
+}
+
+.gain-row td {
+  white-space: nowrap;
+}
+
+.tbl--tax-income,
+.tbl--tax-holdings {
+  min-width: 640px;
+}

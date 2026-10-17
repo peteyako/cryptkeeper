@@ -74,7 +74,9 @@ func baseReports(now time.Time) templates.ReportsPage {
 		Realized: []templates.YearAmount{
 			{Year: now.Year(), USD: 1204.12}, {Year: now.Year() - 1, USD: -212.40}, {Year: now.Year() - 2, USD: 3880.00},
 		},
-		Now: now,
+		Now:    now,
+		Tax:    TaxPage(taxOpenYear, "gains", false),
+		Review: reviewPage(),
 	}
 	if snap.TotalUSD > 0 {
 		p.Coverage = known / snap.TotalUSD
@@ -84,7 +86,9 @@ func baseReports(now time.Time) templates.ReportsPage {
 
 // ReportsEmpty is the Reports page for a fresh install: nothing held, nothing known.
 func ReportsEmpty(now time.Time) templates.ReportsPage {
-	return templates.ReportsPage{Shell: Shell("Reports", "reports", "all", ""), Now: now}
+	return templates.ReportsPage{
+		Shell: Shell("Reports", "reports", "all", ""), Now: now, Tax: TaxPage(taxOpenYear, "gains", true),
+	}
 }
 
 // PnLCells is the unrealized result per asset key, for the overview's P/L column. Assets

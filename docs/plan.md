@@ -312,13 +312,13 @@ portfolios:
 ## Change, cost basis & P&L, alerts, exports
 - **Change:** value change (1D/1W/1M/1Y/All) per portfolio and wallet, and price change per asset, all from history. The tooltip notes that value change includes deposits; P&L is the cost-aware number.
 - **Cost basis:**
-  - Average cost per asset, **global across wallets**. Transfers don't change basis.
+  - ~~Average cost per asset, **global across wallets**. Transfers don't change basis.~~ Superseded by per-wallet FIFO (see Taxes below).
   - Inputs:
     - **Activity:** Coinbase buys/sells/converts with `native_amount`; Kraken trades via ledger pairs; rewards at FMV; on-chain receives without a matched source become "unknown basis" until set.
-    - **Manual** (`data/costbasis.yaml`): lots or total invested, with an optional `override`.
+    - ~~**Manual** (`data/costbasis.yaml`): lots or total invested, with an optional `override`.~~ Superseded: manual lots live in `data/tax.yaml`.
     - **CSV import** for history beyond API reach: Coinbase transaction report (preamble skipped) and Kraken Ledgers. De-duplicated against API activity by external id.
   - Output:
-    - Per asset: avg cost, basis, unrealized P&L $/%, realized P&L per year.
+    - ~~Per asset: avg cost, basis, unrealized P&L $/%, realized P&L per year.~~ Superseded by the FIFO tax engine.
     - Per portfolio: basis allocated pro-rata.
     - A "basis coverage 82%" line.
     - The wallet-detail stat tiles.
@@ -354,7 +354,13 @@ portfolios:
 | `GET /portfolios/export[/{id}]` | Export. |
 | `POST /portfolios/import` | Import. |
 | `POST /portfolios/restore/{b}` | Restore a backup. |
-| `GET /reports`, `POST /reports/basis`, `POST /reports/import` | P&L, manual basis, CSV import. |
+| `GET /reports`, `POST /reports/import` | P&L and the Tax section, CSV import. (`POST /reports/basis` was removed: manual lots live in `data/tax.yaml`.) |
+| `GET /reports/koinly`, `POST /reports/koinly/{upload\|map\|accept\|discard}` | Koinly import wizard. |
+| `GET /reports/tax?year=`, `POST /reports/tax/{year\|close\|close-cancel\|reopen}` | Tax view, year switch, close and reopen a year. |
+| `POST /reports/tax/{tag\|tag-bulk\|price\|writeoff}`, `POST /reports/tax/tag/{tx}/delete`, `POST /reports/tax/writeoff/{i}/delete` | Needs-review controls. |
+| `GET /reports/tax/{year}/{capital-gains\|income\|holdings\|transactions\|other-gains\|turbotax}.csv`, `…/turbotax.txf` | Koinly-format CSVs, TurboTax CSV and TXF. |
+| `GET /reports/tax/{year}/8949`, `…/report`, `…/irs-forms.pdf`, `…/all.zip` | Printable 8949 / Schedule D, CPA report, filled IRS PDFs, Everything zip. |
+| `POST /settings/prices` | Save the CoinGecko key. |
 | `GET /alerts`, `POST /alerts…`, `POST /alerts/test` | Alert rules + test. |
 | `GET /settings`, `POST /settings/theme` | Settings. The theme is client-side; the POST is a no-op stub kept only if needed. |
 | `GET /export/{holdings\|history\|pnl\|activity}.csv` | CSV downloads. |
@@ -398,6 +404,13 @@ portfolios:
   - CSV downloads and ntfy setup.
   - `tailscale serve` for HTTPS, password and PWA install.
   - The YAML references for sources and portfolios.
+
+## Taxes (Koinly replacement)
+Per-wallet FIFO tax lots, a Koinly import wizard, a review queue, closing tax years, and Koinly-style reports (CSVs, TurboTax CSV/TXF, printable 8949 / Schedule D, CPA report, filled IRS PDFs, Everything zip). Solana inputs: position moves, staking rewards, CoinGecko prices by mint. This supersedes the average-cost bullets above.
+- **Spec:** `docs/superpowers/specs/2026-10-16-koinly-tax-design.md`.
+- **Plans:** `docs/superpowers/plans/2026-10-16-tax-m1-engine.md`, `…-m2-solana-inputs.md`, `…-m3-koinly-import.md`, `…-m4-review-close.md`, `…-m5-reports.md`, `…-m6-demo-docs.md`.
+- **Data:** `data/tax.yaml`, `data/tax/<year>.yaml`, `data/irs/` (form cache). Config: `tax.timezone`; `COINGECKO_API_KEY`.
+- Disclaimer: not tax advice.
 
 ## Implementation order (milestones; test-first for crypto, money and parsing)
 - **M1: Core app in Vault design.** Steps 1–8.
@@ -487,7 +500,7 @@ portfolios:
   - M1: Coinbase total matches the Coinbase app (staked and vaults included); xpub/multisig totals match Sparrow; Solana tokens match Phantom/Solscan.
   - M3: activity matches the explorers and exchange histories for a sample month; a Coinbase → cold-storage withdrawal shows as one transfer.
   - M4: DeFi values within about 1% of the Orca/Raydium/Jupiter UIs.
-  - M5: avg cost matches Coinbase for one asset.
+  - ~~M5: avg cost matches Coinbase for one asset.~~ Superseded by the tax milestones.
   - M6: ntfy test arrives; a deliberately low price rule fires once.
 
 

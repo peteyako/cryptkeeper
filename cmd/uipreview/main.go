@@ -16,6 +16,10 @@
 // at a time. Reports (?empty=1) and Alerts (?empty=1, ?error=1 for a bad hand edit) keep
 // what the stub POSTs change (a manual cost, an alert rule) until the server restarts or
 // ?reset=1. /alerts/new and /alerts/{id}/edit take ?invalid=1.
+//
+// Taxes: the Tax section is on /reports; /reports/tax?year=2025|2026&tab=gains|income|holdings|review
+// (?empty=1), /reports/koinly?step=1..4, and the printable /reports/tax/{year}/8949 and
+// /reports/tax/{year}/report (?empty=1) all run on invented data through the real tax engine.
 package main
 
 import (

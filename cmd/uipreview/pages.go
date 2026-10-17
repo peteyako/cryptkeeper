@@ -78,6 +78,53 @@ func reportsRoutes(r chi.Router) {
 	r.Get("/reports", func(w http.ResponseWriter, r *http.Request) {
 		render(w, r, templates.ReportsFull(reportsPage(r)))
 	})
+	// The Tax section: /reports/tax?year=&tab= (?empty=1 for a fresh install), the year
+	// selector's POST, and the printable pages of a year. A Datastar request patches just
+	// #tax-section, a browser load renders Reports with it.
+	taxPage := func(year, tab string, empty bool) templates.TaxPage {
+		y, _ := strconv.Atoi(year)
+		return demo.TaxPage(y, tab, empty)
+	}
+	r.Get("/reports/tax", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		tp := taxPage(q.Get("year"), q.Get("tab"), q.Get("empty") != "")
+		if r.Header.Get("Datastar-Request") == "true" {
+			_ = datastar.NewSSE(w, r).PatchElementTempl(templates.TaxSection(tp))
+			return
+		}
+		p := reportsPage(r)
+		p.Tax = tp
+		render(w, r, templates.ReportsFull(p))
+	})
+	r.Post("/reports/tax/year", func(w http.ResponseWriter, r *http.Request) {
+		_ = datastar.NewSSE(w, r).PatchElementTempl(templates.TaxSection(taxPage(r.PostFormValue("year"), r.PostFormValue("tab"), r.URL.Query().Get("empty") != "")))
+	})
+	taxYear := func(w http.ResponseWriter, r *http.Request) (int, bool) {
+		y, err := strconv.Atoi(chi.URLParam(r, "year"))
+		if err != nil || (y != 2025 && y != 2026) {
+			http.NotFound(w, r)
+			return 0, false
+		}
+		return y, true
+	}
+	r.Get("/reports/tax/{year}/8949", func(w http.ResponseWriter, r *http.Request) {
+		if y, ok := taxYear(w, r); ok {
+			rep := demo.YearReport(y)
+			if r.URL.Query().Get("empty") != "" {
+				rep = demo.TaxPage(y, "", true).Report
+			}
+			render(w, r, templates.Form8949Doc(rep))
+		}
+	})
+	r.Get("/reports/tax/{year}/report", func(w http.ResponseWriter, r *http.Request) {
+		if y, ok := taxYear(w, r); ok {
+			v := demo.TaxReport(y)
+			if r.URL.Query().Get("empty") != "" {
+				v = templates.TaxReportView{Report: demo.TaxPage(y, "", true).Report, Generated: v.Generated, Method: v.Method}
+			}
+			render(w, r, templates.TaxReportPage(v))
+		}
+	})
 	r.Post("/reports/import", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseMultipartForm(1 << 20)
 		_, hdr, err := r.FormFile("file")
@@ -115,8 +162,11 @@ func reportsRoutes(r chi.Router) {
 			return demo.KoinlyEmpty(time.Now())
 		case q.Get("blocked") != "":
 			return demo.KoinlyBlocked(time.Now())
+		case q.Get("step") != "":
+			step, _ := strconv.Atoi(q.Get("step"))
+			return demo.KoinlyPage(step)
 		}
-		return demo.Koinly(time.Now())
+		return demo.KoinlyPage(3)
 	}
 	r.Get("/reports/koinly", func(w http.ResponseWriter, r *http.Request) {
 		render(w, r, templates.KoinlyFull(koinlyPage(r)))
