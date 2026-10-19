@@ -115,6 +115,10 @@ func (r *Refresher) Force(ctx context.Context) (Snapshot, error) {
 	return r.refresh(ctx), nil
 }
 
+// Rebuild runs a refresh now, whatever MinForceInterval says: after a reset the old
+// snapshot must not be served again.
+func (r *Refresher) Rebuild(ctx context.Context) Snapshot { return r.refresh(ctx) }
+
 // refresh builds a snapshot; concurrent callers share one build.
 func (r *Refresher) refresh(ctx context.Context) Snapshot {
 	v, _, _ := r.sf.Do("refresh", func() (any, error) {

@@ -401,6 +401,15 @@ const bitcoinKeyClear = `@post('/settings/bitcoin?clear=1')`
 // backupImportSubmit posts the restore form (multipart: the file and the mode).
 const backupImportSubmit = `@post('/backup/import', {contentType: 'form'})`
 
+// ResetWord is what Settings asks the user to type before erasing everything.
+const ResetWord = "RESET"
+
+// resetSubmit posts the reset form (the typed confirmation rides along).
+const resetSubmit = `@post('/backup/reset', {contentType: 'form'})`
+
+// resetDisabled keeps the reset button off until the confirmation word is typed.
+const resetDisabled = `$resetting || ($resetConfirm || '').trim().toUpperCase() !== '` + ResetWord + `'`
+
 // navClick turns an in-app link into a Datastar navigation: push the URL, then @get the
 // same URL; the server answers a Datastar GET with only the page regions (title, sidebar,
 // #main, bottom bar) over SSE, so styles, fonts and scripts never reload. Modified clicks

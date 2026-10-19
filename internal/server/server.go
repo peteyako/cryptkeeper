@@ -186,6 +186,7 @@ func New(d Deps) http.Handler {
 		r.Post("/settings/bitcoin", s.settingsBitcoin)
 		r.Get("/backup/export", s.backupExport)
 		r.Post("/backup/import", s.backupImport)
+		r.Post("/backup/reset", s.backupReset)
 	})
 	return r
 }

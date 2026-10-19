@@ -103,6 +103,36 @@ func (d *DB) Restore(ctx context.Context, snapshot []byte, replace bool) (int, e
 	return len(tables), nil
 }
 
+// Reset empties every table but schema_migrations in one transaction, so the database is
+// as a fresh install leaves it, then compacts the file and its WAL so the erased rows don't
+// linger in free pages. It returns how many tables were emptied.
+func (d *DB) Reset(ctx context.Context) (int, error) {
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	tables, err := strings1(ctx, tx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`)
+	if err != nil {
+		return 0, err
+	}
+	for _, t := range tables {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+quote(t)); err != nil {
+			return 0, fmt.Errorf("%s: %w", t, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	if _, err := d.ExecContext(ctx, `VACUUM`); err != nil {
+		return len(tables), fmt.Errorf("compact the database: %w", err)
+	}
+	if _, err := d.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return len(tables), fmt.Errorf("compact the database: %w", err)
+	}
+	return len(tables), nil
+}
+
 // isCryptKeeper reports whether the SQLite file at path is a CryptKeeper database, as uploaded
 // (before Open would migrate any database into one): it has applied the base migration.
 func isCryptKeeper(ctx context.Context, path string) bool {

@@ -93,4 +93,47 @@ func TestRestoreRefusesOtherFiles(t *testing.T) {
 	}
 }
 
+// TestReset: every table is emptied, the migrations stay applied, and the database keeps
+// working (and reopens without migrating again).
+func TestReset(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "reset.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec(`INSERT INTO kv (k, v, updated_at) VALUES ('a', '1', 1)`)
+	db.Exec(`INSERT INTO price_history (asset, day, usd) VALUES ('BTC', '2026-01-01', 90000)`)
+	var applied int
+	db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&applied)
+
+	n, err := db.Reset(ctx)
+	if err != nil || n == 0 {
+		t.Fatalf("reset: %d tables, %v", n, err)
+	}
+	tables, err := strings1(ctx, db, `SELECT name FROM sqlite_master WHERE type = 'table' AND name != 'schema_migrations'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tb := range tables {
+		var rows int
+		if err := db.QueryRow(`SELECT count(*) FROM ` + quote(tb)).Scan(&rows); err != nil || rows != 0 {
+			t.Errorf("%s: %d rows after reset (%v)", tb, rows, err)
+		}
+	}
+	var after int
+	db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&after)
+	if after == 0 || after != applied {
+		t.Errorf("migrations %d after reset, want the %d applied", after, applied)
+	}
+	if err := db.PutJSON(ctx, "b", 2); err != nil {
+		t.Errorf("write after reset: %v", err)
+	}
+	db.Close()
+	if db, err = Open(path); err != nil {
+		t.Fatalf("reopen after reset: %v", err)
+	}
+	db.Close()
+}
+
 func readFile(path string) ([]byte, error) { return os.ReadFile(path) }

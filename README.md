@@ -381,6 +381,13 @@ crypto-portfolio backup import cryptkeeper-backup.yaml [-replace]
 
 An exchange source restored without its secrets shows "needs its API key" until you edit it.
 
+**Reset.** The same card's **Reset** erases everything and leaves CryptKeeper as a fresh install:
+every source, portfolio and alert rule, manual cost basis, tax settings and closed years, and the
+whole database (activity, price and chart history, saved scans, and the API keys and display
+options saved in Settings). Type `RESET` to enable the button. `config.yaml`, `.env`, the secret
+key and the automatic copies in `data/backups/` stay; the database has no such copy, so export a
+backup with the database first if you might want it back.
+
 ## Remote access, password, phone app
 
 CryptKeeper is meant for your LAN or Tailscale. To reach it from anywhere on your tailnet with HTTPS:

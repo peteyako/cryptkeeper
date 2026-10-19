@@ -329,6 +329,34 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElementTempl(templates.BackupImportResult(outcome))
 }
 
+// backupReset erases everything (backup.Reset) once the user has typed the confirmation
+// word, then serves the empty dashboard. API keys from the environment are untouched.
+func (s *Server) backupReset(w http.ResponseWriter, r *http.Request) {
+	_ = parseBody(r)
+	sse := datastar.NewSSE(w, r)
+	if !strings.EqualFold(strings.TrimSpace(r.PostFormValue("confirm")), templates.ResetWord) {
+		_ = sse.PatchElementTempl(templates.ResetResult("Type " + templates.ResetWord + " to confirm. Nothing was erased."))
+		return
+	}
+	ctx := context.WithoutCancel(r.Context()) // a closed tab must not stop it halfway
+	err := backup.Reset(ctx, s.backupStores())
+	if err == nil && s.Blockstream != nil && s.Cfg.BlockstreamClientID == "" {
+		s.Blockstream.SetCredentials("", "")
+	}
+	s.invalidateTax()
+	s.Refresher.Rebuild(ctx)
+	if s.Syncer != nil {
+		s.Syncer.Kick()
+	}
+	if err != nil {
+		s.Log.Warn("reset", "err", err)
+		_ = sse.PatchElementTempl(templates.ResetResult("The reset stopped at " + err.Error()))
+		return
+	}
+	s.Log.Info("reset: everything erased")
+	_ = sse.Redirect("/")
+}
+
 // cleanupSource removes what belongs to a deleted source: portfolio references and activity.
 // BitcoinScanKVPrefix + a wallet id is the kv key of that Bitcoin wallet's saved address scan.
 const BitcoinScanKVPrefix = "bitcoin.scan."

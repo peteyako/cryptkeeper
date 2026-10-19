@@ -299,7 +299,8 @@ templ SettingsBitcoin(p SettingsPage) {
 }
 
 // BackupIO exports and restores everything in one file: sources, portfolios, alert rules,
-// manual cost basis, tax settings and closed tax years (secrets excluded unless asked for).
+// manual cost basis, tax settings and closed tax years (secrets excluded unless asked for);
+// Reset erases all of it and the database.
 templ BackupIO(p SettingsPage) {
 	<section id="backup-io" class="card pf-io" aria-labelledby="set-backup-h">
 		<div class="pf-io__intro">
@@ -380,7 +381,56 @@ templ BackupIO(p SettingsPage) {
 			</form>
 			@BackupImportResult(p.BackupImport)
 		</div>
+		<div class="pf-io__block">
+			<div class="pf-io__intro">
+				<h3 class="h-card">Reset</h3>
+				<p class="muted-text">Erase everything and start over as a fresh install: sources, portfolios, alert rules, cost basis, tax settings and closed years, and the whole database (activity, price and chart history, and the API keys and display options saved on this page). It can't be undone, so export a backup with the database first if you might want any of it back.</p>
+				<p class="muted-text">Kept: config.yaml, .env, the secret key, and the automatic copies of old files in <span class="mono">{ p.DataDir + "/backups" }</span>.</p>
+			</div>
+			<form
+				id="reset-form"
+				class="form"
+				method="post"
+				action="/backup/reset"
+				data-indicator="resetting"
+				data-on:submit={ resetSubmit }
+			>
+				<div class="field">
+					<label class="field__label" for="f-reset-confirm">Type { ResetWord } to confirm</label>
+					<input
+						class="input"
+						id="f-reset-confirm"
+						name="confirm"
+						type="text"
+						autocomplete="off"
+						autocapitalize="characters"
+						spellcheck="false"
+						data-bind="resetConfirm"
+						aria-describedby="reset-result"
+					/>
+				</div>
+				<button
+					type="submit"
+					class="btn btn--danger btn--block"
+					data-attr:disabled={ resetDisabled }
+					data-class="{'is-busy': $resetting}"
+				>Erase everything</button>
+			</form>
+			@ResetResult("")
+		</div>
 	</section>
+}
+
+// ResetResult says why a reset didn't run or where it stopped (patched after a reset; a
+// reset that finishes opens the dashboard instead).
+templ ResetResult(msg string) {
+	<div id="reset-result" class="import-result" aria-live="polite">
+		if msg != "" {
+			@Notice("loss", "x") {
+				{ msg }
+			}
+		}
+	</div>
 }
 
 // BackupImportResult is the restore outcome (patched after an import).
