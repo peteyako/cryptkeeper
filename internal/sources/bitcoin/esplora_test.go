@@ -358,7 +358,7 @@ func TestAddressesReuseRecentScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := f.totalHits()
-	s.now = func() time.Time { return fixedNow.Add(30 * time.Second) }
+	s.now = func() time.Time { return fixedNow.Add(scanTTL / 2) }
 	if _, err := s.Addresses(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -366,9 +366,9 @@ func TestAddressesReuseRecentScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f.totalHits() != before {
-		t.Fatalf("rescanned within a minute: %d → %d requests", before, f.totalHits())
+		t.Fatalf("rescanned within scanTTL: %d → %d requests", before, f.totalHits())
 	}
-	s.now = func() time.Time { return fixedNow.Add(2 * time.Minute) }
+	s.now = func() time.Time { return fixedNow.Add(2 * scanTTL) }
 	if _, err := s.Addresses(ctx); err != nil {
 		t.Fatal(err)
 	}

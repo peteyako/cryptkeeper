@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,10 +19,17 @@ import (
 )
 
 const (
-	scanTTL          = time.Minute // Addresses/UTXOs/NextReceiveAddress reuse a scan this fresh
+	scanTTL          = 10 * time.Minute // Addresses, UTXOs, NextReceiveAddress and Activity reuse a scan this fresh
 	fetchConcurrency = 4
-	maxScanPerChain  = 10_000 // safety stop against a server that reports every address as used
-	satsPerBTC       = 100_000_000
+
+	// Between full scans (every fullScanEvery) a refresh reads only the addresses that can
+	// change: those holding a balance and the first lookahead unused ones on each chain.
+	fullScanEvery = 6 * time.Hour
+	lookahead     = 5
+	// rateLimitPause is the least time a server that answered 429 is left alone.
+	rateLimitPause  = 5 * time.Minute
+	maxScanPerChain = 10_000 // safety stop against a server that reports every address as used
+	satsPerBTC      = 100_000_000
 
 	// With a fallback server, one primary request gets primaryTimeout, and a primary that
 	// doesn't answer is skipped for primaryRetry before it is tried again.
@@ -39,6 +47,7 @@ type addrState struct {
 
 type scanResult struct {
 	at        time.Time
+	fullAt    time.Time     // when every address was last read
 	chains    [][]addrState // per chain, by index
 	lastUsed  []int         // per chain; -1 when no address is used
 	truncated bool
@@ -92,10 +101,10 @@ func addressPath(a string) string { return "/address/" + url.PathEscape(a) }
 // then serves every request for primaryRetry.
 func (s *Source) get(ctx context.Context, path string, out any) error {
 	if s.fallback == "" {
-		return s.client.GetJSON(ctx, s.esplora+path, nil, out)
+		return s.fetch(ctx, s.client, s.esplora, path, out)
 	}
 	if !s.usingFallback() {
-		err := s.fast.GetJSON(ctx, s.esplora+path, nil, out)
+		err := s.fetch(ctx, s.fast, s.esplora, path, out)
 		if err == nil || ctx.Err() != nil || !unavailable(err) {
 			return err
 		}
@@ -107,7 +116,28 @@ func (s *Source) get(ctx context.Context, path string, out any) error {
 			slog.Warn("bitcoin: Esplora server isn't answering; using the fallback", "wallet", s.id, "server", s.node, "fallback", s.fallbackNode)
 		}
 	}
-	return s.client.GetJSON(ctx, s.fallback+path, nil, out)
+	return s.fetch(ctx, s.client, s.fallback, path, out)
+}
+
+// fetch GETs base+path with c. A server that answers 429 is left alone for its Retry-After,
+// at least rateLimitPause: until then fetch fails at once with a 429 of its own, so a scan
+// doesn't keep spending the server's request allowance.
+func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, out any) error {
+	s.mu.Lock()
+	until := s.paused[base]
+	s.mu.Unlock()
+	if s.now().Before(until) {
+		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
+			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeep to slow down"}
+	}
+	err := c.GetJSON(ctx, base+path, nil, out)
+	var se *httpx.StatusError
+	if errors.As(err, &se) && se.Status == http.StatusTooManyRequests {
+		s.mu.Lock()
+		s.paused[base] = s.now().Add(max(se.RetryAfter, rateLimitPause))
+		s.mu.Unlock()
+	}
+	return err
 }
 
 // usingFallback reports whether the primary server is being skipped.
@@ -149,11 +179,31 @@ func (s *Source) lookupAll(ctx context.Context, batch []addrState) error {
 	return g.Wait()
 }
 
-// scan looks up every chain and remembers the result for recentScan.
+// scan brings the wallet up to date and remembers the result for recentScan. A full scan
+// reads every address up to the gap limit. Public Esplora servers allow a few hundred
+// requests an hour, so between full scans (every fullScanEvery) a refresh reads only the
+// addresses that can change: those holding a balance (they can be spent from) and the first
+// lookahead unused ones on each chain (where new payments and change arrive). A payment to an
+// old, emptied address shows up at the next full scan.
 func (s *Source) scan(ctx context.Context) (*scanResult, error) {
-	res := &scanResult{at: s.now()}
+	s.mu.Lock()
+	last := s.last
+	s.mu.Unlock()
+	res := &scanResult{at: s.now(), fullAt: s.now()}
+	light := last != nil && s.ranged && s.now().Sub(last.fullAt) < fullScanEvery
+	if light {
+		res.fullAt = last.fullAt
+	}
 	for chain := range s.chains {
-		states, lastUsed, truncated, err := s.scanChain(ctx, chain)
+		var states []addrState
+		lastUsed := -1
+		if light {
+			var err error
+			if states, lastUsed, err = s.recheck(ctx, last.chains[chain]); err != nil {
+				return nil, err
+			}
+		}
+		states, lastUsed, truncated, err := s.scanChain(ctx, chain, states, lastUsed)
 		if err != nil {
 			return nil, err
 		}
@@ -167,16 +217,50 @@ func (s *Source) scan(ctx context.Context) (*scanResult, error) {
 	return res, nil
 }
 
-// scanChain fetches addresses in batches of the gap limit until gap consecutive addresses
+// recheck reads again the addresses of a previous chain scan that can change, and returns
+// the updated chain with its last used index.
+func (s *Source) recheck(ctx context.Context, prev []addrState) ([]addrState, int, error) {
+	states := slices.Clone(prev)
+	lastUsed := lastUsedIndex(states)
+	var idx []int
+	for i, a := range states {
+		if a.sats != 0 || (i > lastUsed && i <= lastUsed+lookahead) {
+			idx = append(idx, i)
+		}
+	}
+	batch := make([]addrState, len(idx))
+	for j, i := range idx {
+		batch[j] = states[i]
+	}
+	if err := s.lookupAll(ctx, batch); err != nil {
+		return nil, 0, err
+	}
+	for j, i := range idx {
+		states[i] = batch[j]
+	}
+	return states, lastUsedIndex(states), nil
+}
+
+// lastUsedIndex is the index of the last address with transactions, -1 when none is used.
+func lastUsedIndex(states []addrState) int {
+	for i := len(states) - 1; i >= 0; i-- {
+		if states[i].txs > 0 {
+			return states[i].index
+		}
+	}
+	return -1
+}
+
+// scanChain continues a chain scan from the addresses already read (none for a full scan):
+// it fetches further addresses in batches of the gap limit until gap consecutive addresses
 // after the last used one have no transactions. The result is trimmed to lastUsed+gap+1
 // addresses (later ones in the final batch are unused by definition).
-func (s *Source) scanChain(ctx context.Context, chain int) ([]addrState, int, bool, error) {
+func (s *Source) scanChain(ctx context.Context, chain int, all []addrState, lastUsed int) ([]addrState, int, bool, error) {
 	batchSize, limit := s.gap, maxScanPerChain
 	if !s.ranged {
 		batchSize, limit = 1, 1
 	}
-	var all []addrState
-	lastUsed, truncated := -1, false
+	truncated := false
 	for len(all)-1-lastUsed < s.gap {
 		if len(all) >= limit {
 			truncated = s.ranged

@@ -88,8 +88,9 @@ type Source struct {
 	mu          sync.Mutex
 	addrs       map[[2]int]string // derived address cache, keyed by (chain, index)
 	last        *scanResult
-	primaryDown time.Time // the primary server isn't answering; use the fallback until then
-	hint        string    // script-type hint for autoKey, once checked
+	primaryDown time.Time            // the primary server isn't answering; use the fallback until then
+	paused      map[string]time.Time // by server base URL: answered 429, left alone until then
+	hint        string               // script-type hint for autoKey, once checked
 	hintDone    bool
 }
 
@@ -134,6 +135,7 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 		client:  c,
 		now:     time.Now,
 		addrs:   map[[2]int]string{},
+		paused:  map[string]time.Time{},
 	}
 	if fb := strings.TrimRight(strings.TrimSpace(cfg.FallbackURL), "/"); fb != "" {
 		if s.fallbackNode, err = esploraHost(fb); err != nil {

@@ -75,6 +75,12 @@ CryptKeep derives receive and change addresses with a gap limit of 20 (configura
 **Privacy:** balances are looked up on `mempool.space` by default, which lets that server see
 your addresses together. Point `bitcoin.esploraUrl` at your own mempool/electrs node to avoid it.
 
+Public Esplora servers allow a few hundred requests an hour per IP (blockstream.info: 700). So
+CryptKeep reads every address of a wallet every 6 hours, and in between only the addresses that
+can change: those holding a balance and the next 5 unused ones on each chain. A payment to an
+old, emptied address shows at the next full scan. A server that answers "429 Too Many Requests"
+is left alone for at least 5 minutes.
+
 While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (and the other way
 round), and the wallet says so. A private node gets no fallback unless you set
 `bitcoin.esploraFallbackUrl`; `esploraFallbackUrl: "off"` turns the fallback off.
