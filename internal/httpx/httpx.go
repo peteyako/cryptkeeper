@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -200,10 +201,16 @@ func decode(body []byte, out any, url string) error {
 // hosts are spaced out process-wide, whichever Client sends them.
 var pacers sync.Map // host → *pacer
 
+// A pacer lets requests go one at a time, in the order they asked: the one at the head of
+// the line waits until next, then next moves an interval past the moment it actually went.
+// Spacing from that moment, rather than handing out times in advance, keeps requests apart
+// after the process was frozen (a sleeping machine) and lets a 429's hold, which moves next,
+// stop requests that are already waiting.
 type pacer struct {
 	mu       sync.Mutex
 	interval time.Duration
-	next     time.Time
+	next     time.Time       // the earliest the next request may go
+	line     []chan struct{} // waiting requests, oldest first; the head's channel is closed
 }
 
 // SetPace spaces the requests to host (as in a URL, with any port) at least interval apart,
@@ -256,22 +263,60 @@ func Wait(ctx context.Context, host string) error {
 		return ctx.Err()
 	}
 	p := v.(*pacer)
+	turn := make(chan struct{})
 	p.mu.Lock()
-	now := time.Now()
-	start := now
-	if p.next.After(now) {
-		start = p.next
+	p.line = append(p.line, turn)
+	if len(p.line) == 1 {
+		close(turn)
 	}
-	p.next = start.Add(p.interval)
 	p.mu.Unlock()
-	if d := start.Sub(now); d > 0 {
+	select {
+	case <-turn:
+	case <-ctx.Done():
+		p.leave(turn)
+		return ctx.Err()
+	}
+	// At the head of the line. next is read again after every sleep: a hold may have moved it.
+	for {
+		if err := ctx.Err(); err != nil {
+			p.leave(turn)
+			return err
+		}
+		p.mu.Lock()
+		now := time.Now()
+		if !p.next.After(now) {
+			p.next = now.Add(p.interval)
+			p.dequeue(turn)
+			p.mu.Unlock()
+			return nil
+		}
+		d := p.next.Sub(now)
+		p.mu.Unlock()
 		t := time.NewTimer(d)
-		defer t.Stop()
 		select {
 		case <-t.C:
 		case <-ctx.Done():
-			return ctx.Err()
+			t.Stop()
 		}
 	}
-	return ctx.Err()
+}
+
+// leave takes a cancelled request out of the line.
+func (p *pacer) leave(turn chan struct{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.dequeue(turn)
+}
+
+// dequeue removes turn from the line and, if it was the head, hands the turn to the next
+// request. p.mu must be held.
+func (p *pacer) dequeue(turn chan struct{}) {
+	i := slices.Index(p.line, turn)
+	if i < 0 {
+		return
+	}
+	p.line = slices.Delete(p.line, i, i+1)
+	if i == 0 && len(p.line) > 0 {
+		close(p.line[0])
+	}
 }

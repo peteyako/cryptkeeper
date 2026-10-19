@@ -129,3 +129,83 @@ func TestPacedHostHoldsOnRetryAfter(t *testing.T) {
 		}
 	}
 }
+
+// TestHoldStopsRequestsAlreadyWaiting: requests already waiting their turn when a 429 comes
+// back wait out its Retry-After too, instead of going on the turn they were waiting for.
+func TestHoldStopsRequestsAlreadyWaiting(t *testing.T) {
+	var mu sync.Mutex
+	var arrivals []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		arrivals = append(arrivals, time.Now())
+		first := len(arrivals) == 1
+		mu.Unlock()
+		if first {
+			time.Sleep(10 * time.Millisecond) // the other two are waiting by now
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	SetPace(host, 40*time.Millisecond) // turns at 0, 40ms and 80ms
+	t.Cleanup(func() { SetPace(host, 0) })
+
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			c := New()
+			c.PaceOwn429 = true
+			c.GetJSON(context.Background(), srv.URL, nil, nil)
+		})
+	}
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(arrivals) != 3 {
+		t.Fatalf("%d requests reached the server, want 3", len(arrivals))
+	}
+	for _, at := range arrivals[1:] {
+		if d := at.Sub(arrivals[0]); d < 900*time.Millisecond {
+			t.Errorf("a waiting request reached the server %v after the 429, inside its 1 s Retry-After", d)
+		}
+	}
+}
+
+// TestCancelledWaitGivesUpItsTurn: a waiting request that is cancelled leaves the line at
+// once, and the request behind it goes on the turn it would have had.
+func TestCancelledWaitGivesUpItsTurn(t *testing.T) {
+	const host, interval = "cancel.test", 60 * time.Millisecond
+	SetPace(host, interval)
+	t.Cleanup(func() { SetPace(host, 0) })
+	t0 := time.Now()
+	if err := Wait(context.Background(), host); err != nil { // goes at once
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelled := make(chan error, 1)
+	go func() { cancelled <- Wait(ctx, host) }() // next in line, for the turn at 60ms
+	time.Sleep(10 * time.Millisecond)
+	next := make(chan time.Duration, 1)
+	go func() { // behind it, for the turn at 120ms
+		if err := Wait(context.Background(), host); err != nil {
+			t.Error(err)
+		}
+		next <- time.Since(t0)
+	}()
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-cancelled:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("cancelled wait = %v, want context.Canceled", err)
+		}
+	case <-time.After(30 * time.Millisecond):
+		t.Error("a cancelled wait didn't return at once")
+	}
+	if d := <-next; d >= 2*interval-10*time.Millisecond {
+		t.Errorf("the request behind a cancelled one went after %v, want its turn at %v", d, interval)
+	}
+}
