@@ -294,24 +294,31 @@ func (s *Server) testSource(ctx context.Context, d sources.Def) templates.TestRe
 	return templates.TestResult{OK: true, Message: msg, Rows: rows}
 }
 
-// tickersFound sums up a brokerage account's test: how many tickers got a price, and whether
-// those are the last close because the market is shut (only when every price says so).
+// tickersFound sums up a brokerage account's test: how many tickers (cash aside) got a
+// price, and whether those are the last close because the market is shut (only when every
+// price says so).
 func tickersFound(rows []portfolio.HoldingRow) string {
-	priced, open := 0, false
+	tickers, priced, open := 0, 0, false
 	for _, r := range rows {
+		if _, stock := core.IsStockKey(r.AssetKey); !stock {
+			continue
+		}
+		tickers++
 		if r.Priced {
 			priced++
 			open = open || r.Price.MarketOpen || r.Price.MarketTime.IsZero()
 		}
 	}
 	var msg string
-	switch priced {
-	case len(rows):
-		msg = fmt.Sprintf("Found all %s.", plural(len(rows), "ticker"))
-	case 0:
+	switch {
+	case tickers == 0:
+		return fmt.Sprintf("Found %s.", plural(len(rows), "holding"))
+	case priced == 0:
 		return "Couldn't price any of these tickers."
+	case priced == tickers:
+		msg = fmt.Sprintf("Found all %s.", plural(tickers, "ticker"))
 	default:
-		msg = fmt.Sprintf("Found %d of %s.", priced, plural(len(rows), "ticker"))
+		msg = fmt.Sprintf("Found %d of %s.", priced, plural(tickers, "ticker"))
 	}
 	if !open {
 		msg += " Markets are closed, so these are the last closing prices."

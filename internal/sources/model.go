@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/sources/brokerage"
 	"crypto-portfolio/internal/sources/manual"
 )
 
@@ -139,8 +140,8 @@ func (d *Def) Validate() error {
 			return fmt.Errorf("%s: add at least one holding", d.ID)
 		}
 		for _, h := range d.Holdings {
-			if t, ok := core.NormalizeTicker(h.Asset); !ok || t != h.Asset {
-				return fmt.Errorf("%s: %q isn't a ticker (use capitals, e.g. VTI)", d.ID, h.Asset)
+			if !brokerage.ValidAsset(h.Asset) {
+				return fmt.Errorf("%s: %q isn't a ticker or USD (use capitals, e.g. VTI)", d.ID, h.Asset)
 			}
 		}
 	default:

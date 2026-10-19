@@ -146,6 +146,11 @@ such as a taxable account or a Roth IRA, and type in what it holds, one ticker p
 ticker. CryptKeep never connects to your broker; you update the share counts when they
 change.
 
+**Cash** is `CASH 1500` (or `USD 1500`; `$1,500` works too): dollars at $1.00, shown as
+*Cash*. A money market fund such as SPAXX or VMFXX can go in as its ticker instead. `USD` and
+`CASH` are also real tickers (an ETF and a bank stock); write `stock:USD` or `stock:CASH`
+for those.
+
 - **Prices** come from Yahoo Finance, which needs no key. One request prices every ticker,
   and when it fails CryptKeep asks Yahoo's second server ticker by ticker. Requests are paced.
   Only US-dollar listings are priced; a ticker in another currency, or one Yahoo doesn't
@@ -157,7 +162,8 @@ change.
 - **Everywhere else** stocks count like any holding: in the total, the allocation (by
   ticker), the chart, portfolios, price alerts and the asset page with its price history.
 - **Not crypto tax:** brokerage accounts have no cost basis here and stay out of Reports, the
-  tax package and the Koinly import. Your broker's 1099-B covers them.
+  tax package and the Koinly import. Your broker's 1099-B covers them. Cash (here or on an
+  exchange) has no cost basis either, so Reports leaves it out too.
 
 ## Portfolios
 

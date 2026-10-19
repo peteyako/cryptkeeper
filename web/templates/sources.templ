@@ -388,8 +388,8 @@ templ brokerageFields(p SourceFormPage) {
 	@textField(label)
 	@descriptionField(p)
 	{{ h := p.field("holdings", "Holdings") }}
-	{{ h.Mono, h.Required, h.Placeholder = true, true, "VTI 40\nBND 120\nAAPL 15" }}
-	{{ h.Help = "One holding per line: the ticker, the number of shares, then an optional note. US stocks, ETFs, mutual funds and bond funds." }}
+	{{ h.Mono, h.Required, h.Placeholder = true, true, "VTI 40\nBND 120\nAAPL 15\nCASH 1500" }}
+	{{ h.Help = "One holding per line: the ticker, the number of shares, then an optional note. US stocks, ETFs, mutual funds and bond funds. Cash is CASH (or USD) and the dollar amount; the tickers USD and CASH are stock:USD and stock:CASH." }}
 	@areaField(h, 6)
 }
 

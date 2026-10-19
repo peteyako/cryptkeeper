@@ -71,3 +71,55 @@ func TestFetchLookupDown(t *testing.T) {
 		t.Errorf("warnings %q", res.Warnings)
 	}
 }
+
+// TestCash: a USD or CASH line is dollars, not the tickers USD (an ETF) or CASH (a bank
+// stock); those are written stock:USD and stock:CASH.
+func TestCash(t *testing.T) {
+	hs, err := ParseLines("cash $1,500.25 settlement\nUSD 200\nstock:usd 3\nSTOCK:CASH 4\nVTI 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"USD", "USD", "stock:USD", "stock:CASH", "VTI"}
+	for i, w := range want {
+		if hs[i].Asset != w {
+			t.Errorf("line %d stored as %q, want %q", i+1, hs[i].Asset, w)
+		}
+	}
+	if hs[0].Amount != 1500.25 || hs[0].Note != "settlement" {
+		t.Errorf("cash line %+v", hs[0])
+	}
+	back, err := ParseLines(manual.FormatLines(hs))
+	if err != nil || len(back) != len(hs) || back[2] != hs[2] || back[0] != hs[0] {
+		t.Fatalf("round trip: %+v %v", back, err)
+	}
+
+	var asked []string
+	lookup := func(_ context.Context, tickers []string) (map[string]Security, error) {
+		asked = tickers
+		return map[string]Security{"USD": {Name: "ProShares Ultra Semiconductors", Currency: "USD"}}, nil
+	}
+	res, err := New("fidelity", hs[:3], lookup).Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cash := res.Holdings[0]
+	if cash.AssetKey != "USD" || cash.Symbol != "USD" || cash.Name != "Cash" {
+		t.Errorf("cash holding %+v", cash)
+	}
+	if etf := res.Holdings[2]; etf.AssetKey != "stock:USD" || etf.Name != "ProShares Ultra Semiconductors" {
+		t.Errorf("stock:USD holding %+v", etf)
+	}
+	if strings.Join(asked, ",") != "USD" || len(res.Warnings) != 0 {
+		t.Errorf("asked Yahoo about %v, warnings %v; want only the ETF and none", asked, res.Warnings)
+	}
+	for _, ok := range []string{"USD", "stock:USD", "VTI"} {
+		if !ValidAsset(ok) {
+			t.Errorf("%q should be a valid stored asset", ok)
+		}
+	}
+	for _, bad := range []string{"usd", "stock:", "a/b", "spl:x"} {
+		if ValidAsset(bad) {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+}

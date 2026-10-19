@@ -67,12 +67,12 @@ func pnlRows(res tax.Result, assets []portfolio.AssetRow, wallets func(string) b
 	return rows
 }
 
-// taxedAssets leaves out stocks and funds: brokerage accounts have no tax lots here (the
-// broker's 1099-B covers them), so they must not count as holdings of unknown cost.
+// taxedAssets leaves out what has no crypto tax lots, so it doesn't count as holdings of
+// unknown cost: stocks and funds (the broker's 1099-B covers them) and cash.
 func taxedAssets(rows []portfolio.AssetRow) []portfolio.AssetRow {
 	out := make([]portfolio.AssetRow, 0, len(rows))
 	for _, a := range rows {
-		if _, stock := core.IsStockKey(a.AssetKey); !stock {
+		if _, stock := core.IsStockKey(a.AssetKey); !stock && !tax.IsFiat(a.AssetKey) {
 			out = append(out, a)
 		}
 	}

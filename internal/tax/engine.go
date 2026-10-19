@@ -24,6 +24,9 @@ const (
 // fiat are the currencies that only carry value: they are never lots.
 var fiat = map[string]bool{"USD": true, "EUR": true, "GBP": true, "CAD": true, "JPY": true, "AUD": true, "CHF": true}
 
+// IsFiat reports whether asset is a fiat currency, which has no tax lots.
+func IsFiat(asset string) bool { return fiat[asset] }
+
 // Input is everything Compute needs for the open tax year.
 type Input struct {
 	// From is the start of the first open tax year (zero when no year is closed). Earlier

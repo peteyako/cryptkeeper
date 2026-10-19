@@ -115,3 +115,33 @@ func TestBrokerageStaysOutOfCryptoTax(t *testing.T) {
 		}
 	}
 }
+
+// TestBrokerageCash: CASH is dollars at $1.00, not the CASH ticker; Test connection counts
+// the tickers only, and cash stays out of the crypto Reports.
+func TestBrokerageCash(t *testing.T) {
+	e := newEnv(t, "")
+	e.price["USD"] = 1
+	fidelity := url.Values{"type": {"brokerage"}, "label": {"Fidelity"}, "holdings": {"VTI 40\nCASH $1,500 settlement"}}
+	body, hdr := form(fidelity)
+	if _, out := e.do("POST", "/sources/test", body, hdr); !strings.Contains(out, "Found all 1 ticker.") {
+		t.Fatalf("test result: %.800s", out)
+	}
+	body, hdr = form(fidelity)
+	if resp, out := e.do("POST", "/sources", body, hdr); resp.StatusCode != 200 || !strings.Contains(out, "/w/fidelity") {
+		t.Fatalf("save: %d %s", resp.StatusCode, out)
+	}
+	e.ref.Force(context.Background())
+	snap, _ := e.ref.Latest()
+	if snap.TotalUSD != 5500 { // 40 shares at the fake 100, and $1,500
+		t.Errorf("total %v, want 5500", snap.TotalUSD)
+	}
+	_, page := e.do("GET", "/w/fidelity", nil, nil)
+	for _, want := range []string{">Cash<", "1,500.00 USD", "settlement"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("wallet page lacks %q", want)
+		}
+	}
+	if rows := taxedAssets(snap.Assets); len(rows) != 0 {
+		t.Errorf("Reports would count %+v", rows)
+	}
+}
