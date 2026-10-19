@@ -55,6 +55,9 @@ type koinlyDraft struct {
 	AssetMap   map[string]string
 	ExtraBasis map[string]float64
 	SkipOK     map[string]bool
+	// WalletWhy says why a Koinly wallet is mapped as it is, for the ones CryptKeep matched;
+	// choosing another wallet drops it.
+	WalletWhy map[string]string
 }
 
 // koinlyKinds are the report kinds the import uses, in display order.
@@ -218,7 +221,7 @@ func (s *Server) koinlyMerge(ctx context.Context, files []*multipart.FileHeader)
 		d.Files[string(u.kind)] = u.name
 		names = append(names, fmt.Sprintf("%s (%s)", u.name, kindName(u.kind)))
 	}
-	s.suggestMappings(ctx, &d)
+	s.suggestMappings(ctx, &d, false)
 	if err := s.DB.PutJSON(ctx, koinlyDraftKey, d); err != nil {
 		return fail("couldn't save the import (%v).", err)
 	}
@@ -308,31 +311,39 @@ func titleYear(raw []byte) int {
 }
 
 // suggestMappings keeps only the names the draft's reports contain and maps each new one:
-// to what tax.yaml mapped it to on an earlier import, or else to the suggestion.
-func (s *Server) suggestMappings(ctx context.Context, d *koinlyDraft) {
+// to what tax.yaml mapped it to on an earlier import, or else to what CryptKeep matches it
+// to. With rematch every name is new: earlier choices and imports are set aside.
+func (s *Server) suggestMappings(ctx context.Context, d *koinlyDraft, rematch bool) {
 	var saved tax.Settings
-	if s.TaxSettings != nil {
+	if s.TaxSettings != nil && !rematch {
 		saved = s.TaxSettings.Get()
+	}
+	if rematch {
+		d.WalletMap, d.AssetMap, d.SkipOK = nil, nil, nil
 	}
 	walletNames := koinly.WalletNames(d.Txns, d.Gains)
 	wm := make(map[string]string, len(walletNames))
+	why := make(map[string]string, len(walletNames))
 	var fresh []string
 	for _, n := range walletNames {
 		if v, ok := d.WalletMap[n]; ok {
 			wm[n] = v
+			if w := d.WalletWhy[n]; w != "" {
+				why[n] = w
+			}
 		} else if v := saved.WalletMap[n]; v != "" && s.validWallet(v) {
-			wm[n] = v
+			wm[n], why[n] = v, "As in your last import."
 		} else {
 			fresh = append(fresh, n)
 		}
 	}
 	if len(fresh) > 0 {
-		suggested := koinly.SuggestWallets(d.Txns, d.Gains, s.koinlyWallets(ctx, len(d.Txns) > 0))
+		matched := koinly.MatchWallets(d.Txns, d.Gains, s.koinlyWallets())
 		for _, n := range fresh {
-			wm[n] = suggested[n]
+			wm[n], why[n] = matched[n].ID, matched[n].Why
 		}
 	}
-	d.WalletMap = wm
+	d.WalletMap, d.WalletWhy = wm, why
 
 	am := make(map[string]string, len(d.Holdings))
 	var suggested map[string]string
@@ -361,32 +372,55 @@ func (s *Server) validWallet(v string) bool {
 	return ok
 }
 
-// koinlyWallets is every source as the wallet suggester sees it. With addresses, each
-// carries its configured address and, for sources that list them (an HD Bitcoin wallet),
-// the addresses they scan, so Koinly's TxSrc/TxDest can match.
-func (s *Server) koinlyWallets(ctx context.Context, addresses bool) []koinly.Wallet {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
+// koinlyDerive is how many receive and change addresses of an HD wallet the matcher derives:
+// Koinly names a Bitcoin wallet after one of them.
+const koinlyDerive = 250
+
+// koinlyWallets is every crypto source as the wallet matcher sees it: its configured address
+// and, for an HD Bitcoin wallet, the first addresses its key derives (no network needed, so
+// it works while the wallet can't sync), for Koinly's TxSrc/TxDest and wallet names to
+// match.
+func (s *Server) koinlyWallets() []koinly.Wallet {
 	var out []koinly.Wallet
 	for _, e := range s.Registry.Entries() {
+		if e.Def.Type == sources.TypeBrokerage {
+			continue
+		}
 		w := koinly.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type}
-		if addresses {
-			for _, a := range []string{e.Def.Address, e.Def.JupiterVault, e.Def.Key} {
-				if a != "" {
-					w.Addresses = append(w.Addresses, a)
-				}
+		for _, a := range []string{e.Def.Address, e.Def.JupiterVault, e.Def.Key} {
+			if a != "" {
+				w.Addresses = append(w.Addresses, a)
 			}
-			if al, ok := e.Source.(core.AddressLister); ok && e.Def.Address == "" {
-				if list, err := al.Addresses(ctx); err == nil {
-					for _, a := range list {
-						w.Addresses = append(w.Addresses, a.Address)
-					}
-				}
-			}
+		}
+		if d, ok := e.Source.(core.AddressDeriver); ok {
+			w.Addresses = append(w.Addresses, d.DerivedAddresses(koinlyDerive)...)
 		}
 		out = append(out, w)
 	}
 	return out
+}
+
+// koinlyRematch maps every Koinly wallet and asset again from scratch, setting aside the
+// choices made so far, and saves the draft.
+func (s *Server) koinlyRematch(w http.ResponseWriter, r *http.Request) {
+	var outcome templates.ImportOutcome
+	s.draftMu.Lock()
+	d, ok, err := s.loadDraft(r.Context())
+	switch {
+	case err != nil:
+		outcome.Message = "Couldn't read the import in progress: " + err.Error()
+	case !ok:
+		outcome.Message = "Upload Koinly's reports first."
+	default:
+		s.suggestMappings(r.Context(), &d, true)
+		if err := s.DB.PutJSON(r.Context(), koinlyDraftKey, d); err != nil {
+			outcome.Message = "Couldn't save the mapping: " + err.Error()
+		} else {
+			outcome = templates.ImportOutcome{OK: true, Message: "Matched every wallet and asset again."}
+		}
+	}
+	s.draftMu.Unlock()
+	s.patchKoinly(w, r, templates.ImportOutcome{}, outcome)
 }
 
 // knownAssets is every asset CryptKeep has seen, from the snapshot's rows and the activity
@@ -484,6 +518,9 @@ func (s *Server) koinlySaveMap(r *http.Request) templates.ImportOutcome {
 			}
 			if !s.validWallet(v) {
 				return fail(fmt.Sprintf("%q, chosen for the Koinly wallet %s, is not one of your wallets.", v, name))
+			}
+			if d.WalletMap[name] != v {
+				delete(d.WalletWhy, name) // the user's choice now, not a match
 			}
 			d.WalletMap[name] = v
 		case strings.HasPrefix(key, "a."):
@@ -878,7 +915,7 @@ func (s *Server) walletRows(d koinlyDraft) ([]templates.KoinlyMapRow, []template
 			opts = append(opts, templates.KoinlyOption{Value: v, Label: v + " (removed)"})
 			have[v] = true
 		}
-		rows = append(rows, templates.KoinlyMapRow{Name: n, Selected: v})
+		rows = append(rows, templates.KoinlyMapRow{Name: n, Selected: v, Note: d.WalletWhy[n]})
 	}
 	opts = append(opts, templates.KoinlyOption{Value: tax.Untracked, Label: "Untracked (no longer synced)"})
 	return rows, opts

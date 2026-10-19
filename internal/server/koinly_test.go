@@ -627,3 +627,60 @@ func TestWalletTileImportLinkAndAvg(t *testing.T) {
 		t.Errorf("bare tile:\n%s", tile)
 	}
 }
+
+// TestKoinlyRematch: wallets are matched with a reason shown on the page; choosing another
+// wallet drops the reason, and Match automatically maps everything again from scratch.
+func TestKoinlyRematch(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "sol", Type: sources.TypeSolana, Label: "K1S", Address: "SoLAddr1111"})
+	head := "Transaction report 2025\n\nDate,Type,Tag,Sending Wallet,Sent Amount,Sent Currency,Sent Cost Basis,Receiving Wallet,Received Amount,Received Currency,Received Cost Basis,Fee Amount,Fee Currency,Gain (USD),Net Value (USD),Fee Value (USD),TxSrc,TxDest,TxHash,Description\n"
+	row := func(wallet, dest string) string {
+		return `2025-03-14 09:30:00 UTC,crypto_deposit,"","","","","",` + wallet + `,1,SOL,100,"","","",100,"",src,` + dest + `,h,""` + "\n"
+	}
+	txns := csvFile{"transactions.csv", []byte(head + row("my phantom", "SoLAddr1111") + row("Solana (SOL) - K1S", "elsewhere") + row("Ethereum (ETH) Main", "0xabc"))}
+	e.koinlyUpload(fixture(t, "holdings.csv"), txns)
+
+	page := func() string {
+		_, p := e.do("GET", "/reports/koinly", nil, nil)
+		return html.UnescapeString(p)
+	}
+	p := page()
+	for name, want := range map[string]string{
+		"my phantom":          "Its transactions use K1S's address.",
+		"Solana (SOL) - K1S":  "Named after K1S.",
+		"Ethereum (ETH) Main": "None of your wallets matches it.",
+	} {
+		if got := mapRow(p, `name="w.`+name+`"`); !strings.Contains(got, want) {
+			t.Errorf("%s: no %q in\n%s", name, want, got)
+		}
+	}
+	if !strings.Contains(p, "Match automatically") {
+		t.Fatal("no Match automatically button")
+	}
+
+	e.koinlyPost("/reports/koinly/map", url.Values{"w.my phantom": {"untracked"}})
+	if p = page(); strings.Contains(mapRow(p, `name="w.my phantom"`), "Its transactions use") {
+		t.Error("a wallet the user chose still shows the match reason")
+	}
+	out := html.UnescapeString(e.koinlyPost("/reports/koinly/rematch", nil))
+	if !strings.Contains(out, "Matched every wallet and asset again.") {
+		t.Fatalf("rematch: %.600s", out)
+	}
+	if got := within(page(), `name="w.my phantom"`, 600); !strings.Contains(got, `<option value="sol" selected>`) {
+		t.Errorf("rematch didn't restore the address match:\n%s", got)
+	}
+}
+
+// mapRow is the wizard table row that holds marker.
+func mapRow(page, marker string) string {
+	i := strings.Index(page, marker)
+	if i < 0 {
+		return ""
+	}
+	start := max(strings.LastIndex(page[:i], "<tr"), 0)
+	end := strings.Index(page[i:], "</tr>")
+	if end < 0 {
+		return page[start:]
+	}
+	return page[start : i+end]
+}

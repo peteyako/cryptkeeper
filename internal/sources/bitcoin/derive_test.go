@@ -289,3 +289,21 @@ func TestCosignerKeyAloneRejected(t *testing.T) {
 		t.Fatalf("want multisig cosigner error, got %v", err)
 	}
 }
+
+// TestDerivedAddresses: the first n receive then change addresses, with no server; a single
+// address lists itself once.
+func TestDerivedAddresses(t *testing.T) {
+	got := newTestSource(t, Config{ID: "w", Key: bip86Xpub, ScriptType: "p2tr"}).DerivedAddresses(2)
+	want := []string{
+		"bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
+		"bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh",
+		"bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7",
+	}
+	if len(got) != 4 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("derived %v", got)
+	}
+	single := newTestSource(t, Config{ID: "a", Key: "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"}).DerivedAddresses(5)
+	if len(single) != 1 || single[0] != "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu" {
+		t.Fatalf("single address %v", single)
+	}
+}

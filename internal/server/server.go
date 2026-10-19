@@ -150,6 +150,7 @@ func New(d Deps) http.Handler {
 		r.Get("/reports/koinly", s.koinlyPage)
 		r.Post("/reports/koinly/upload", s.koinlyUpload)
 		r.Post("/reports/koinly/map", s.koinlyMap)
+		r.Post("/reports/koinly/rematch", s.koinlyRematch)
 		r.Post("/reports/koinly/accept", s.koinlyAccept)
 		r.Post("/reports/koinly/discard", s.koinlyDiscard)
 		r.Get("/reports/tax", s.taxView)

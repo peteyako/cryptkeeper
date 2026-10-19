@@ -110,6 +110,12 @@ type AddressLister interface {
 	Addresses(ctx context.Context) ([]Address, error)
 }
 
+// AddressDeriver is implemented by sources that know their addresses without the network: an
+// HD Bitcoin wallet derives them from its key.
+type AddressDeriver interface {
+	DerivedAddresses(n int) []string
+}
+
 // UTXOLister is implemented by Bitcoin sources.
 type UTXOLister interface {
 	UTXOs(ctx context.Context) ([]UTXO, error)

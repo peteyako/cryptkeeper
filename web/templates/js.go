@@ -315,6 +315,9 @@ const koinlyUploadSubmit = `@post('/reports/koinly/upload', {contentType: 'form'
 // also posts it on every change, so the reconciliation always follows the selects.
 const koinlyMapSubmit = `@post('/reports/koinly/map', {contentType: 'form'})`
 
+// koinlyRematchClick asks first, then maps every Koinly wallet and asset again from scratch.
+const koinlyRematchClick = `confirm('Match every wallet and asset automatically? Choices you made here are replaced.') && @post('/reports/koinly/rematch')`
+
 // koinlyAcceptClick asks first, then closes the year from the draft.
 func koinlyAcceptClick(year int) string {
 	msg := "Close " + strconv.Itoa(year) + " with these opening lots? Koinly's figures for " + strconv.Itoa(year) +

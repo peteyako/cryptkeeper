@@ -3817,6 +3817,19 @@ body.amounts-hidden .fig-m {
   gap: 10px;
 }
 
+/* The step's explanation with its action beside it; the action drops below on a phone. */
+.koinly-step__intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.koinly-step__intro .muted-text {
+  flex: 1 1 320px;
+}
+
 .koinly-step__num {
   display: inline-flex;
   align-items: center;

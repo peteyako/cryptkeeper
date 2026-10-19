@@ -122,7 +122,17 @@ templ koinlyUploadStep(w KoinlyWizard) {
 templ koinlyWalletStep(w KoinlyWizard) {
 	<section class="card koinly-step" aria-labelledby="koinly-w-h">
 		@koinlyStepHead(2, "koinly-w-h", "Match wallets and assets")
-		<p class="muted-text">Each wallet Koinly names goes to the CryptKeep wallet it is, or to Untracked for wallets CryptKeep doesn't sync, such as closed exchange accounts.</p>
+		<div class="koinly-step__intro">
+			<p class="muted-text">Each wallet Koinly names goes to the CryptKeep wallet it is, or to Untracked for wallets CryptKeep doesn't sync, such as closed exchange accounts. CryptKeep matches them by the addresses in Koinly's transactions and wallet names, then by your wallets' labels.</p>
+			<button
+				type="button"
+				class="btn btn--secondary btn--sm"
+				data-indicator="koinlyMatching"
+				data-attr:disabled="$koinlyMatching || $koinlySaving"
+				data-class="{'is-busy': $koinlyMatching}"
+				data-on:click={ koinlyRematchClick }
+			>Match automatically</button>
+		</div>
 		if len(w.Wallets) == 0 {
 			<p class="empty-note">Koinly's wallets appear here once you upload the transaction history.</p>
 		} else {
@@ -139,6 +149,9 @@ templ koinlyWalletStep(w KoinlyWizard) {
 							<tr>
 								<td class="koinly-map__name">
 									<label for={ koinlyID("kw", i) }>{ r.Name }</label>
+									if r.Note != "" {
+										<span class="koinly-map__note">{ r.Note }</span>
+									}
 								</td>
 								<td class="koinly-map__pick">
 									<div class="select">

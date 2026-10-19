@@ -349,6 +349,25 @@ func isWIF(s string) bool {
 // ID returns the source id.
 func (s *Source) ID() string { return s.id }
 
+// DerivedAddresses lists the first n receive and change addresses, derived from the key alone
+// without asking a server; a single-address wallet lists its address.
+func (s *Source) DerivedAddresses(n int) []string {
+	var out []string
+	for chain := range s.chains {
+		for i := range n {
+			a, err := s.addressAt(chain, i)
+			if err != nil {
+				break
+			}
+			out = append(out, a)
+			if !s.ranged {
+				break
+			}
+		}
+	}
+	return out
+}
+
 // addressAt returns the address at index i of chain (0 = receive, 1 = change). It is the one
 // place that knows how a wallet derives addresses; results are cached.
 func (s *Source) addressAt(chain, i int) (string, error) {

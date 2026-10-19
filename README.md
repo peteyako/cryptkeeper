@@ -237,7 +237,11 @@ exports stay on the Reports page.
    also recognises **Other gains report**.
 2. In CryptKeep go to Reports → Import from Koinly and upload them.
 3. Map each Koinly wallet to a CryptKeep source (or `untracked`), and each Koinly asset to an
-   asset key (or skip it, e.g. spam).
+   asset key (or skip it, e.g. spam). CryptKeep matches them for you, saying why under each
+   wallet: by the addresses Koinly's transactions use, by the address in a wallet's name
+   (Koinly names Bitcoin wallets like `Bitcoin (BTC) - bc1q8w...dl`; CryptKeep derives your
+   xpubs' addresses to find it, no server needed), by your wallet's label, or by exchange.
+   **Match automatically** redoes every match from scratch.
 4. Reconcile: CryptKeep compares Koinly's year-end quantities and cost with your wallets and lists
    the problems and warnings. Review them and fix what you can (map assets, add a basis for
    coins Koinly didn't know about). Accept is blocked only when the holdings report is missing,
