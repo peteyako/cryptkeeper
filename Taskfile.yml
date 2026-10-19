@@ -50,10 +50,9 @@ tasks:
       - test -z "$(gofmt -l . | grep -v _templ.go)" || (gofmt -l . | grep -v _templ.go; exit 1)
 
   check:
-    desc: Everything CI should run — generate (and verify no drift), vet, test
+    desc: Everything CI should run — generate, vet, test
     cmds:
       - task: generate
-      - git diff --exit-code -- 'web/templates/*_templ.go'
       - task: vet
       - task: test
 

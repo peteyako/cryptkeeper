@@ -406,9 +406,13 @@ task --list       # everything available
 task dev          # air: rebuild + restart on change; :8788 also reloads the browser
 task preview      # every screen with demo data on :8790
 task test         # go test -race ./...
-task check        # generate (no drift) + vet + test
+task check        # generate + vet + test
 task build        # static binary (CGO off)
 task linux-arm64
 ```
+
+The `*_templ.go` files are generated from the `.templ` templates and not committed. Every
+task that builds runs `task generate` (`go tool templ generate`) first, and so do `task dev`
+and the Docker build; after a fresh clone, run it once before plain `go build` or `go test`.
 
 The design source of truth is the Vault design system (`docs/design/`). The full plan is in `docs/plan.md`.

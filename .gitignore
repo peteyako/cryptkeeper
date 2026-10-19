@@ -3,6 +3,8 @@
 /config.yaml
 /.env
 /wallets/
+# generated from the .templ files (task generate, air and the Docker build make them)
+*_templ.go
 # build output
 /crypto-portfolio
 /tmp/

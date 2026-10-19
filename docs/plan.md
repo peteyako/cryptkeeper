@@ -62,7 +62,7 @@ crypto-portfolio/
       sources.templ            # add/edit source flow (MobileConnect.dc.html)
       activity.templ, portfolios.templ, reports.templ (P&L + exports), alerts.templ, settings.templ
       format.go                # number rules (fiat, coin, change, mask, address, stale tilde), svgPath, monogram colors
-      *_templ.go               # generated, committed
+      *_templ.go               # generated (go tool templ generate), gitignored
       templates_test.go        # render tests + Datastar guard checks
     static/
       tokens.css               # Vault tokens as CSS custom properties, dark + light
@@ -480,7 +480,7 @@ Per-wallet FIFO tax lots, a Koinly import wizard, a review queue, closing tax ye
     - Then the `/alerts` UI and test button.
 
 ## Verification
-- After a clean `go tool templ generate`, `git status` shows no changes.
+- `go tool templ generate` builds every template; the generated `*_templ.go` files are gitignored.
 - `go test ./...` and `go test -race ./...` cover every case listed in the steps above, plus:
   - Template guard checks: no hyphenated or dot-modifier Datastar attributes, no `<!--` comments, no `$` in `data-indicator`, required ids present.
   - Every icon-only button has an `aria-label`.
