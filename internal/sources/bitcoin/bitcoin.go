@@ -31,8 +31,10 @@ type Config struct {
 	FallbackURL string // a second Esplora server, asked while EsploraURL isn't answering; "" for none
 	// Auth is the shared Blockstream API key. When it is set and EsploraURL is a public server,
 	// requests go to Blockstream's enterprise server instead, the public ones standing by.
-	Auth     *BlockstreamAuth
-	GapLimit int // DefaultGapLimit if zero or negative
+	Auth *BlockstreamAuth
+	// ScanStore keeps the last address scan across restarts; optional.
+	ScanStore ScanStore
+	GapLimit  int // DefaultGapLimit if zero or negative
 }
 
 const (
@@ -81,6 +83,7 @@ type Source struct {
 	fallback, fallbackNode string
 	fast                   *httpx.Client
 	auth                   *BlockstreamAuth // nil unless the configured server is a public one
+	store                  ScanStore
 
 	// autoKey is an xpub read as Legacy because no script type was chosen. Ledger shows an
 	// xpub for SegWit and Taproot accounts too, so an empty scan of it earns a hint.
@@ -98,6 +101,7 @@ type Source struct {
 	keyErr      string               // why the Blockstream key didn't work last time; "" when it did
 	hint        string               // script-type hint for autoKey, once checked
 	hintDone    bool
+	restored    bool // the saved scan was looked for
 }
 
 // New parses and validates cfg. It does no network I/O. A nil client means httpx.New().
@@ -142,6 +146,7 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 		now:     time.Now,
 		addrs:   map[[2]int]string{},
 		paused:  map[string]time.Time{},
+		store:   cfg.ScanStore,
 	}
 	if cfg.Auth != nil && publicEsploraHosts[node] {
 		s.auth = cfg.Auth

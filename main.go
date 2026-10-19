@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -263,7 +264,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 			return asSource(bitcoin.New(bitcoin.Config{
 				ID: d.ID, Label: d.Label, Key: d.Key, Descriptor: d.Descriptor, ScriptType: d.ScriptType,
 				EsploraURL: a.cfg.Bitcoin.EsploraURL, FallbackURL: a.cfg.Bitcoin.EsploraFallbackURL, GapLimit: a.cfg.Bitcoin.GapLimit,
-				Auth: a.blockstream,
+				Auth: a.blockstream, ScanStore: kvScans{a.db},
 			}, a.client))
 		case sources.TypeSolana:
 			return asSource(solana.New(solana.Config{
@@ -746,6 +747,22 @@ func healthcheck(args []string) error {
 		return fmt.Errorf("unhealthy: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// kvScans keeps Bitcoin wallets' address scans in the kv table, so a restart doesn't read
+// every address again.
+type kvScans struct{ db *store.DB }
+
+func (k kvScans) LoadScan(ctx context.Context, walletID string) ([]byte, error) {
+	var raw json.RawMessage
+	if ok, err := k.db.GetJSON(ctx, server.BitcoinScanKVPrefix+walletID, &raw); err != nil || !ok {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (k kvScans) SaveScan(ctx context.Context, walletID string, data []byte) error {
+	return k.db.PutJSON(ctx, server.BitcoinScanKVPrefix+walletID, json.RawMessage(data))
 }
 
 // blockstreamAuth returns the Blockstream API key holder, loaded from the environment when

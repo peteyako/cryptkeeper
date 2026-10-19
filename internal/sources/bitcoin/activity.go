@@ -138,6 +138,7 @@ type activityRun struct {
 	wallet  map[string]bool // every scanned address
 	addrs   []addrTxs       // scan order: receive chain first, then change
 	tip     int64
+	scanTip int64 // the tip the wallet scan read moments ago; 0 when the scan is older
 	pending map[string]pendingTx
 
 	fetched map[string]*esploraTx // txs read this call, by txid
@@ -164,6 +165,9 @@ func newActivityRun(s *Source, ctx context.Context, req core.ActivityRequest, sc
 			r.wallet[a.address] = true
 			r.addrs = append(r.addrs, addrTxs{a.address, a.txs})
 		}
+	}
+	if s.now().Sub(scan.at) < time.Minute {
+		r.scanTip = scan.tip
 	}
 	r.state = decodeActivityState(req.State)
 	r.tip = r.state.Tip
@@ -249,6 +253,10 @@ func addressTxsPath(addr, last string) string {
 // the height of the previous call is used instead (counts then run low, never high).
 func (r *activityRun) fetchTip() {
 	if !r.take() {
+		return
+	}
+	if r.scanTip > 0 { // the scan just read it; still charged, so budgets mean the same
+		r.tip = r.scanTip
 		return
 	}
 	var h int64

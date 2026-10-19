@@ -26,6 +26,9 @@ const (
 	// change: those holding a balance and the first lookahead unused ones on each chain.
 	fullScanEvery = 6 * time.Hour
 	lookahead     = 5
+	// quietRescan: while the chain tip doesn't move, a scan this fresh is reused. A payment
+	// still in the mempool shows at the next block or after quietRescan.
+	quietRescan = 15 * time.Minute
 	// rateLimitPause is the least time a server that answered 429 is left alone.
 	rateLimitPause  = 5 * time.Minute
 	maxScanPerChain = 10_000 // safety stop against a server that reports every address as used
@@ -48,6 +51,8 @@ type addrState struct {
 type scanResult struct {
 	at        time.Time
 	fullAt    time.Time     // when every address was last read
+	tip       int64         // chain tip height when scanned; 0 when it couldn't be read
+	tipErr    string        // why the tip couldn't be read
 	chains    [][]addrState // per chain, by index
 	lastUsed  []int         // per chain; -1 when no address is used
 	truncated bool
@@ -139,7 +144,8 @@ func (s *Source) getPublic(ctx context.Context, path string, out any) error {
 	if s.fallback == "" {
 		return s.fetch(ctx, s.client, s.esplora, path, out, "")
 	}
-	if !s.usingFallback() {
+	skipped := s.usingFallback()
+	if !skipped {
 		err := s.fetch(ctx, s.fast, s.esplora, path, out, "")
 		if err == nil || ctx.Err() != nil || !unavailable(err) {
 			return err
@@ -152,7 +158,18 @@ func (s *Source) getPublic(ctx context.Context, path string, out any) error {
 			slog.Warn("bitcoin: Esplora server isn't answering; using the fallback", "wallet", s.id, "server", s.node, "fallback", s.fallbackNode)
 		}
 	}
-	return s.fetch(ctx, s.client, s.fallback, path, out, "")
+	err := s.fetch(ctx, s.client, s.fallback, path, out, "")
+	if err == nil || ctx.Err() != nil || !unavailable(err) || !skipped {
+		return err
+	}
+	// The fallback can't answer either; the primary, skipped this time, may be back.
+	if s.fetch(ctx, s.fast, s.esplora, path, out, "") != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.primaryDown = time.Time{}
+	s.mu.Unlock()
+	return nil
 }
 
 // fetch GETs base+path with c, sending token as a bearer token when set. A server that
@@ -227,11 +244,15 @@ func (s *Source) lookupAll(ctx context.Context, batch []addrState) error {
 // lookahead unused ones on each chain (where new payments and change arrive). A payment to an
 // old, emptied address shows up at the next full scan.
 func (s *Source) scan(ctx context.Context) (*scanResult, error) {
-	s.mu.Lock()
-	last := s.last
-	s.mu.Unlock()
+	last := s.lastScan(ctx)
 	res := &scanResult{at: s.now(), fullAt: s.now()}
+	if err := s.get(ctx, "/blocks/tip/height", &res.tip); err != nil {
+		res.tip, res.tipErr = 0, err.Error()
+	}
 	light := last != nil && s.ranged && s.now().Sub(last.fullAt) < fullScanEvery
+	if light && res.tip != 0 && res.tip == last.tip && s.now().Sub(last.at) < quietRescan {
+		return last, nil // no new block since a recent scan: nothing confirmed has changed
+	}
 	if light {
 		res.fullAt = last.fullAt
 	}
@@ -255,6 +276,7 @@ func (s *Source) scan(ctx context.Context) (*scanResult, error) {
 	s.mu.Lock()
 	s.last = res
 	s.mu.Unlock()
+	s.saveScan(ctx, res)
 	return res, nil
 }
 
@@ -409,11 +431,10 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 	if used == 0 && s.autoKey != nil {
 		out.Warnings = append(out.Warnings, s.scriptHint(ctx))
 	}
-	var height int64
-	if err := s.get(ctx, "/blocks/tip/height", &height); err != nil {
-		out.Warnings = append(out.Warnings, "could not read block height: "+err.Error())
+	if res.tip == 0 {
+		out.Warnings = append(out.Warnings, "could not read block height: "+res.tipErr)
 	} else {
-		out.Meta = append(out.Meta, core.KV{K: "Block height", V: strconv.FormatInt(height, 10)})
+		out.Meta = append(out.Meta, core.KV{K: "Block height", V: strconv.FormatInt(res.tip, 10)})
 	}
 	return out, nil
 }

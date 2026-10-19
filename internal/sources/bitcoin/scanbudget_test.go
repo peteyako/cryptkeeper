@@ -27,6 +27,14 @@ func busyWallet(t *testing.T) (*Source, *fakeEsplora) {
 	t.Helper()
 	f := newFake()
 	s, _ := startSource(t, f, Config{ID: "ledger", Key: bip84Zpub})
+	seedBusyWallet(t, f)
+	return s, f
+}
+
+// seedBusyWallet gives f the bip84Zpub account's history described at busyWallet.
+func seedBusyWallet(t *testing.T, f *fakeEsplora) {
+	t.Helper()
+	s := newTestSource(t, Config{Key: bip84Zpub})
 	for i := range 20 {
 		st := &fakeStats{chainFunded: 10_000, chainSpent: 10_000, chainTx: 2}
 		if i < 3 {
@@ -41,7 +49,13 @@ func busyWallet(t *testing.T) (*Source, *fakeEsplora) {
 		}
 		f.stats[mustAddr(t, s, 1, i)] = st
 	}
-	return s, f
+}
+
+// newBlock moves the fake chain tip, so the next refresh reads addresses again.
+func (f *fakeEsplora) newBlock() {
+	f.mu.Lock()
+	f.tip++
+	f.mu.Unlock()
 }
 
 func fetchAt(t *testing.T, s *Source, at time.Time) string {
@@ -65,6 +79,7 @@ func TestRefreshChecksOnlyChangeableAddresses(t *testing.T) {
 	if full < 60 {
 		t.Fatalf("first scan read %d addresses, want the full gap window", full)
 	}
+	f.newBlock()
 	if got := fetchAt(t, s, fixedNow.Add(5*time.Minute)); got != "0.00035000" {
 		t.Fatalf("balance after refresh = %s", got)
 	}
@@ -82,6 +97,7 @@ func TestRefreshSeesNewPayment(t *testing.T) {
 	f.mu.Lock()
 	f.stats[mustAddr(t, s, 0, 21)] = &fakeStats{memFunded: 7_000, memTx: 1}
 	f.mu.Unlock()
+	f.newBlock()
 	if got := fetchAt(t, s, fixedNow.Add(5*time.Minute)); got != "0.00042000" {
 		t.Fatalf("balance = %s, want the new payment included", got)
 	}
@@ -111,6 +127,7 @@ func TestRefreshSeesSpend(t *testing.T) {
 	f.mu.Lock()
 	f.stats[mustAddr(t, s, 0, 0)] = &fakeStats{chainFunded: 10_000, chainTx: 1, memSpent: 10_000, memTx: 1}
 	f.mu.Unlock()
+	f.newBlock()
 	if got := fetchAt(t, s, fixedNow.Add(5*time.Minute)); got != "0.00025000" {
 		t.Fatalf("balance = %s, want the spend reflected", got)
 	}
@@ -124,6 +141,7 @@ func TestFullScanCatchesAddressReuse(t *testing.T) {
 	f.mu.Lock()
 	f.stats[mustAddr(t, s, 0, 10)] = &fakeStats{chainFunded: 13_000, chainSpent: 10_000, chainTx: 3}
 	f.mu.Unlock()
+	f.newBlock()
 	if got := fetchAt(t, s, fixedNow.Add(5*time.Minute)); got != "0.00035000" {
 		t.Fatalf("light refresh balance = %s; it isn't expected to re-read emptied addresses", got)
 	}
@@ -162,8 +180,41 @@ func TestRateLimitPausesServer(t *testing.T) {
 	}
 	before := hits.Load()
 	s.now = func() time.Time { return fixedNow.Add(rateLimitPause + time.Second) }
-	_, err = s.Fetch(context.Background())
-	if strings.Contains(err.Error(), "paused") || hits.Load() == before {
-		t.Errorf("server not asked again after the pause: %v", err)
+	s.Fetch(context.Background()) // still limited: asked once more, then paused again
+	if hits.Load() == before {
+		t.Error("server not asked again after the pause")
+	}
+}
+
+// TestNoRescanWithoutNewBlock: while the chain tip stays put, a refresh within quietRescan of
+// the last scan reads only the tip; a new block, or quietRescan passing, reads addresses.
+func TestNoRescanWithoutNewBlock(t *testing.T) {
+	s, f := busyWallet(t)
+	fetchAt(t, s, fixedNow)
+	before := f.addressHits()
+	fetchAt(t, s, fixedNow.Add(5*time.Minute))
+	if n := f.addressHits() - before; n != 0 {
+		t.Fatalf("refresh with no new block read %d addresses", n)
+	}
+	f.newBlock()
+	fetchAt(t, s, fixedNow.Add(10*time.Minute))
+	if f.addressHits() == before {
+		t.Fatal("a new block didn't trigger a refresh")
+	}
+}
+
+// TestUnconfirmedPaymentSeenWithinQuietRescan: a payment still in the mempool shows within
+// quietRescan even without a new block.
+func TestUnconfirmedPaymentSeenWithinQuietRescan(t *testing.T) {
+	s, f := busyWallet(t)
+	fetchAt(t, s, fixedNow)
+	f.mu.Lock()
+	f.stats[mustAddr(t, s, 0, 20)] = &fakeStats{memFunded: 7_000, memTx: 1}
+	f.mu.Unlock()
+	if got := fetchAt(t, s, fixedNow.Add(5*time.Minute)); got != "0.00035000" {
+		t.Fatalf("balance %s before quietRescan; the refresh isn't expected to look yet", got)
+	}
+	if got := fetchAt(t, s, fixedNow.Add(quietRescan+time.Second)); got != "0.00042000" {
+		t.Fatalf("balance %s after quietRescan, want the unconfirmed payment", got)
 	}
 }

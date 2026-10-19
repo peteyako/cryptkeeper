@@ -316,8 +316,16 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // cleanupSource removes what belongs to a deleted source: portfolio references and activity.
+// BitcoinScanKVPrefix + a wallet id is the kv key of that Bitcoin wallet's saved address scan.
+const BitcoinScanKVPrefix = "bitcoin.scan."
+
 func (s *Server) cleanupSource(ctx context.Context, id string) {
 	s.removeFromPortfolios(id)
+	if s.DB != nil {
+		if err := s.DB.DeleteKV(ctx, BitcoinScanKVPrefix+id); err != nil {
+			s.Log.Warn("delete saved bitcoin scan", "source", id, "err", err)
+		}
+	}
 	if s.Activity != nil {
 		if err := s.Activity.DeleteSource(ctx, id); err != nil {
 			s.Log.Warn("delete activity", "source", id, "err", err)
