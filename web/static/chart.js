@@ -1,5 +1,7 @@
-// Chart hover: moving the pointer over a chart shows the time and value of the point
-// under it. Each .chart-wrap[data-chart] carries its points as JSON ({t, v, y}: time
+// Chart readout: pressing on a chart shows the time and value of the point under the
+// pointer, following it while the button (or finger) stays down and gone on release;
+// moving over a chart without pressing shows nothing. Each .chart-wrap[data-chart] carries
+// its points as JSON ({t, v, y}: time
 // text, value text, and the line's height there as a fraction of the plot), spread evenly
 // along the plot, so the pointer's x picks the point. Listening on the document means
 // charts that Datastar patches in later work without any wiring.
@@ -74,7 +76,10 @@
   }
 
   function onMove(e) {
-    const wrap = e.target instanceof Element ? e.target.closest(".chart-wrap[data-chart]") : null;
+    // Only while the primary button or a finger is down; the right button opens the
+    // context menu.
+    const pressed = (e.buttons & 1) === 1;
+    const wrap = pressed && e.target instanceof Element ? e.target.closest(".chart-wrap[data-chart]") : null;
     if (!wrap) {
       hide();
       return;
@@ -84,6 +89,7 @@
 
   document.addEventListener("pointermove", onMove, { passive: true });
   document.addEventListener("pointerdown", onMove, { passive: true });
+  document.addEventListener("pointerup", hide, { passive: true });
   document.addEventListener("pointercancel", hide, { passive: true });
   document.documentElement.addEventListener("pointerleave", hide, { passive: true });
 })();

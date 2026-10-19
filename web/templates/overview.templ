@@ -177,7 +177,7 @@ templ chartSVG(points []portfolio.Point, label string) {
 }
 
 // chartFigure is the chart with its accessible name, the value labels on its gridlines,
-// the times along its bottom, the hover readout chart.js drives, and the note shown when
+// the times along its bottom, the readout chart.js shows while the chart is pressed, and the note shown when
 // there is nothing to draw; the portfolio value chart and the coin price chart share it.
 // It is an area chart: 3 gridlines, an accent area at 8% and a 2px line, in a viewBox
 // that preserveAspectRatio="none" lets CSS stretch per breakpoint (so the text stays
@@ -228,7 +228,7 @@ templ chartFigure(points []portfolio.Point, aria, emptyNote string, private bool
 }
 
 // chartValue is a chart's value text: a private figure (masked by the privacy mode) or
-// plain. In the tip, chart.js fills in the figure's value (or the plain span) on hover.
+// plain. In the tip, chart.js fills in the figure's value (or the plain span) while pressed.
 templ chartValue(text string, private bool) {
 	if private {
 		@FigText(text, "$ ••••")

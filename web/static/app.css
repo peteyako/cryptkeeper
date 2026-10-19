@@ -1324,6 +1324,9 @@ body.amounts-hidden .fig-m {
   position: relative;
   min-width: 0;
   touch-action: pan-y;
+  /* pressing and dragging reads the chart; it shouldn't start selecting text */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .chart__x {
