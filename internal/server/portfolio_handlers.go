@@ -144,11 +144,12 @@ func displayKey(k string) string {
 	return m[:4] + "…" + m[len(m)-4:]
 }
 
-// walletOptions lists configured sources for pickers.
-func (s *Server) walletOptions(includeManual bool) []templates.WalletOption {
+// walletOptions lists configured sources for pickers; without handEntered, only those with
+// activity (not manual holdings or brokerage accounts).
+func (s *Server) walletOptions(handEntered bool) []templates.WalletOption {
 	var out []templates.WalletOption
 	for _, d := range s.Registry.Defs() {
-		if includeManual || d.Type != sources.TypeManual {
+		if handEntered || !sources.HandEntered(d.Type) {
 			out = append(out, templates.WalletOption{ID: d.ID, Label: d.Label, Type: d.Type, Kind: d.Kind})
 		}
 	}

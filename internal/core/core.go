@@ -16,6 +16,8 @@ const (
 	KindHot      Kind = "hot"
 	KindHardware Kind = "hardware"
 	KindManual   Kind = "manual"
+	// KindBrokerage is a brokerage account of stocks, ETFs and funds, entered by hand.
+	KindBrokerage Kind = "brokerage"
 )
 
 // Holding is one asset balance inside one wallet/source.

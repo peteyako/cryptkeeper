@@ -107,7 +107,7 @@ func (s *Server) syncRows(ctx context.Context) []templates.SyncRow {
 	every := time.Duration(s.Cfg.ActivityMinutes) * time.Minute
 	var rows []templates.SyncRow
 	for _, d := range s.Registry.Defs() {
-		if d.Type == sources.TypeManual {
+		if sources.HandEntered(d.Type) {
 			continue
 		}
 		row := templates.SyncRow{
@@ -188,7 +188,7 @@ func (s *Server) activityPage(r *http.Request, f activityFilter, before time.Tim
 		Period: f.Range, From: f.From, To: f.To, PeriodLabel: f.period().Label(),
 		Sync: s.syncRows(r.Context()), Now: s.Now(),
 	}
-	p.Sources = s.walletOptions(false) // manual holdings have no activity
+	p.Sources = s.walletOptions(false) // hand-entered sources have no activity
 	p.Assets = s.assetOptions()
 	if s.Activity == nil {
 		return p

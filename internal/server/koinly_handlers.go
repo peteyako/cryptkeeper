@@ -862,6 +862,9 @@ func (s *Server) walletRows(d koinlyDraft) ([]templates.KoinlyMapRow, []template
 	var opts []templates.KoinlyOption
 	have := map[string]bool{tax.Untracked: true}
 	for _, def := range s.Registry.Defs() {
+		if def.Type == sources.TypeBrokerage {
+			continue // stocks aren't crypto tax records
+		}
 		opts = append(opts, templates.KoinlyOption{Value: def.ID, Label: templates.KoinlyWalletLabel(def.Label, def.Type)})
 		have[def.ID] = true
 	}

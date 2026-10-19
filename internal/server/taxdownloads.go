@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/internal/tax/irs"
 	"crypto-portfolio/internal/tax/report"
@@ -400,6 +401,9 @@ func (s *Server) reportWallets(rep report.YearReport, label func(string) string)
 	}
 	var out []templates.ReportWallet
 	for _, d := range s.Registry.Defs() {
+		if d.Type == sources.TypeBrokerage {
+			continue // the broker's 1099-B covers it
+		}
 		var box string
 		switch {
 		case override[d.ID] != "":

@@ -50,7 +50,7 @@ templ coinBody(p CoinPage) {
 				</span>
 				if p.Price != nil && p.Price.Change24h != nil {
 					{{ text, dir := ChangePct(*p.Price.Change24h) }}
-					<span class={ "chg", "chg--" + dir }>{ text } <span class="change__label">24h</span></span>
+					<span class={ "chg", "chg--" + dir }>{ text } <span class="change__label">{ ChangeLabel(p.AssetKey, p.Price, p.Now) }</span></span>
 				}
 			</div>
 		</header>
@@ -59,7 +59,7 @@ templ coinBody(p CoinPage) {
 			<div class="holdings__head">
 				<h2 id="coin-held-h" class="h-sec">Held in</h2>
 				<span class="meta">
-					@FigCoin(p.Amount, p.Symbol)
+					@FigUnits(p.AssetKey, p.Amount, p.Symbol)
 					·
 					@FigFiat(p.ValueUSD)
 				</span>
@@ -78,7 +78,7 @@ templ coinBody(p CoinPage) {
 							<tr>
 								<td class="col-asset"><a class="asset__link" href={ templ.URL(walletHref(w.ID)) } data-on:click={ navClick(walletHref(w.ID), "") }>{ w.Label }</a></td>
 								<td class="col-amt num">
-									@FigCoin(w.Amount, p.Symbol)
+									@FigUnits(p.AssetKey, w.Amount, p.Symbol)
 								</td>
 								<td class="col-val num">
 									@FigFiat(w.ValueUSD)

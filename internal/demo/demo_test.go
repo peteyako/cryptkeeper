@@ -16,8 +16,8 @@ func near(a, b float64) bool { return math.Abs(a-b) < 0.005 }
 
 func TestSnapshotIsConsistent(t *testing.T) {
 	s := Snapshot(now)
-	if len(s.Wallets) != 5 {
-		t.Fatalf("want 5 wallets, got %d", len(s.Wallets))
+	if len(s.Wallets) != 7 {
+		t.Fatalf("want 7 wallets, got %d", len(s.Wallets))
 	}
 
 	var walletSum float64
@@ -135,7 +135,7 @@ func TestPortfolioFilter(t *testing.T) {
 		}
 		sum += s.TotalUSD
 	}
-	// Long-term and Trading partition the five sources.
+	// Long-term and Trading partition the seven sources.
 	if !near(sum, all.TotalUSD) {
 		t.Errorf("portfolios sum to %v, all is %v", sum, all.TotalUSD)
 	}
@@ -176,7 +176,7 @@ func TestPageBuilders(t *testing.T) {
 			t.Errorf("%s: forms look wrong", typ)
 		}
 	}
-	if len(Settings(now).Wallets) != 5 {
+	if len(Settings(now).Wallets) != 7 {
 		t.Error("settings should list every source")
 	}
 	if !TestOK(now).OK || TestFailed().OK {
@@ -251,7 +251,7 @@ func TestPortfolioPageBuilders(t *testing.T) {
 	}
 
 	nf := PortfolioForm("", now)
-	if nf.EditID != "" || !nf.AllWallets || !nf.AllAssets || len(nf.WalletOptions) != 5 || len(nf.AssetOptions) != 8 {
+	if nf.EditID != "" || !nf.AllWallets || !nf.AllAssets || len(nf.WalletOptions) != 7 || len(nf.AssetOptions) != 12 {
 		t.Errorf("new form: %+v", nf.EditID)
 	}
 	for i := 1; i < len(nf.AssetOptions); i++ {
@@ -459,13 +459,25 @@ func TestWalletActivity(t *testing.T) {
 func TestReportsFixtures(t *testing.T) {
 	p := Reports(now)
 	snap := Snapshot(now)
-	if len(p.Rows) != len(snap.Assets) {
-		t.Fatalf("%d P/L rows for %d assets", len(p.Rows), len(snap.Assets))
+	// Stocks and funds have no tax lots, so the P/L covers the crypto assets only.
+	var cryptoValue float64
+	assets := snap.Assets[:0:0]
+	for _, a := range snap.Assets {
+		if _, stock := core.IsStockKey(a.AssetKey); !stock {
+			assets = append(assets, a)
+			cryptoValue += a.ValueUSD
+		}
+	}
+	if len(assets) == len(snap.Assets) {
+		t.Fatal("the fixtures should hold stocks too")
+	}
+	if len(p.Rows) != len(assets) {
+		t.Fatalf("%d P/L rows for %d crypto assets", len(p.Rows), len(assets))
 	}
 	var basis, unreal, known float64
 	var missing, noBasis int
 	for i, r := range p.Rows {
-		a := snap.Assets[i]
+		a := assets[i]
 		if r.AssetKey != a.AssetKey || !near(r.Amount, a.Amount) || !near(r.Value, a.ValueUSD) {
 			t.Errorf("%s: row does not match the snapshot", r.Symbol)
 		}
@@ -500,17 +512,17 @@ func TestReportsFixtures(t *testing.T) {
 	if missing != 1 || noBasis != 2 {
 		t.Errorf("want 1 with missing-basis units and 2 without a cost, got %d and %d", missing, noBasis)
 	}
-	if !near(p.TotalBasis, basis) || !near(p.TotalUnrealized, unreal) || !near(p.TotalValue, snap.TotalUSD) {
-		t.Errorf("totals %v %v %v vs %v %v %v", p.TotalBasis, p.TotalUnrealized, p.TotalValue, basis, unreal, snap.TotalUSD)
+	if !near(p.TotalBasis, basis) || !near(p.TotalUnrealized, unreal) || !near(p.TotalValue, cryptoValue) {
+		t.Errorf("totals %v %v %v vs %v %v %v", p.TotalBasis, p.TotalUnrealized, p.TotalValue, basis, unreal, cryptoValue)
 	}
-	if want := known / snap.TotalUSD; math.Abs(p.Coverage-want) > 1e-9 || p.Coverage <= 0 || p.Coverage >= 1 {
+	if want := known / p.TotalValue; math.Abs(p.Coverage-want) > 1e-9 || p.Coverage <= 0 || p.Coverage >= 1 {
 		t.Errorf("coverage %v, want %v (strictly between 0 and 1)", p.Coverage, want)
 	}
 	if len(p.Realized) != 3 || p.Realized[0].Year != now.Year() || p.Realized[0].Year < p.Realized[1].Year {
 		t.Errorf("realized newest year first: %+v", p.Realized)
 	}
 	cells := PnLCells(now)
-	if len(cells) != len(snap.Assets) {
+	if len(cells) != len(assets) {
 		t.Errorf("%d cells", len(cells))
 	}
 	for _, r := range p.Rows {
@@ -518,7 +530,7 @@ func TestReportsFixtures(t *testing.T) {
 			t.Errorf("%s: cell %+v vs row", r.Symbol, c)
 		}
 	}
-	if ov := Overview(now); len(ov.PnL) != len(snap.Assets) {
+	if ov := Overview(now); len(ov.PnL) != len(assets) {
 		t.Error("the overview carries the P/L cells")
 	}
 
@@ -574,7 +586,7 @@ func TestAlertFixtures(t *testing.T) {
 	if n.EditID != "" || n.Values["type"] != "balance_drop" || n.Values["enabled"] == "" || n.Values["cooldown"] != "6h" {
 		t.Errorf("new form defaults: %+v", n.Values)
 	}
-	if len(n.WalletOptions) != 5 || len(n.AssetOptions) == 0 || n.PortfolioOptions[0].ID != "all" {
+	if len(n.WalletOptions) != 7 || len(n.AssetOptions) == 0 || n.PortfolioOptions[0].ID != "all" {
 		t.Errorf("form options: %d wallets, %d assets, %v", len(n.WalletOptions), len(n.AssetOptions), n.PortfolioOptions)
 	}
 	for id := range alertValues {

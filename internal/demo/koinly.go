@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"crypto-portfolio/internal/core"
 	"crypto-portfolio/web/templates"
 )
 
@@ -14,6 +15,9 @@ func Koinly(now time.Time) templates.KoinlyPage {
 	year := now.Year() - 1
 	var wallets []templates.KoinlyOption
 	for _, w := range Snapshot(now).Wallets {
+		if w.Kind == core.KindBrokerage {
+			continue
+		}
 		wallets = append(wallets, templates.KoinlyOption{Value: w.ID, Label: templates.KoinlyWalletLabel(w.Label, w.Type)})
 	}
 	wallets = append(wallets, templates.KoinlyOption{Value: "untracked", Label: "Untracked (no longer synced)"})

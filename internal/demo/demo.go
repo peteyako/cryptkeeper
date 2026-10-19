@@ -29,6 +29,8 @@ const (
 	IDKraken   = "kraken"
 	IDPhantom  = "phantom"
 	IDMom      = "mom-safe"
+	IDFidelity = "fidelity"
+	IDRoth     = "roth-ira"
 )
 
 // Portfolio ids used by the fixtures (besides "all").
@@ -41,7 +43,7 @@ const (
 // portfolioMembers maps a portfolio id to its source ids. Long-term and Trading partition
 // the five sources; Majors takes every source but only five assets (see portfolioAssets).
 var portfolioMembers = map[string][]string{
-	PFLongTerm: {IDCold, IDPhantom, IDMom},
+	PFLongTerm: {IDCold, IDPhantom, IDMom, IDFidelity, IDRoth},
 	PFTrading:  {IDCoinbase, IDKraken},
 	PFMajors:   {IDCold, IDCoinbase, IDKraken, IDPhantom, IDMom},
 }
@@ -80,7 +82,26 @@ func Prices(now time.Time) map[string]core.Price {
 		"LINK": {USD: 14.06, AsOf: fresh, Change24h: ptr(1.07)},
 		"JUP":  {USD: 0.92, AsOf: fresh, Change24h: ptr(3.10)},
 		"BONK": {USD: 0.0000214, AsOf: fresh, Change24h: ptr(-5.20)},
+		// Stocks and funds, as quoted while the market is shut: the last session's close.
+		"stock:VTI":   {USD: 287.45, AsOf: fresh, Change24h: ptr(0.62), MarketTime: lastClose(now)},
+		"stock:BND":   {USD: 72.81, AsOf: fresh, Change24h: ptr(-0.11), MarketTime: lastClose(now)},
+		"stock:AAPL":  {USD: 231.40, AsOf: fresh, Change24h: ptr(1.24), MarketTime: lastClose(now)},
+		"stock:VTSAX": {USD: 136.92, AsOf: fresh, Change24h: ptr(0.58), MarketTime: lastClose(now)},
 	}
+}
+
+// lastClose is the most recent US session close (20:00 UTC) on a weekday at or before now.
+func lastClose(now time.Time) time.Time {
+	c := time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, time.UTC)
+	for c.After(now) || c.Weekday() == time.Saturday || c.Weekday() == time.Sunday {
+		c = c.AddDate(0, 0, -1)
+	}
+	return c
+}
+
+// stock is a brokerage holding of shares of ticker.
+func stock(wallet, ticker, name string, shares float64, prices map[string]core.Price) portfolio.HoldingRow {
+	return row(core.Holding{WalletID: wallet, AssetKey: core.StockKey(ticker), Symbol: ticker, Name: name, Amount: shares}, prices)
 }
 
 func row(h core.Holding, prices map[string]core.Price) portfolio.HoldingRow {
@@ -109,8 +130,8 @@ func sum(rows []portfolio.HoldingRow) float64 {
 }
 
 // Wallets returns the fixture sources: Cold storage (Ledger, BTC), Coinbase, Kraken (stale
-// 3 hours), Phantom (Solana, with a DeFi position, hidden tokens and NFTs) and a manual
-// wallet.
+// 3 hours), Phantom (Solana, with a DeFi position, hidden tokens and NFTs), a manual wallet
+// and two brokerage accounts (Fidelity and a Roth IRA, priced at the last close).
 func Wallets(now time.Time) []portfolio.WalletView {
 	prices := Prices(now)
 	fresh := now.Add(-2 * time.Minute)
@@ -203,7 +224,29 @@ func Wallets(now time.Time) []portfolio.WalletView {
 		Meta: []core.KV{{K: "Entered", V: "By hand"}},
 	}
 
-	ws := []portfolio.WalletView{cold, coinbase, kraken, phantom, mom}
+	fidelity := portfolio.WalletView{
+		ID: IDFidelity, Label: "Fidelity", Type: "brokerage", Kind: core.KindBrokerage,
+		Description: "Taxable account. Index funds, plus a little Apple.",
+		Status:      portfolio.StatusSynced, AsOf: fresh,
+		Rows: []portfolio.HoldingRow{
+			stock(IDFidelity, "VTI", "Vanguard Total Stock Market ETF", 40, prices),
+			stock(IDFidelity, "BND", "Vanguard Total Bond Market ETF", 120, prices),
+			stock(IDFidelity, "AAPL", "Apple Inc.", 15, prices),
+		},
+		Meta: []core.KV{{K: "Prices", V: "Yahoo Finance"}, {K: "Holdings", V: "3"}},
+	}
+	roth := portfolio.WalletView{
+		ID: IDRoth, Label: "Roth IRA", Type: "brokerage", Kind: core.KindBrokerage,
+		Description: "Retirement. Not touched until 2050.",
+		Status:      portfolio.StatusSynced, AsOf: fresh,
+		Rows: []portfolio.HoldingRow{
+			stock(IDRoth, "VTSAX", "Vanguard Total Stock Market Index Admiral", 210, prices),
+			withNote(stock(IDRoth, "BND", "Vanguard Total Bond Market ETF", 50, prices), "rebalanced yearly"),
+		},
+		Meta: []core.KV{{K: "Prices", V: "Yahoo Finance"}, {K: "Holdings", V: "2"}},
+	}
+
+	ws := []portfolio.WalletView{cold, coinbase, kraken, phantom, mom, fidelity, roth}
 	for i := range ws {
 		ws[i].ValueUSD = sum(ws[i].Rows)
 	}
@@ -388,8 +431,8 @@ func Shell(title, active, pf, rng string) templates.Shell {
 	return templates.Shell{
 		Title: title, Active: active, PF: pf, Range: rng,
 		Portfolios: []templates.PortfolioNav{
-			{ID: "all", Name: "All holdings", Count: "5 sources"},
-			{ID: PFLongTerm, Name: "Long-term", Count: "3 sources"},
+			{ID: "all", Name: "All holdings", Count: "7 sources"},
+			{ID: PFLongTerm, Name: "Long-term", Count: "5 sources"},
 			{ID: PFTrading, Name: "Trading", Count: "2 sources"},
 			{ID: PFMajors, Name: "Majors", Count: "5 sources"},
 		},
@@ -694,7 +737,7 @@ func Portfolios(now time.Time) templates.PortfoliosPage {
 	return templates.PortfoliosPage{
 		Shell: Shell("Portfolios", "portfolios", "all", ""),
 		Items: []templates.PortfolioItem{
-			item(PFLongTerm, "Long-term", "3 wallets", nil, 2),
+			item(PFLongTerm, "Long-term", "5 wallets", nil, 2),
 			item(PFTrading, "Trading", "2 wallets", nil, 0),
 			item(PFMajors, "Majors", "All wallets", portfolioAssets[PFMajors], 3),
 		},

@@ -40,6 +40,7 @@ import (
 	"crypto-portfolio/internal/server"
 	"crypto-portfolio/internal/sources"
 	"crypto-portfolio/internal/sources/bitcoin"
+	"crypto-portfolio/internal/sources/brokerage"
 	"crypto-portfolio/internal/sources/coinbase"
 	"crypto-portfolio/internal/sources/kraken"
 	"crypto-portfolio/internal/sources/manual"
@@ -274,9 +275,21 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 			}, a.client, meta))
 		case sources.TypeManual:
 			return manual.New(d.ID, d.Holdings), nil
+		case sources.TypeBrokerage:
+			return brokerage.New(d.ID, d.Holdings, a.tickerLookup), nil
 		}
 		return nil, fmt.Errorf("unknown source type %q", d.Type)
 	}
+}
+
+// tickerLookup names a brokerage account's tickers with the price service.
+func (a *app) tickerLookup(ctx context.Context, tickers []string) (map[string]brokerage.Security, error) {
+	secs, err := a.prices.Securities(ctx, tickers)
+	out := make(map[string]brokerage.Security, len(secs))
+	for t, sec := range secs {
+		out[t] = brokerage.Security{Name: sec.Name, Currency: sec.Currency}
+	}
+	return out, err
 }
 
 // asSource avoids the typed-nil trap: a nil *T with an error must become a nil interface.

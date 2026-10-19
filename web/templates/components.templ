@@ -30,6 +30,11 @@ templ FigCoin(v float64, sym string) {
 	@FigText(Coin(v, sym), "•••• "+sym)
 }
 
+// FigUnits is a holding's quantity by its asset key: shares for stocks and funds.
+templ FigUnits(key string, v float64, sym string) {
+	@FigText(Units(key, v, sym), "•••• "+sym)
+}
+
 // Disc is the ticker monogram on a tinted disc. It is decorative: the asset name follows.
 templ Disc(symbol string) {
 	{{ text, _, _ := Monogram(symbol) }}

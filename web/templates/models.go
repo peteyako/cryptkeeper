@@ -100,7 +100,7 @@ type SourcePickPage struct{ Shell }
 // SourceFormPage is step 2 of the add-source flow, or the edit form.
 type SourceFormPage struct {
 	Shell
-	Type        string            // "coinbase","kraken","bitcoin","solana","manual"
+	Type        string            // "coinbase","kraken","bitcoin","solana","manual","brokerage"
 	EditID      string            // "" when adding
 	Values      map[string]string // non-secret field values (label, kind, key, address, keyName, holdings...)
 	SecretMasks map[string]string // field name -> "••••3f9a" when editing; secret inputs always render empty

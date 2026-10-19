@@ -145,11 +145,15 @@ func (r *Rule) normalize() {
 	}
 }
 
-// normalizeAsset upper-cases symbols but keeps the case of "spl:<mint>" keys.
+// normalizeAsset upper-cases symbols but keeps the case of "spl:<mint>" keys and the
+// lower-case prefix of "stock:<TICKER>" keys.
 func normalizeAsset(a string) string {
 	a = strings.TrimSpace(a)
 	if len(a) >= 4 && strings.EqualFold(a[:4], "spl:") {
 		return "spl:" + a[4:]
+	}
+	if len(a) >= 6 && strings.EqualFold(a[:6], "stock:") {
+		return "stock:" + strings.ToUpper(a[6:])
 	}
 	return strings.ToUpper(a)
 }

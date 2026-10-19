@@ -147,6 +147,24 @@ func CoinAmount(v float64, sym string) string {
 	return out
 }
 
+// Units formats a holding's quantity by its asset key: a stock or fund in shares, up to 4
+// decimals with trailing zeros dropped ("40 VTI", "12.5 VTSAX"); anything else as Coin.
+func Units(key string, v float64, sym string) string {
+	if _, stock := core.IsStockKey(key); !stock || !finite(v) {
+		return Coin(v, sym)
+	}
+	s := strconv.FormatFloat(math.Abs(v), 'f', 4, 64)
+	s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	out := groupDecimal(s)
+	if v < 0 && s != "0" {
+		out = Minus + out
+	}
+	if sym != "" {
+		out += " " + sym
+	}
+	return out
+}
+
 // Coin formats a coin quantity followed by its symbol: "0.84213907 BTC", "3,374.80 USDC".
 // With an empty symbol it is the same as CoinAmount.
 func Coin(v float64, sym string) string {
@@ -393,8 +411,8 @@ func Allocation(assets []portfolio.AssetRow) []AllocSlice {
 	out := make([]AllocSlice, 0, len(named)+1)
 	for i, a := range named {
 		name := a.Name
-		if name == "" {
-			name = a.Symbol
+		if _, stock := core.IsStockKey(a.AssetKey); name == "" || stock {
+			name = a.Symbol // fund names run long and alike ("Vanguard Total…")
 		}
 		out = append(out, newSlice(name, a.Symbol, a.ValueUSD, total, palette[i]))
 	}

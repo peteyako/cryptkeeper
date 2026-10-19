@@ -21,13 +21,19 @@ const (
 	TypeBitcoin  = "bitcoin"
 	TypeSolana   = "solana"
 	TypeManual   = "manual"
+	// TypeBrokerage is a brokerage account typed in by hand: tickers and share counts.
+	TypeBrokerage = "brokerage"
 )
 
 // MaxDescription is the longest description a source may have, in characters.
 const MaxDescription = 280
 
 // Types lists every supported type in display order.
-var Types = []string{TypeCoinbase, TypeKraken, TypeBitcoin, TypeSolana, TypeManual}
+var Types = []string{TypeCoinbase, TypeKraken, TypeBitcoin, TypeSolana, TypeManual, TypeBrokerage}
+
+// HandEntered reports whether sources of type t are typed in by hand, so they have no
+// activity to sync.
+func HandEntered(t string) bool { return t == TypeManual || t == TypeBrokerage }
 
 // Def is one entry of data/sources.yaml. Secret fields hold sealed values ("enc:v1:…").
 type Def struct {
@@ -55,7 +61,7 @@ type Def struct {
 	// JupiterVault is the wallet's Jupiter limit-order vault (Limit V2 keeps the funds of
 	// open orders in a custodial account of its own), counted with the wallet when set.
 	JupiterVault string `yaml:"jupiterVault,omitempty"`
-	// manual
+	// manual, and brokerage (where Asset is a ticker and Amount a number of shares)
 	Holdings []manual.Holding `yaml:"holdings,omitempty"`
 
 	CreatedAt time.Time `yaml:"createdAt,omitempty"`
@@ -103,9 +109,9 @@ func (d *Def) Validate() error {
 		return fmt.Errorf("%s: description is longer than %d characters", d.ID, MaxDescription)
 	}
 	switch d.Kind {
-	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:
+	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual, core.KindBrokerage:
 	default:
-		return fmt.Errorf("%s: kind %q must be exchange, hot, hardware or manual", d.ID, d.Kind)
+		return fmt.Errorf("%s: kind %q must be exchange, hot, hardware, manual or brokerage", d.ID, d.Kind)
 	}
 	switch d.Type {
 	case TypeCoinbase:
@@ -128,6 +134,15 @@ func (d *Def) Validate() error {
 		if len(d.Holdings) == 0 {
 			return fmt.Errorf("%s: add at least one holding", d.ID)
 		}
+	case TypeBrokerage:
+		if len(d.Holdings) == 0 {
+			return fmt.Errorf("%s: add at least one holding", d.ID)
+		}
+		for _, h := range d.Holdings {
+			if t, ok := core.NormalizeTicker(h.Asset); !ok || t != h.Asset {
+				return fmt.Errorf("%s: %q isn't a ticker (use capitals, e.g. VTI)", d.ID, h.Asset)
+			}
+		}
 	default:
 		return fmt.Errorf("%s: unknown type %q", d.ID, d.Type)
 	}
@@ -143,6 +158,8 @@ func DefaultKind(t string) core.Kind {
 		return core.KindHardware
 	case TypeSolana:
 		return core.KindHot
+	case TypeBrokerage:
+		return core.KindBrokerage
 	}
 	return core.KindManual
 }

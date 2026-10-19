@@ -82,6 +82,11 @@ templ walletBody(p WalletPage) {
 				</a>
 			</div>
 		</header>
+		if note := MarketNote(p.W, p.Now); note != "" {
+			@Notice("neutral", "clock") {
+				{ note }
+			}
+		}
 		for _, msg := range p.W.Warnings {
 			@Notice("warn", "alert") {
 				{ msg }
@@ -138,7 +143,8 @@ func metaValue(kv []core.KV, key string) string {
 	return ""
 }
 
-// statTiles are Balance, Cost basis and Unrealized P/L.
+// statTiles are Balance, Cost basis and Unrealized P/L; for a brokerage account (no tax
+// lots) Balance and the day's change.
 templ statTiles(p WalletPage) {
 	<div class="stat-grid">
 		<div class="stat">
@@ -149,55 +155,76 @@ templ statTiles(p WalletPage) {
 			{{ row, single := SingleAsset(p.W) }}
 			if single {
 				<span class="stat__sub mono">
-					@FigCoin(row.Amount, row.Symbol)
+					@FigUnits(row.AssetKey, row.Amount, row.Symbol)
 				</span>
 			}
-			if stable, ok := p.W.StableShare(); ok {
+			if stable, ok := p.W.StableShare(); ok && p.W.Kind != core.KindBrokerage {
 				@splitLine(stable)
 			}
 		</div>
-		<div class="stat">
-			<span class="label">Cost basis</span>
-			if p.CostBasis != nil {
-				<span class="stat__value">
-					@FigFiat(*p.CostBasis)
-				</span>
-				{{ rowc, singlec := SingleAsset(p.W) }}
-				if singlec && p.CostUnits > 0 {
-					<span class="stat__sub stat__sub--inline">
-						<span>avg</span>
-						@FigFiat(*p.CostBasis / p.CostUnits)
-						<span>/ { rowc.Symbol }</span>
+		if p.W.Kind == core.KindBrokerage {
+			@dayChangeTile(p)
+		} else {
+			<div class="stat">
+				<span class="label">Cost basis</span>
+				if p.CostBasis != nil {
+					<span class="stat__value">
+						@FigFiat(*p.CostBasis)
 					</span>
+					{{ rowc, singlec := SingleAsset(p.W) }}
+					if singlec && p.CostUnits > 0 {
+						<span class="stat__sub stat__sub--inline">
+							<span>avg</span>
+							@FigFiat(*p.CostBasis / p.CostUnits)
+							<span>/ { rowc.Symbol }</span>
+						</span>
+					}
+				} else {
+					<span class="stat__value stat__value--none">—</span>
+					<a class="stat__sub stat__link" href="/reports/koinly" data-on:click={ navClick("/reports/koinly", "") }>Import cost basis</a>
 				}
-			} else {
-				<span class="stat__value stat__value--none">—</span>
-				<a class="stat__sub stat__link" href="/reports/koinly" data-on:click={ navClick("/reports/koinly", "") }>Import cost basis</a>
-			}
-		</div>
-		<div class="stat">
-			<span class="label">Unrealized P/L</span>
-			if p.Unrealized != nil {
-				{{ dir := Direction(*p.Unrealized) }}
-				<span class={ "stat__value", "chg--" + dir }>
-					{ Arrow(dir) + " " }
-					@FigText(ChangeAbs(*p.Unrealized), "$ ••••")
-				</span>
-				{{ pct, okPct := UnrealizedPct(p.Unrealized, p.CostBasis) }}
-				if okPct {
-					<span class={ "stat__sub", "chg--" + dir }>{ SignedPct(pct) }</span>
+			</div>
+			<div class="stat">
+				<span class="label">Unrealized P/L</span>
+				if p.Unrealized != nil {
+					{{ dir := Direction(*p.Unrealized) }}
+					<span class={ "stat__value", "chg--" + dir }>
+						{ Arrow(dir) + " " }
+						@FigText(ChangeAbs(*p.Unrealized), "$ ••••")
+					</span>
+					{{ pct, okPct := UnrealizedPct(p.Unrealized, p.CostBasis) }}
+					if okPct {
+						<span class={ "stat__sub", "chg--" + dir }>{ SignedPct(pct) }</span>
+					}
+				} else {
+					<span class="stat__value stat__value--none">—</span>
+					<span class="stat__sub">Needs a cost basis</span>
 				}
-			} else {
-				<span class="stat__value stat__value--none">—</span>
-				<span class="stat__sub">Needs a cost basis</span>
-			}
-		</div>
+			</div>
+		}
+	</div>
+}
+
+// dayChangeTile is a brokerage account's change over its holdings' latest session.
+templ dayChangeTile(p WalletPage) {
+	{{ usd, pct := DayChange(p.W) }}
+	{{ dir := Direction(usd) }}
+	<div class="stat">
+		<span class="label">Day change</span>
+		<span class={ "stat__value", "chg--" + dir }>
+			{ Arrow(dir) + " " }
+			@FigText(ChangeAbs(usd), "$ ••••")
+		</span>
+		<span class={ "stat__sub", "chg--" + dir }>{ SignedPct(pct) + " " + SessionCaption(p.W, p.Now) }</span>
 	</div>
 }
 
 type walletTabItem struct{ Key, Label string }
 
 func walletTabs(p WalletPage) []walletTabItem {
+	if p.W.Kind == core.KindBrokerage {
+		return []walletTabItem{{"holdings", "Holdings"}} // typed in by hand: no activity
+	}
 	tabs := []walletTabItem{{"holdings", "Holdings"}, {"activity", "Activity"}}
 	if p.IsBitcoin {
 		tabs = append(tabs, walletTabItem{"addresses", "Addresses"}, walletTabItem{"utxos", "UTXOs"})
@@ -272,7 +299,7 @@ templ holdingsTab(p WalletPage) {
 						<th class="col-price num" scope="col">Price</th>
 						<th class="col-amt num" scope="col">Holdings</th>
 						<th class="col-val num" scope="col">Value</th>
-						<th class="col-chg num" scope="col">24h</th>
+						<th class="col-chg num" scope="col">{ ChangeHeader(p.W) }</th>
 					</tr>
 				</thead>
 				if len(plain) > 0 {
@@ -373,7 +400,7 @@ templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, showLogos bool) 
 			@priceCell(r.Price, now)
 		</td>
 		<td class="col-amt num">
-			@FigCoin(r.Amount, r.Symbol)
+			@FigUnits(r.AssetKey, r.Amount, r.Symbol)
 		</td>
 		<td class="col-val num">
 			if r.Priced {

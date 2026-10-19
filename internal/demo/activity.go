@@ -299,7 +299,7 @@ func Activity(source, asset, kind, before string, now time.Time) templates.Activ
 		Now:  now,
 	}
 	for _, w := range Wallets(now) {
-		if w.Kind != core.KindManual {
+		if w.Kind != core.KindManual && w.Kind != core.KindBrokerage {
 			p.Sources = append(p.Sources, templates.WalletOption{ID: w.ID, Label: w.Label, Type: w.Type, Kind: w.Kind})
 		}
 	}

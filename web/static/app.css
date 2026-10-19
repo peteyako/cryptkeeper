@@ -503,6 +503,14 @@ body.amounts-hidden .fig-m {
   background: transparent;
 }
 
+/* A brokerage account's dot is a bar: wider than tall. */
+.src-dot--brokerage {
+  width: 10px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--src-brokerage);
+}
+
 .src-chip {
   display: inline-flex;
   align-items: center;
@@ -601,6 +609,11 @@ body.amounts-hidden .fig-m {
 .tile--manual {
   background: var(--disc-neutral-bg);
   color: var(--disc-neutral-fg);
+}
+
+.tile--brokerage {
+  background: color-mix(in srgb, var(--src-brokerage) 18%, transparent);
+  color: var(--src-brokerage);
 }
 
 /* ---- change and price text ------------------------------------------------------------- */
@@ -1578,6 +1591,10 @@ body.amounts-hidden .fig-m {
 
 .rail--manual {
   background: var(--src-other);
+}
+
+.rail--brokerage {
+  background: var(--src-brokerage);
 }
 
 .acct__body {

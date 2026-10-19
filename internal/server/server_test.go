@@ -26,6 +26,7 @@ import (
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/sources/brokerage"
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/internal/store"
 	"crypto-portfolio/internal/tax"
@@ -73,6 +74,8 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 			switch d.Type {
 			case sources.TypeManual:
 				return manual.New(d.ID, d.Holdings), nil
+			case sources.TypeBrokerage:
+				return brokerage.New(d.ID, d.Holdings, fakeTickers), nil
 			case sources.TypeKraken:
 				if d.APISecret == "" {
 					return nil, errors.New("needs its API key and secret: edit this source to add them")

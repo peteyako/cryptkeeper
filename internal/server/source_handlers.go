@@ -17,6 +17,7 @@ import (
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/internal/secrets"
 	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/sources/brokerage"
 	"crypto-portfolio/internal/sources/manual"
 	"crypto-portfolio/web/templates"
 )
@@ -78,7 +79,7 @@ func formValues(d sources.Def) map[string]string {
 	case sources.TypeSolana:
 		v["address"] = d.Address
 		v["jupiterVault"] = d.JupiterVault
-	case sources.TypeManual:
+	case sources.TypeManual, sources.TypeBrokerage:
 		v["holdings"] = manual.FormatLines(d.Holdings)
 	}
 	return v
@@ -189,6 +190,13 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 		}
 		d.Holdings = hs
 		d.Kind = core.KindManual
+	case sources.TypeBrokerage:
+		hs, err := brokerage.ParseLines(r.PostFormValue("holdings"))
+		if err != nil {
+			errs["holdings"] = err.Error()
+		}
+		d.Holdings = hs
+		d.Kind = core.KindBrokerage
 	}
 	for _, field := range []string{"key", "address", "jupiterVault"} {
 		if sources.LooksLikeSeed(strings.ToLower(strings.TrimSpace(r.PostFormValue(field)))) {
@@ -277,10 +285,38 @@ func (s *Server) testSource(ctx context.Context, d sources.Def) templates.TestRe
 		rows = append(rows, portfolio.PriceRow(h, prices))
 	}
 	msg := fmt.Sprintf("Connected. Found %s.", plural(len(rows), "balance"))
+	if d.Type == sources.TypeBrokerage {
+		msg = tickersFound(rows)
+	}
 	if len(res.Warnings) > 0 {
 		msg += " " + strings.Join(res.Warnings, " ")
 	}
 	return templates.TestResult{OK: true, Message: msg, Rows: rows}
+}
+
+// tickersFound sums up a brokerage account's test: how many tickers got a price, and whether
+// those are the last close because the market is shut (only when every price says so).
+func tickersFound(rows []portfolio.HoldingRow) string {
+	priced, open := 0, false
+	for _, r := range rows {
+		if r.Priced {
+			priced++
+			open = open || r.Price.MarketOpen || r.Price.MarketTime.IsZero()
+		}
+	}
+	var msg string
+	switch priced {
+	case len(rows):
+		msg = fmt.Sprintf("Found all %s.", plural(len(rows), "ticker"))
+	case 0:
+		return "Couldn't price any of these tickers."
+	default:
+		msg = fmt.Sprintf("Found %d of %s.", priced, plural(len(rows), "ticker"))
+	}
+	if !open {
+		msg += " Markets are closed, so these are the last closing prices."
+	}
+	return msg
 }
 
 func (s *Server) sourceSave(w http.ResponseWriter, r *http.Request) {

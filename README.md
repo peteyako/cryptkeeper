@@ -2,8 +2,9 @@
 
 A self-hosted, **read-only** crypto portfolio monitor. One page for everything you hold:
 Coinbase, Kraken, Bitcoin cold storage (xpub, descriptors, multisig) and Solana wallets
-(SOL, every SPL token, staking), with live updates, stale-but-visible data when an API
-hiccups, and a design that puts numbers first.
+(SOL, every SPL token, staking), plus the stocks, ETFs and funds in your brokerage accounts,
+with live updates, stale-but-visible data when an API hiccups, and a design that puts
+numbers first.
 
 - Single Go binary, no database server: state lives in `data/` (YAML you can edit plus a SQLite file).
 - Server-rendered with [templ](https://templ.guide) and [Datastar](https://data-star.dev): live updates over SSE, almost no JavaScript.
@@ -137,6 +138,26 @@ withdrawal a move. The vault is the owner of the token account your first deposi
 ### Manual holdings
 Coins held anywhere CryptKeep can't read, one per line: `BTC 0.25 owed by Sam`. Use
 `spl:<mint>` for Solana tokens.
+
+### Brokerage accounts (stocks, ETFs and funds)
+Add a **Brokerage account** (under *Stocks & funds*) for each account you want to track,
+such as a taxable account or a Roth IRA, and type in what it holds, one ticker per line:
+`VTI 40`, `BND 120 bond fund`. Stocks, ETFs, mutual funds and bond funds all work by
+ticker. CryptKeep never connects to your broker; you update the share counts when they
+change.
+
+- **Prices** come from Yahoo Finance, which needs no key. One request prices every ticker,
+  and when it fails CryptKeep asks Yahoo's second server ticker by ticker. Requests are paced.
+  Only US-dollar listings are priced; a ticker in another currency, or one Yahoo doesn't
+  know, shows a warning on the account.
+- **Closed markets:** overnight and on weekends prices are the last close, not marked stale.
+  The account page says so, and its **Day change** tile shows the last session's move. If
+  Yahoo can't be reached, the last price it gave stays usable for four days, long enough to
+  cover a long weekend.
+- **Everywhere else** stocks count like any holding: in the total, the allocation (by
+  ticker), the chart, portfolios, price alerts and the asset page with its price history.
+- **Not crypto tax:** brokerage accounts have no cost basis here and stay out of Reports, the
+  tax package and the Koinly import. Your broker's 1099-B covers them.
 
 ## Portfolios
 

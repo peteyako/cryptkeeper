@@ -188,7 +188,12 @@ sources:
   - { id: phantom, type: solana, label: "Phantom", kind: hot, address: "7xKX…", jupiterVault: "E8XE…" }
   - { id: mom-safe, type: manual, label: "Paper wallet at mom's", kind: manual,
       holdings: [ { asset: BTC, amount: 0.25 }, { asset: ETH, amount: 2, note: "…" } ] }
+  - { id: fidelity, type: brokerage, label: Fidelity, kind: brokerage,
+      holdings: [ { asset: VTI, amount: 40 }, { asset: BND, amount: 120, note: "bond fund" } ] }
 ```
+A `brokerage` source lists tickers and share counts (`asset` is the ticker). Its holdings use
+`stock:<TICKER>` asset keys, priced by Yahoo Finance (`internal/prices/stocks.go`), and it has
+no activity and no tax lots.
 Every source may have a `description` (up to 280 characters) saying what it's for. It shows on the wallet's page, its card, Settings and the CPA package, and changing it doesn't restart the wallet's sync.
 
 **Secrets:**

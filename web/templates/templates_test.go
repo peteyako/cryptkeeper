@@ -425,7 +425,7 @@ func TestPrivacyFigures(t *testing.T) {
 
 	ov := byName(t, allPages(t), "overview")
 	// Amounts are masked, prices and percentages are not.
-	has(t, ov, `<span class="fig-v">$57,131.27</span>`, `$ ••••••`, `•••• BTC`, `$ ••••`)
+	has(t, ov, `<span class="fig-v">$113,231.17</span>`, `$ ••••••`, `•••• BTC`, `$ ••••`)
 	lacks(t, ov, `fig-v">$64,120.00`, `fig-v">+2.14%`)
 }
 
@@ -913,8 +913,8 @@ func TestPortfolioManager(t *testing.T) {
 	has(t, p,
 		`<title id="page-title">Portfolios · CryptKeep</title>`, `<h1 class="h-title">Portfolios</h1>`,
 		`href="/portfolios/new"`, "New portfolio", `aria-label="Hide balances"`,
-		"Long-term", "Trading", "Majors", "3 wallets", "2 wallets", "All wallets", "All assets", "BTC, ETH, SOL +2",
-		"2 assets", "3 assets", "None", "53% of net worth", "47% of net worth",
+		"Long-term", "Trading", "Majors", "5 wallets", "2 wallets", "All wallets", "All assets", "BTC, ETH, SOL +2",
+		"2 assets", "3 assets", "None", "76% of net worth", "24% of net worth",
 		`href="/p/long-term"`, `href="/portfolios/long-term/edit"`, `href="/portfolios/long-term/export" download`,
 		`aria-label="Open Long-term"`, `aria-label="Edit Long-term"`, `aria-label="Export Long-term"`, `aria-label="Delete Long-term"`,
 	)
@@ -932,7 +932,7 @@ func TestPortfolioManager(t *testing.T) {
 		t.Errorf("want 3 per-portfolio export links and Export all, got %d download attributes", n)
 	}
 	// Values are private figures; shares are not.
-	has(t, p, `<span class="fig-v">$30,238.33</span>`, `$ ••••••`)
+	has(t, p, `<span class="fig-v">$86,338.23</span>`, `$ ••••••`)
 
 	// The sidebar reads "Portfolios" as the current section, and no main item is current.
 	has(t, p, `class="nav-head nav-head--on"`, `class="nav-manage" href="/portfolios" data-on:click=`)
@@ -1050,7 +1050,7 @@ func TestPortfolioFormPage(t *testing.T) {
 		v := regexp.MustCompile(`value="([^"]*)"`).FindStringSubmatch(m)[1]
 		ticked[v] = strings.Contains(m, "checked")
 	}
-	want := map[string]bool{"cold": true, "coinbase": false, "kraken": false, "phantom": true, "mom-safe": true}
+	want := map[string]bool{"cold": true, "coinbase": false, "kraken": false, "phantom": true, "mom-safe": true, "fidelity": true, "roth-ira": true}
 	if len(ticked) != len(want) {
 		t.Errorf("wallet checkboxes = %v", ticked)
 	}
@@ -1080,8 +1080,8 @@ func TestPortfolioFormPage(t *testing.T) {
 		`value="AVAX spl:J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn"`, `value="DOGE ARB"`,
 		"Only these assets count. If you also picked wallets, a holding must match both.",
 	)
-	if n := len(regexp.MustCompile(`<label[^>]*data-search=`).FindAllString(mj.html, -1)); n != 8 {
-		t.Errorf("want one filterable row per held asset (8), got %d", n)
+	if n := len(regexp.MustCompile(`<label[^>]*data-search=`).FindAllString(mj.html, -1)); n != 12 {
+		t.Errorf("want one filterable row per held asset (12), got %d", n)
 	}
 	// Asset values are private figures too.
 	has(t, mj, `<span class="fig-v">$30,209.57</span>`)
@@ -1202,8 +1202,8 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 		`href="/portfolios/new"`,
 	)
 	lacks(t, ov, `nav-head--on`, "pf-edit", "/portfolios/all/edit")
-	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 8 {
-		t.Errorf("want a 7d cell on every holdings row (8), got %d", n)
+	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 12 {
+		t.Errorf("want a 7d cell on every holdings row (12), got %d", n)
 	}
 	// The watch list has no 7d data, so it keeps just 24h.
 	if strings.Contains(byName(t, pages, "overview empty").html, "col-chg7") {
@@ -1211,7 +1211,7 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 	}
 
 	lt := byName(t, pages, "overview long-term")
-	has(t, lt, `<a class="btn btn--secondary btn--sm pf-edit" href="/portfolios/long-term/edit" aria-label="Edit Long-term">Edit</a>`, "53% of all holdings", "Manage portfolios")
+	has(t, lt, `<a class="btn btn--secondary btn--sm pf-edit" href="/portfolios/long-term/edit" aria-label="Edit Long-term">Edit</a>`, "76% of all holdings", "Manage portfolios")
 	mj := byName(t, pages, "overview majors")
 	has(t, mj, "Majors", `href="/portfolios/majors/edit"`)
 
@@ -1435,7 +1435,7 @@ func TestReportsPage(t *testing.T) {
 		`<a class="nav-item nav-item--on" href="/reports" data-on:click=`,
 		// Tiles.
 		"Cost basis", "Value", "Unrealized P/L", "Basis known for 92% of value", `class="cover"`, `style="width:91.8%;"`,
-		`<span class="stat__value chg--up">▲ <span class="fig">`, `<span class="stat__sub chg--up">+23.32%</span>`, "All holdings, at today's prices",
+		`<span class="stat__value chg--up">▲ <span class="fig">`, `<span class="stat__sub chg--up">+23.32%</span>`, "Crypto holdings, at today's prices",
 		// Table.
 		`id="pnl"`, "FIFO tax lots, all wallets", `<th class="col-asset" scope="col">Asset</th>`, `>Amount</th>`, `>Avg cost</th>`, `>Cost basis</th>`, `>Value</th>`, `>Unrealized</th>`,
 		"Bitcoin", "Polkadot", "Bonk", "0.0500 BTC with unknown cost", "185.2000 DOT with unknown cost",
@@ -1587,8 +1587,8 @@ func TestOverviewPnLColumn(t *testing.T) {
 		`data-on:click="$showPnl = !$showPnl"`, `data-attr:aria-pressed="$showPnl ? 'true' : 'false'"`, `data-class="{'is-pressed': $showPnl}"`,
 		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}"`,
 	)
-	if n := strings.Count(ov.html, `<td class="col-pnl num"`); n != 8 {
-		t.Errorf("want a P/L cell on every holdings row (8), got %d", n)
+	if n := strings.Count(ov.html, `<td class="col-pnl num"`); n != 12 {
+		t.Errorf("want a P/L cell on every holdings row (12), got %d", n)
 	}
 	// Without P/L data there is no toggle and no column.
 	bare := demo.Overview(now)

@@ -48,7 +48,7 @@ func dedupeImported(txs []core.Tx, typeOf map[string]string) []core.Tx {
 // need a price; UnknownUnits is the rest of the holding.
 func pnlRows(res tax.Result, assets []portfolio.AssetRow, wallets func(string) bool) []templates.PnLRow {
 	var rows []templates.PnLRow
-	for _, a := range assets {
+	for _, a := range taxedAssets(assets) {
 		row := templates.PnLRow{AssetKey: a.AssetKey, Symbol: a.Symbol, Name: a.Name, Amount: a.Amount, Value: a.ValueUSD}
 		held, _, missing := res.Holding(a.AssetKey, wallets)
 		covered := max(0, min(a.Amount, held-missing))
@@ -65,6 +65,18 @@ func pnlRows(res tax.Result, assets []portfolio.AssetRow, wallets func(string) b
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// taxedAssets leaves out stocks and funds: brokerage accounts have no tax lots here (the
+// broker's 1099-B covers them), so they must not count as holdings of unknown cost.
+func taxedAssets(rows []portfolio.AssetRow) []portfolio.AssetRow {
+	out := make([]portfolio.AssetRow, 0, len(rows))
+	for _, a := range rows {
+		if _, stock := core.IsStockKey(a.AssetKey); !stock {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // unknownDust is the leftover below which a holding of amount counts as fully covered by
@@ -185,7 +197,10 @@ func (s *Server) realizedByAsset(res tax.Result) map[string]map[int]float64 {
 
 func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 	snap, _ := s.latest()
-	p := templates.ReportsPage{Shell: s.shell(r, "Reports", "reports", "all", ""), TotalValue: snap.TotalUSD, Now: s.Now()}
+	p := templates.ReportsPage{Shell: s.shell(r, "Reports", "reports", "all", ""), Now: s.Now()}
+	for _, a := range taxedAssets(snap.Assets) {
+		p.TotalValue += a.ValueUSD
+	}
 	if s.TaxSettings != nil {
 		if err := s.TaxSettings.Err(); err != nil {
 			p.TaxErr = "data/tax.yaml has an error and was not reloaded: " + err.Error()
@@ -205,7 +220,7 @@ func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 			p.TotalUnrealized += row.Unrealized
 		}
 	}
-	p.Coverage = tax.Coverage(res, snap.Assets)
+	p.Coverage = tax.Coverage(res, taxedAssets(snap.Assets))
 	p.MissingBasisSales = res.MissingBasisSales()
 	return p
 }

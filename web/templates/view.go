@@ -34,6 +34,8 @@ func typeName(t string) string {
 		return "Solana"
 	case "manual":
 		return "Manual"
+	case "brokerage":
+		return "Brokerage"
 	}
 	if t == "" {
 		return ""
@@ -64,6 +66,8 @@ func KindLabel(w portfolio.WalletView) string {
 		return "Hot wallet · " + typeName(w.Type)
 	case core.KindManual:
 		return "Manual · holdings"
+	case core.KindBrokerage:
+		return "Brokerage · stocks & funds"
 	}
 	return typeName(w.Type)
 }
@@ -80,6 +84,8 @@ func SourceChipText(w portfolio.WalletView) string {
 		return typeName(w.Type) + " · hot wallet"
 	case core.KindManual:
 		return "Manual · holdings"
+	case core.KindBrokerage:
+		return "Brokerage · stocks & funds"
 	}
 	return typeName(w.Type)
 }
@@ -90,7 +96,7 @@ func AccessLabel(w portfolio.WalletView) string {
 	switch w.Kind {
 	case core.KindExchange:
 		return "Read-only"
-	case core.KindManual:
+	case core.KindManual, core.KindBrokerage:
 		return "Hand-entered"
 	}
 	return "Watch-only"
@@ -104,14 +110,17 @@ func WalletMeta(w portfolio.WalletView) string {
 		return n + " · read-only key"
 	case core.KindManual:
 		return n + " · entered by hand"
+	case core.KindBrokerage:
+		return Plural(len(w.Rows), "holding") + " · market prices"
 	}
 	return n + " · watch-only"
 }
 
-// SourceTone is the color family of a source kind: "exchange", "hot", "hardware", "manual".
+// SourceTone is the color family of a source kind: "exchange", "hot", "hardware", "manual",
+// "brokerage".
 func SourceTone(k core.Kind) string {
 	switch k {
-	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:
+	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual, core.KindBrokerage:
 		return string(k)
 	}
 	return "manual"
@@ -126,6 +135,8 @@ func SourceIcon(k core.Kind) string {
 		return "exchange"
 	case core.KindManual:
 		return "pencil"
+	case core.KindBrokerage:
+		return "reports"
 	}
 	return "wallet"
 }
@@ -464,6 +475,8 @@ func kindCaption(k core.Kind) string {
 		return "Hot wallet"
 	case core.KindManual:
 		return "Manual"
+	case core.KindBrokerage:
+		return "Brokerage"
 	}
 	return ""
 }
@@ -480,7 +493,7 @@ type walletGroup struct {
 	Rows  []walletRow
 }
 
-var walletGroupOrder = []string{"Exchanges", "Bitcoin", "Solana", "Manual", "Other"}
+var walletGroupOrder = []string{"Exchanges", "Bitcoin", "Solana", "Manual", "Brokerage", "Other"}
 
 func walletGroupTitle(o WalletOption) string {
 	switch o.Type {
@@ -492,6 +505,8 @@ func walletGroupTitle(o WalletOption) string {
 		return "Solana"
 	case "manual":
 		return "Manual"
+	case "brokerage":
+		return "Brokerage"
 	}
 	switch o.Kind {
 	case core.KindExchange:
@@ -502,9 +517,9 @@ func walletGroupTitle(o WalletOption) string {
 	return "Other"
 }
 
-// walletGroups sorts the wallet options into Exchanges / Bitcoin / Solana / Manual (and
-// Other for a type the UI does not know), keeping their order inside a group. Empty
-// groups are left out.
+// walletGroups sorts the wallet options into Exchanges / Bitcoin / Solana / Manual /
+// Brokerage (and Other for a type the UI does not know), keeping their order inside a
+// group. Empty groups are left out.
 func walletGroups(opts []WalletOption) []walletGroup {
 	by := map[string][]walletRow{}
 	for i, o := range opts {
@@ -583,4 +598,100 @@ func navPF(key string) string {
 		return "all"
 	}
 	return ""
+}
+
+// newYork is the US markets' time zone, for naming a trading day.
+var newYork = func() *time.Location {
+	if l, err := time.LoadLocation("America/New_York"); err == nil {
+		return l
+	}
+	return time.FixedZone("ET", -5*3600)
+}()
+
+// SessionDay names the trading day a stock's price and change are from: "today", or while
+// the market is shut since an earlier session, that session's weekday ("Friday").
+func SessionDay(p core.Price, now time.Time) string {
+	if p.MarketOpen || p.MarketTime.IsZero() {
+		return "today"
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	mt, n := p.MarketTime.In(newYork), now.In(newYork)
+	if mt.YearDay() == n.YearDay() && mt.Year() == n.Year() {
+		return "today"
+	}
+	return mt.Weekday().String()
+}
+
+// ChangeLabel is the caption of an asset's price change: "24h" for a coin, the trading day
+// for a stock ("today", "Friday").
+func ChangeLabel(key string, p *core.Price, now time.Time) string {
+	if _, stock := core.IsStockKey(key); stock && p != nil {
+		return SessionDay(*p, now)
+	}
+	return "24h"
+}
+
+// MarketNote is a brokerage account's note while its prices are a past close: none while a
+// market is open, or before any price says when it was set.
+func MarketNote(w portfolio.WalletView, now time.Time) string {
+	var newest *core.Price
+	for _, r := range w.Rows {
+		if _, stock := core.IsStockKey(r.AssetKey); !stock || r.Price == nil || r.Price.MarketTime.IsZero() {
+			continue
+		}
+		if r.Price.MarketOpen {
+			return ""
+		}
+		if newest == nil || r.Price.MarketTime.After(newest.MarketTime) {
+			newest = r.Price
+		}
+	}
+	if newest == nil {
+		return ""
+	}
+	return "Markets are closed. Prices are " + SessionDay(*newest, now) + "'s close and update when trading opens."
+}
+
+// DayChange is how much a wallet's value moved over its holdings' latest session, in USD
+// and percent of the value before it. Rows without a change count as unchanged.
+func DayChange(w portfolio.WalletView) (usd, pct float64) {
+	var before float64
+	for _, r := range w.Rows {
+		if !r.Priced || r.Price == nil || r.Price.Change24h == nil || *r.Price.Change24h <= -100 {
+			before += r.ValueUSD
+			continue
+		}
+		before += r.ValueUSD / (1 + *r.Price.Change24h/100)
+	}
+	usd = w.ValueUSD - before
+	if before > 0 {
+		pct = usd / before * 100
+	}
+	return usd, pct
+}
+
+// SessionCaption says which session a brokerage account's day change is over: "today", or
+// "on Friday" while the market is shut.
+func SessionCaption(w portfolio.WalletView, now time.Time) string {
+	for _, r := range w.Rows {
+		if r.Price == nil || r.Price.MarketTime.IsZero() {
+			continue
+		}
+		if day := SessionDay(*r.Price, now); day != "today" {
+			return "on " + day
+		}
+		break
+	}
+	return "today"
+}
+
+// ChangeHeader is the wallet holdings table's change column: "Day" for a brokerage
+// account, "24h" otherwise.
+func ChangeHeader(w portfolio.WalletView) string {
+	if w.Kind == core.KindBrokerage {
+		return "Day"
+	}
+	return "24h"
 }

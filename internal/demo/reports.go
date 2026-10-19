@@ -3,6 +3,7 @@ package demo
 import (
 	"time"
 
+	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
 	"crypto-portfolio/web/templates"
 )
@@ -35,6 +36,9 @@ var costSpecs = map[string]costSpec{
 // unrealized result compares the value of the known units with that basis.
 func pnlRows(snap portfolio.Snapshot) (rows []templates.PnLRow, basis, unrealized, knownValue float64) {
 	for _, a := range snap.Assets {
+		if _, stock := core.IsStockKey(a.AssetKey); stock {
+			continue // brokerage holdings have no tax lots
+		}
 		spec := costSpecs[a.AssetKey]
 		r := templates.PnLRow{
 			AssetKey: a.AssetKey, Symbol: a.Symbol, Name: a.Name, Amount: a.Amount, Value: a.ValueUSD,
@@ -65,11 +69,15 @@ func Reports(now time.Time) templates.ReportsPage { return baseReports(now) }
 func baseReports(now time.Time) templates.ReportsPage {
 	snap := Snapshot(now)
 	rows, basis, unrealized, known := pnlRows(snap)
+	var cryptoValue float64
+	for _, r := range rows {
+		cryptoValue += r.Value
+	}
 	p := templates.ReportsPage{
 		Shell:           Shell("Reports", "reports", "all", ""),
 		Rows:            rows,
 		TotalBasis:      basis,
-		TotalValue:      snap.TotalUSD,
+		TotalValue:      round2(cryptoValue),
 		TotalUnrealized: unrealized,
 		Realized: []templates.YearAmount{
 			{Year: now.Year(), USD: 1204.12}, {Year: now.Year() - 1, USD: -212.40}, {Year: now.Year() - 2, USD: 3880.00},
@@ -78,8 +86,8 @@ func baseReports(now time.Time) templates.ReportsPage {
 		Tax:    TaxPage(taxOpenYear, "gains", false),
 		Review: reviewPage(),
 	}
-	if snap.TotalUSD > 0 {
-		p.Coverage = known / snap.TotalUSD
+	if cryptoValue > 0 {
+		p.Coverage = known / cryptoValue
 	}
 	return p
 }

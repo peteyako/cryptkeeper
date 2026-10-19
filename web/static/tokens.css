@@ -103,6 +103,7 @@
   --src-hot: #c08cff;
   --src-hardware: #f2b84b;
   --src-other: #5e6672;
+  --src-brokerage: #3fc1ae;
 
   /* coin monograms */
   --disc-btc-bg: #2e2410;
@@ -158,6 +159,7 @@
     --src-hot: #7a3fd1;
     --src-hardware: #c48a12;
     --src-other: #a3aab5;
+    --src-brokerage: #0e8a78;
 
     --disc-btc-bg: #fbf0d9;
     --disc-btc-fg: #8a5a00;
@@ -211,6 +213,7 @@
   --src-hot: #7a3fd1;
   --src-hardware: #c48a12;
   --src-other: #a3aab5;
+  --src-brokerage: #0e8a78;
 
   --disc-btc-bg: #fbf0d9;
   --disc-btc-fg: #8a5a00;

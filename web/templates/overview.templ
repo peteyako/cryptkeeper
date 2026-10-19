@@ -360,7 +360,7 @@ templ holdingsCard(p OverviewPage) {
 									@priceCell(a.Price, p.Now)
 								</td>
 								<td class="col-amt num">
-									@FigCoin(a.Amount, a.Symbol)
+									@FigUnits(a.AssetKey, a.Amount, a.Symbol)
 								</td>
 								<td class="col-val num">
 									if a.Priced {

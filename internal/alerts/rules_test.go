@@ -203,3 +203,18 @@ func TestCooldownDefaults(t *testing.T) {
 		t.Fatalf("default window %v", got)
 	}
 }
+
+// TestNormalizeAssetKeys: symbols are upper-cased; mints keep their case; stock keys keep
+// their lower-case prefix, so a price alert on a ticker matches its holding.
+func TestNormalizeAssetKeys(t *testing.T) {
+	for in, want := range map[string]string{
+		" btc ":     "BTC",
+		"spl:JUPyi": "spl:JUPyi",
+		"stock:vti": "stock:VTI",
+		"STOCK:BND": "stock:BND",
+	} {
+		if got := normalizeAsset(in); got != want {
+			t.Errorf("normalizeAsset(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

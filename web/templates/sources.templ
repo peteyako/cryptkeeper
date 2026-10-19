@@ -20,6 +20,10 @@ var selfCustodyOpts = []pickOpt{
 	{"manual", "Manual holdings", "Coins held anywhere else", "M", "manual"},
 }
 
+var stockOpts = []pickOpt{
+	{"brokerage", "Brokerage account", "Stocks, ETFs and funds by ticker", "ETF", "brokerage"},
+}
+
 // SourcePickFull is step 1 of 2: pick what to add.
 templ SourcePickFull(p SourcePickPage) {
 	@layoutFocus(p.Shell, sourcePick())
@@ -30,10 +34,11 @@ templ sourcePick() {
 		@flowBar(1, "/")
 		<div class="sheet__intro">
 			<h1 class="h-flow">Add a source</h1>
-			<p class="lede">Connect an exchange with a read-only key, or track a wallet by its public address.</p>
+			<p class="lede">Connect an exchange with a read-only key, track a wallet by its public address, or list what a brokerage account holds.</p>
 		</div>
 		@pickGroup("Exchanges", exchangeOpts)
 		@pickGroup("Self-custody", selfCustodyOpts)
+		@pickGroup("Stocks & funds", stockOpts)
 	</div>
 }
 
@@ -164,6 +169,8 @@ func formTitle(p SourceFormPage) string {
 		return "Track a Solana wallet"
 	case "manual":
 		return "Add manual holdings"
+	case "brokerage":
+		return "Add a brokerage account"
 	}
 	return "Add a source"
 }
@@ -183,6 +190,8 @@ func formLede(p SourceFormPage) string {
 		return "Paste a public address. CryptKeep reads SOL, tokens and DeFi positions from it."
 	case "manual":
 		return "List coins you hold anywhere else. CryptKeep prices them like everything else."
+	case "brokerage":
+		return "List the stocks, ETFs and funds in one account by ticker. CryptKeep looks up their prices; it never connects to your broker."
 	}
 	return ""
 }
@@ -252,6 +261,8 @@ templ sourceForm(p SourceFormPage) {
 					@bitcoinFields(p)
 				case "solana":
 					@solanaFields(p)
+				case "brokerage":
+					@brokerageFields(p)
 				default:
 					@manualFields(p)
 			}
@@ -369,6 +380,17 @@ templ solanaFields(p SourceFormPage) {
 	@Notice("neutral", "info") {
 		Watch-only. Never enter a seed phrase or private key here.
 	}
+}
+
+templ brokerageFields(p SourceFormPage) {
+	{{ label := p.field("label", "Label") }}
+	{{ label.Required, label.Placeholder = true, "e.g. Fidelity, Roth IRA" }}
+	@textField(label)
+	@descriptionField(p)
+	{{ h := p.field("holdings", "Holdings") }}
+	{{ h.Mono, h.Required, h.Placeholder = true, true, "VTI 40\nBND 120\nAAPL 15" }}
+	{{ h.Help = "One holding per line: the ticker, the number of shares, then an optional note. US stocks, ETFs, mutual funds and bond funds." }}
+	@areaField(h, 6)
 }
 
 templ manualFields(p SourceFormPage) {
@@ -570,7 +592,7 @@ templ TestResultView(r TestResult) {
 							<div class="test-row">
 								<span class="test-row__name">{ HoldingName(row.Holding) }</span>
 								<span class="test-row__amt mono">
-									@FigCoin(row.Amount, row.Symbol)
+									@FigUnits(row.AssetKey, row.Amount, row.Symbol)
 								</span>
 								<span class="test-row__val mono">
 									if row.Priced {
