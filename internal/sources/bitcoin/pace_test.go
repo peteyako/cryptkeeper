@@ -12,51 +12,37 @@ import (
 	"crypto-portfolio/internal/httpx"
 )
 
-// burstLimited answers like a mempool instance: a burst of four requests, then one more per
-// refill, and 429 beyond that.
-type burstLimited struct {
-	h      http.Handler
-	mu     sync.Mutex
-	tokens float64
-	last   time.Time
-	refill time.Duration
-	denied int
+// requestLog counts the requests that reach h and notes when the last one arrived.
+type requestLog struct {
+	h    http.Handler
+	mu   sync.Mutex
+	n    int
+	last time.Time
 }
 
-func (b *burstLimited) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	b.mu.Lock()
-	now := time.Now()
-	if b.last.IsZero() {
-		b.tokens, b.last = 4, now
-	}
-	b.tokens = min(4, b.tokens+float64(now.Sub(b.last))/float64(b.refill))
-	b.last = now
-	ok := b.tokens >= 1
-	if ok {
-		b.tokens--
-	} else {
-		b.denied++
-	}
-	b.mu.Unlock()
-	if !ok {
-		http.Error(w, "slow down", http.StatusTooManyRequests)
-		return
-	}
-	b.h.ServeHTTP(w, r)
+func (l *requestLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	l.mu.Lock()
+	l.n++
+	l.last = time.Now()
+	l.mu.Unlock()
+	l.h.ServeHTTP(w, r)
 }
 
-// TestWalletsShareThePace: three wallets scanning at once through a rate-limited server stay
-// under its limit, because requests to a paced host are spaced across all of them; none is
-// ever refused.
+// TestWalletsShareThePace: three wallets scanning at once take turns on a paced host, so
+// its n requests take at least n-1 intervals, as if one wallet had sent them all. A stalled
+// scheduler only makes that longer. (Counting refusals from a rate-limited fake server
+// instead failed now and then: after a stall the server saw a burst it would refuse.)
 func TestWalletsShareThePace(t *testing.T) {
 	f := newFake()
 	seedBusyWallet(t, f)
-	limited := &burstLimited{h: f, refill: 3 * time.Millisecond}
-	srv := httptest.NewServer(limited)
+	seen := &requestLog{h: f}
+	srv := httptest.NewServer(seen)
 	t.Cleanup(srv.Close)
 	host := strings.TrimPrefix(srv.URL, "http://")
-	httpx.SetPace(host, 4*time.Millisecond) // what New sets for a public server, scaled down
+	const pace = 4 * time.Millisecond // what New sets for a public server, scaled down
+	httpx.SetPace(host, pace)
 	t.Cleanup(func() { httpx.SetPace(host, 0) })
+	start := time.Now()
 	var wg sync.WaitGroup
 	errs := make([]error, 3)
 	for i, key := range []string{bip84Zpub, bip49Ypub, bip44Xpub} {
@@ -73,8 +59,8 @@ func TestWalletsShareThePace(t *testing.T) {
 			t.Errorf("wallet %d: %v", i, err)
 		}
 	}
-	if limited.denied != 0 {
-		t.Errorf("server refused %d requests; paced wallets must stay under its limit", limited.denied)
+	if took, least := seen.last.Sub(start), time.Duration(seen.n-1)*pace; took < least {
+		t.Errorf("%d requests took %v; paced %v apart across the wallets they take at least %v", seen.n, took, pace, least)
 	}
 }
 
