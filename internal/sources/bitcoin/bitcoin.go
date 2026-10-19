@@ -17,6 +17,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
+	"golang.org/x/sync/singleflight"
 )
 
 // Config configures one Bitcoin wallet source. Exactly one of Key, Descriptor or
@@ -106,6 +107,8 @@ type Source struct {
 	hint       string               // script-type hint for autoKey, once checked
 	hintDone   bool
 	restored   bool // the saved scan was looked for
+
+	scans singleflight.Group // one scan at a time; concurrent callers share it
 }
 
 // New parses and validates cfg. It does no network I/O. A nil client means httpx.New().
@@ -141,6 +144,7 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 	if c == nil {
 		c = httpx.New()
 	}
+	c = ownPacing(c)
 	s := &Source{
 		id:      cfg.ID,
 		esplora: esplora,

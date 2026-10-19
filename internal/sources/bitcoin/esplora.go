@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"crypto-portfolio/internal/core"
@@ -29,7 +31,8 @@ const (
 	// quietRescan: while the chain tip doesn't move, a scan this fresh is reused. A payment
 	// still in the mempool shows at the next block or after quietRescan.
 	quietRescan = 15 * time.Minute
-	// rateLimitPause is the least time a server that answered 429 is left alone.
+	// rateLimitPause is the least time a server that still answers 429 after paceRetries is
+	// left alone.
 	rateLimitPause  = 5 * time.Minute
 	maxScanPerChain = 10_000 // safety stop against a server that reports every address as used
 	satsPerBTC      = 100_000_000
@@ -38,7 +41,72 @@ const (
 	// quickTimeout, and a server that doesn't answer is asked last for downFor.
 	quickTimeout = 8 * time.Second
 	downFor      = 10 * time.Minute
+
+	// paceRetries: a request answered 429 is tried this many more times, at the slower pace.
+	paceRetries = 4
+	// scanTimeout bounds a scan, which runs on after its callers give up: through a
+	// rate-limited server a full scan can take minutes.
+	scanTimeout = 10 * time.Minute
 )
+
+// minPace and maxPace bound the spacing of requests to a server that answered 429.
+var (
+	minPace = 250 * time.Millisecond
+	maxPace = 4 * time.Second
+)
+
+// hostPacer spaces the requests to one Esplora server, shared by every wallet that uses it.
+// Public servers limit request rates (a mempool instance allows a burst of about four, then
+// about one a second): a 429 doubles the spacing and every answer shortens it a little, so
+// the pace settles just under the server's limit.
+type hostPacer struct {
+	mu       sync.Mutex
+	interval time.Duration
+	next     time.Time
+}
+
+var pacers sync.Map // server base URL → *hostPacer
+
+func pacerFor(base string) *hostPacer {
+	p, _ := pacers.LoadOrStore(base, &hostPacer{})
+	return p.(*hostPacer)
+}
+
+// wait blocks until a request to the server may start.
+func (p *hostPacer) wait(ctx context.Context) error {
+	p.mu.Lock()
+	now := time.Now()
+	start := now
+	if p.next.After(now) {
+		start = p.next
+	}
+	p.next = start.Add(p.interval)
+	p.mu.Unlock()
+	if d := start.Sub(now); d > 0 {
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (p *hostPacer) limited() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.interval = min(max(2*p.interval, minPace), maxPace)
+}
+
+func (p *hostPacer) answered() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.interval = p.interval * 9 / 10; p.interval < minPace/10 {
+		p.interval = 0
+	}
+}
 
 // addrState is one scanned address.
 type addrState struct {
@@ -96,7 +164,14 @@ func failFast(c *httpx.Client) *httpx.Client {
 		h = *c.HTTP
 	}
 	h.Timeout = quickTimeout
-	return &httpx.Client{HTTP: &h, MaxRetries: 0, BaseDelay: c.BaseDelay}
+	return &httpx.Client{HTTP: &h, MaxRetries: 0, BaseDelay: c.BaseDelay, PaceOwn429: true}
+}
+
+// ownPacing is c returning 429s at once, for fetch to pace.
+func ownPacing(c *httpx.Client) *httpx.Client {
+	cc := *c
+	cc.PaceOwn429 = true
+	return &cc
 }
 
 func addressPath(a string) string { return "/address/" + url.PathEscape(a) }
@@ -161,7 +236,7 @@ func (s *Source) getPublic(ctx context.Context, path string, out any) error {
 		if ctx.Err() != nil || !unavailable(err) {
 			return err
 		}
-		s.markDown(srv)
+		s.markDown(srv, err)
 	}
 	return err
 }
@@ -182,14 +257,27 @@ func (s *Source) serverOrder() []esploraServer {
 }
 
 // markDown moves srv to the back of the order for downFor.
-func (s *Source) markDown(srv esploraServer) {
+func (s *Source) markDown(srv esploraServer, err error) {
 	s.mu.Lock()
 	first := !s.now().Before(s.down[srv.base])
 	s.down[srv.base] = s.now().Add(downFor)
 	s.mu.Unlock()
 	if first && len(s.servers) > 1 {
-		slog.Warn("bitcoin: Esplora server isn't answering; trying the next one", "wallet", s.id, "server", srv.host)
+		slog.Warn("bitcoin: Esplora server isn't answering; trying the next one", "wallet", s.id, "server", srv.host, "reason", downReason(err))
 	}
+}
+
+// downReason says why a server was passed over, without the URL (it names an address).
+func downReason(err error) string {
+	var se *httpx.StatusError
+	if errors.As(err, &se) {
+		return "HTTP " + strconv.Itoa(se.Status)
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return "no answer"
+	}
+	return "connection failed"
 }
 
 // usingFallback reports whether the last request was answered by a server other than the
@@ -216,13 +304,27 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 	if token != "" {
 		headers = map[string]string{"Authorization": "Bearer " + token}
 	}
-	err := c.GetJSON(ctx, base+path, headers, out)
-	var se *httpx.StatusError
-	if errors.As(err, &se) && se.Status == http.StatusTooManyRequests {
-		s.mu.Lock()
-		s.paused[base] = s.now().Add(max(se.RetryAfter, rateLimitPause))
-		s.mu.Unlock()
+	pacer := pacerFor(base)
+	var err error
+	for range paceRetries + 1 {
+		if err = pacer.wait(ctx); err != nil {
+			return err
+		}
+		err = c.GetJSON(ctx, base+path, headers, out)
+		var se *httpx.StatusError
+		if !errors.As(err, &se) || se.Status != http.StatusTooManyRequests {
+			if err == nil {
+				pacer.answered()
+			}
+			return err
+		}
+		pacer.limited()
 	}
+	var se *httpx.StatusError
+	errors.As(err, &se)
+	s.mu.Lock()
+	s.paused[base] = s.now().Add(max(se.RetryAfter, rateLimitPause))
+	s.mu.Unlock()
 	return err
 }
 
@@ -261,7 +363,28 @@ func (s *Source) lookupAll(ctx context.Context, batch []addrState) error {
 // addresses that can change: those holding a balance (they can be spent from) and the first
 // lookahead unused ones on each chain (where new payments and change arrive). A payment to an
 // old, emptied address shows up at the next full scan.
+//
+// Concurrent callers (the balance refresh and the activity sync) share one scan. It runs on
+// its own for up to scanTimeout, so a caller that gives up on a slow, rate-limited server
+// doesn't lose it: the scan finishes and is kept for the next call.
 func (s *Source) scan(ctx context.Context) (*scanResult, error) {
+	ch := s.scans.DoChan("scan", func() (any, error) {
+		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), scanTimeout)
+		defer cancel()
+		return s.runScan(sctx)
+	})
+	select {
+	case r := <-ch:
+		if r.Err != nil {
+			return nil, r.Err
+		}
+		return r.Val.(*scanResult), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Source) runScan(ctx context.Context) (*scanResult, error) {
 	last := s.lastScan(ctx)
 	res := &scanResult{at: s.now(), fullAt: s.now()}
 	if err := s.get(ctx, "/blocks/tip/height", &res.tip); err != nil {

@@ -20,6 +20,9 @@ type Client struct {
 	HTTP       *http.Client
 	MaxRetries int
 	BaseDelay  time.Duration
+	// PaceOwn429 returns a 429 at once instead of retrying it, for callers that pace their
+	// own requests to a rate-limited server. Other failures still retry.
+	PaceOwn429 bool
 }
 
 // New returns a client with a 20 s per-request timeout and 3 retries.
@@ -80,6 +83,9 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 		if readErr != nil {
 			lastErr = readErr
 			continue
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && c.PaceOwn429 {
+			return nil, &StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req), RetryAfter: retryAfterHeader(resp)}
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			se := StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req), RetryAfter: retryAfterHeader(resp)}
