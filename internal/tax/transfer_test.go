@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // linked links send and recv as the two halves of one transfer, as

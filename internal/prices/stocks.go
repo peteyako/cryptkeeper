@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 // Stocks, ETFs and funds ("stock:<TICKER>" keys) are priced by Yahoo Finance, which needs no

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/yamlfile"
 )
 
 const (

@@ -2,7 +2,7 @@
 version: "3"
 
 vars:
-  BIN: crypto-portfolio
+  BIN: cryptkeeper
   LDFLAGS: -s -w
 
 tasks:

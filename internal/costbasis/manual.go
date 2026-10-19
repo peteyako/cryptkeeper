@@ -14,8 +14,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/yamlfile"
 )
 
 const (

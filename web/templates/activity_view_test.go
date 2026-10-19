@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 func usd(v float64) *float64 { return &v }

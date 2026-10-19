@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // ---- Locked / staked JUP (Jupiter's fork of the Tribeca locked-voter program) ----

@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // NewHTTPRPC returns a minimal JSON-RPC client implementing RPC, for tests and standalone use.

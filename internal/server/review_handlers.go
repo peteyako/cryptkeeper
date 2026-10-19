@@ -14,9 +14,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/templates"
 )
 
 // The "Needs review" actions: tag, bulk tag, price override and write-off. Each validates,

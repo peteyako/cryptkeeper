@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // Point is one daily USD price; Day is 00:00 UTC.

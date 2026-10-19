@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/store"
 )
 
 var t0 = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)

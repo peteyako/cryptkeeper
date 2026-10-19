@@ -11,13 +11,13 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/export"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/export"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/templates"
 )
 
 // importedSourceType maps CSV pseudo-sources to the live source type they duplicate.

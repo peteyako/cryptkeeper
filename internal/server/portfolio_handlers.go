@@ -12,12 +12,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/web/templates"
 )
 
 // portfolioView resolves a portfolio id against the latest snapshot. ok is false for an

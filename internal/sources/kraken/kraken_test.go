@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 // The signature example from Kraken's Spot REST authentication guide

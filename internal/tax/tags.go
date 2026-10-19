@@ -3,7 +3,7 @@ package tax
 import (
 	"math"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // knownTag are the tags that take effect.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // memScans is a ScanStore in memory, shared by "restarts" of a source.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/portfolio"
 )
 
 // chartGeom is the geometry SVGPath, the axes and the hover data share for one chart: the

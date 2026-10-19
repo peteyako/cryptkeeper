@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // Fixtures in testdata/*_accounts.json are real mainnet accounts captured with one

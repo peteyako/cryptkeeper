@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // requestLog counts the requests that reach h and notes when the last one arrived.

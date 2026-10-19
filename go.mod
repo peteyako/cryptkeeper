@@ -1,4 +1,4 @@
-module crypto-portfolio
+module cryptkeeper
 
 go 1.26.1
 

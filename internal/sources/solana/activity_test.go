@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 // --- fake ledger -------------------------------------------------------------------------

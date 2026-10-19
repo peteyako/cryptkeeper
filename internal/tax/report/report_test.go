@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 func d(wallet, lotTx string, term tax.Term, acquired time.Time) tax.Disposal {

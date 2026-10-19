@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 // TestPublicRPCIsPaced: the public RPC gets a pace under its limits (100 requests per 10 s per

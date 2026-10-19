@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/store"
 )
 
 // PortfolioValuer returns the current value of a portfolio ("all" or a portfolio id) in

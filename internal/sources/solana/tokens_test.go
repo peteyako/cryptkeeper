@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 func TestFormatAmount(t *testing.T) {

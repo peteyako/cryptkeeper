@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // fakeLogin is Blockstream's OpenID token endpoint: it accepts one client and hands out

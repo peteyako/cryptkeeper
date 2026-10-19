@@ -19,8 +19,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
 )
 
 // Minus is the true minus sign (U+2212) used for every negative figure.

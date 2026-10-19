@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
 )
 
 // num formats v for a CSV cell; NaN and Inf are unknown and become an empty cell.

@@ -19,13 +19,13 @@ import (
 	"strconv"
 	"strings"
 
-	"crypto-portfolio/internal/alerts"
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/store"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/alerts"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/store"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/yamlfile"
 )
 
 // Version of the backup format.

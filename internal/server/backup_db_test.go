@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // TestBackupWithDatabase: Settings offers the database in the export; an export with it

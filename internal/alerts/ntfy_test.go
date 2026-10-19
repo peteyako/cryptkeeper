@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 type captured struct {

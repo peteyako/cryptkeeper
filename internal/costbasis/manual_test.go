@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/yamlfile"
 )
 
 func TestParseManualFixture(t *testing.T) {

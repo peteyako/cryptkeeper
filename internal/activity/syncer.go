@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 const (

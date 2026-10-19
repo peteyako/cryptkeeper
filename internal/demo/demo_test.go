@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)

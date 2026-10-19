@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"crypto-portfolio/internal/secrets"
+	"cryptkeeper/internal/secrets"
 )
 
 // fakeBlockstream accepts one key and records the credentials it was given.

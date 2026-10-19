@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 // Activity is incremental: every call spends at most req.Budget RPC requests and leaves cursors

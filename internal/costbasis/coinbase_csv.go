@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 const coinbaseCSVSource = "coinbase-csv"

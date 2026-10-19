@@ -20,10 +20,10 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/config"
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/config"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 const (

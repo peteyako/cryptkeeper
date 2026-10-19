@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // The display decisions of the activity feed, kept in Go so they can be unit tested.

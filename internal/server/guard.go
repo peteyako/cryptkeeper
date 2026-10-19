@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/portfolio"
 )
 
 // guard rejects state-changing requests that did not come from this app's own pages.

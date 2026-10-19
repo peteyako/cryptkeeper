@@ -17,12 +17,12 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/koinly"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/koinly"
+	"cryptkeeper/web/templates"
 )
 
 // The Koinly import wizard (/reports/koinly): upload Koinly's year-end reports, map its

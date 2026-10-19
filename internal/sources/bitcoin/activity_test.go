@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 // ---- fake Esplora with transaction history -------------------------------------------

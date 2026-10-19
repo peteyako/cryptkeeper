@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
 )
 
 // taxDownloads are the report files of a year: label and the path after /reports/tax/<year>/.

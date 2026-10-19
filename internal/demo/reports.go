@@ -3,9 +3,9 @@ package demo
 import (
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/templates"
 )
 
 // costSpec is what the fixtures say the tax lots know about the cost of one asset: the

@@ -9,10 +9,10 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/activity"
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/activity"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/web/templates"
 )
 
 const activityPageSize = 50

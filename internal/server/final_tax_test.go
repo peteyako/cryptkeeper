@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/irs"
-	"crypto-portfolio/internal/tax/report"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/irs"
+	"cryptkeeper/internal/tax/report"
+	"cryptkeeper/web/templates"
 )
 
 // ftTx is a confirmed invented tx with one leg of asset worth usd (nil = unpriced).

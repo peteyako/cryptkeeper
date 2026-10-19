@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/internal/tax"
 )
 
 var taxNow = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)

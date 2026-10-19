@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // rewardLedger is an empty wallet (no signatures) with IncludeStake on and the chain at epoch.

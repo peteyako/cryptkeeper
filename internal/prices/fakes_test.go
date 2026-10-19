@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/internal/store"
 )
 
 // fakes serves stand-ins for Coinbase, Coinbase Exchange, Kraken and Jupiter from one

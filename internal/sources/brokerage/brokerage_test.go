@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/sources/manual"
 )
 
 func TestParseLines(t *testing.T) {

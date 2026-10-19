@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 // Native staking rewards.

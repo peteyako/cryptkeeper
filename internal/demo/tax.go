@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
+	"cryptkeeper/web/templates"
 )
 
 // The tax fixtures are invented and fixed in time (the preview has no clock-dependent tax

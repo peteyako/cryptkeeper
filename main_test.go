@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/tax"
 )
 
 func TestParseInterspersed(t *testing.T) {

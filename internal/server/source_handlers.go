@@ -13,13 +13,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/brokerage"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/brokerage"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/web/templates"
 )
 
 func (s *Server) sourcePick(w http.ResponseWriter, r *http.Request) {

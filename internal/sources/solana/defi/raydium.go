@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // Raydium CLMM. Program and layouts:

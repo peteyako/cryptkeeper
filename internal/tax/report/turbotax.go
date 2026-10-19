@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 func shortDate(t time.Time, loc *time.Location) string {

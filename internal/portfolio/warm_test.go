@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // noLivePrices fails the test if a warm start asks for live prices.

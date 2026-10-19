@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/yamlfile"
 )
 
 // Factory builds a live source from a definition whose secrets have been opened.

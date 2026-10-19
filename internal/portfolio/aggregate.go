@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/store"
 )
 
 // PriceReq asks for one asset's price. Mint is set for SPL tokens (mapped or not) so the

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/store"
 )
 
 // MetaCache stores resolved token identities by mint.

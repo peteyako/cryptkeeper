@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 // Kind identifies a Koinly report.

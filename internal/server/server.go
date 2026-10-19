@@ -13,17 +13,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"crypto-portfolio/internal/activity"
-	"crypto-portfolio/internal/alerts"
-	"crypto-portfolio/internal/config"
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/store"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/static"
+	"cryptkeeper/internal/activity"
+	"cryptkeeper/internal/alerts"
+	"cryptkeeper/internal/config"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/store"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/static"
 )
 
 // HistoricalPrices is the daily close of an asset by ticker or Solana mint (ok false when

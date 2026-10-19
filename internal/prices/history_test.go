@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/internal/store"
 )
 
 const dayFmt = "2006-01-02"

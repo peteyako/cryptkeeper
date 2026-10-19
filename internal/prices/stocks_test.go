@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/internal/store"
 )
 
 // yahooFake serves Yahoo Finance's spark (on /y1) and chart (on /y1 and /y2) endpoints.

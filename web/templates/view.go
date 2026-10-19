@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/static"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/static"
 )
 
 // This file holds the small display decisions the templates share, kept in Go so they

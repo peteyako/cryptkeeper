@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // rpcClient speaks JSON-RPC 2.0 over HTTP POST. HTTP 429/5xx are retried by httpx.

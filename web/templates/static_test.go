@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/web/static"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/web/static"
+	"cryptkeeper/web/templates"
 )
 
 func readStatic(t *testing.T, name string) string {

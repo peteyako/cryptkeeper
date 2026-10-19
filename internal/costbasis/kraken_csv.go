@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/kraken"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/kraken"
 )
 
 const krakenCSVSource = "kraken-csv"

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/store"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/store"
+	"cryptkeeper/internal/tax"
 )
 
 func withDB(t *testing.T, st Stores, dir string) Stores {

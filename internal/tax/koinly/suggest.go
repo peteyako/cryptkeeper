@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 // Wallet is a CryptKeeper source as the suggester sees it.

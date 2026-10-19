@@ -14,9 +14,9 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
+	"cryptkeeper/web/templates"
 )
 
 // The Tax section of Reports: one tax year's report (closed from its frozen rows, open from

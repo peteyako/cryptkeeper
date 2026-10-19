@@ -1,8 +1,8 @@
 # CryptKeeper
 
 Self-hosted, read-only monitor for crypto wallets, exchanges and brokerage accounts: Go +
-templ + Datastar, SQLite plus hand-editable YAML in `data/`. The Go module and binary are named
-`crypto-portfolio`. User docs: [README.md](README.md).
+templ + Datastar, SQLite plus hand-editable YAML in `data/`. The Go module and binary are both
+`cryptkeeper`; only the repo folder is still `crypto-portfolio`. User docs: [README.md](README.md).
 
 ## Where things live
 

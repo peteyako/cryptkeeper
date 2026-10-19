@@ -29,7 +29,7 @@ docker compose up -d        # or: podman compose up -d
 ```
 
 The container listens on `:8787`, stores everything in `./data`, and reports health via
-`crypto-portfolio healthcheck` (declared in `docker-compose.yml`).
+`cryptkeeper healthcheck` (declared in `docker-compose.yml`).
 
 On Linux, the image runs as the distroless non-root user (uid 65532), so make `data/`
 writable by it first: `sudo chown 65532:65532 data` (rootless Podman on macOS needs nothing).
@@ -195,8 +195,8 @@ are exchange symbols (`BTC`) or `spl:<mint>` for Solana tokens. Save and restore
 backup) or the CLI:
 
 ```sh
-crypto-portfolio portfolios export -o portfolios.yaml [-id long-term]
-crypto-portfolio portfolios import portfolios.yaml [-replace]
+cryptkeeper portfolios export -o portfolios.yaml [-id long-term]
+cryptkeeper portfolios import portfolios.yaml [-replace]
 ```
 
 ## Activity
@@ -375,8 +375,8 @@ the generated `data/secret.key`, which would be lost with the disk) exports stay
 CSV exports are never encrypted.
 
 ```sh
-crypto-portfolio backup export -o cryptkeeper-backup.yaml [-secrets] [-db]
-crypto-portfolio backup import cryptkeeper-backup.yaml [-replace]
+cryptkeeper backup export -o cryptkeeper-backup.yaml [-secrets] [-db]
+cryptkeeper backup import cryptkeeper-backup.yaml [-replace]
 ```
 
 An exchange source restored without its secrets shows "needs its API key" until you edit it.

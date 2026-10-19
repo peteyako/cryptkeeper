@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/portfolio"
 )
 
 func TestAxisLabels(t *testing.T) {

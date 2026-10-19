@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // TestSyncChipWarmStart: while the last session's balances stand in after a restart, the

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/internal/tax"
 )
 
 // fiBackfill posts "Load last N days" for the 1W range and returns the patched card's text.

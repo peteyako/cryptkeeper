@@ -13,11 +13,11 @@ import (
 
 	"github.com/a-h/templ"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/demo"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/static"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/demo"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/static"
+	"cryptkeeper/web/templates"
 )
 
 var now = time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)

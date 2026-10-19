@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 type fakeAdapter struct {

@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/tax/report"
 )
 
 // latin1Replacements spell out common characters beyond Latin-1 that have no Latin-1 base

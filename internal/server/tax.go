@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
 )
 
 // taxCache keeps the last tax-lot computation briefly: the overview's P&L column would

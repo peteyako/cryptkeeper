@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/store"
 )
 
 func sampleMeta(mint string) TokenMeta {

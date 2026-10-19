@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/web/templates"
 )
 
 // Koinly returns the Koinly import wizard mid-import, with invented figures: last year's

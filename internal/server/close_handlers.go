@@ -12,9 +12,9 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/templates"
 )
 
 // Closing freezes a filed year into data/tax/<year>.yaml; reopening deletes that file. Both

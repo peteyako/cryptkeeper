@@ -31,8 +31,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/httpx"
 )
 
 const (

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/demo"
+	"cryptkeeper/internal/demo"
 )
 
 func do(t *testing.T, h http.Handler, method, target string, body io.Reader, ctype string) (int, string) {

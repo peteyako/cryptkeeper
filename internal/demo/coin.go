@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/templates"
 )
 
 // coinDays normalises a coin-page range and gives its day count.

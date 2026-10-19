@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 const solW = "Wallet A"

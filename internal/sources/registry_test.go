@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/sources/manual"
 )
 
 type fakeSource struct{ id, secret string }

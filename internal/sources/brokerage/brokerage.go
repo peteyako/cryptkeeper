@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // Cash is how a holding of cash is stored: dollars, priced at one like any "USD" balance.

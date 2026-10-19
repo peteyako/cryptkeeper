@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // Notification is one message to deliver.

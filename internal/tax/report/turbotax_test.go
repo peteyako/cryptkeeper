@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/tax"
 )
 
 func btcReport(t *testing.T) YearReport { return sampleGains(t) }

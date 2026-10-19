@@ -9,10 +9,10 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/templates"
 )
 
 // backfillTimeout bounds one "Load last N days" run (it may fetch many daily prices).

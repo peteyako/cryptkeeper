@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/alerts"
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/alerts"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/yamlfile"
 )
 
 func newStores(t *testing.T) (Stores, string) {

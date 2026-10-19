@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/tax"
 )
 
 // Reset erases everything a backup holds, as a fresh install has it: every source,

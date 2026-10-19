@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/web/templates"
 )
 
 // ActivityPageSize is how many rows one page of the preview feed holds. It is small on

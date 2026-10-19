@@ -20,7 +20,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/tax/report"
 )
 
 // Options personalise the filled forms and say where newer form revisions live.

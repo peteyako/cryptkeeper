@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/store"
 )
 
 func init() {

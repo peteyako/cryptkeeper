@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // Disposal notes, exactly as Koinly prints them.

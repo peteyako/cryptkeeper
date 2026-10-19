@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // fakeSeries is a Historical that also serves a price series.

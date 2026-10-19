@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/activity"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/activity"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/internal/store"
 )
 
 func chartBody(rng string) *strings.Reader {

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/tax/report"
 )
 
 // form8949PerPage is the rows per Form 8949 page on the 2025 revision.

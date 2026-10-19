@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/sources/brokerage"
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources/brokerage"
+	"cryptkeeper/internal/tax/report"
 )
 
 // fakeTickers names the tickers the server tests use; any other is unknown.

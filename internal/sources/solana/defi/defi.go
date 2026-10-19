@@ -18,7 +18,7 @@ import (
 	"math/big"
 	"strings"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 
 	"filippo.io/edwards25519"
 	"github.com/btcsuite/btcd/btcutil/base58"

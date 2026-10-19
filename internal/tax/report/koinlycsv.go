@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
 )
 
 // writeTitled writes a title line, a blank line, the header and the records, all through

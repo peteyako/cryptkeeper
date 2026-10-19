@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/alerts"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/alerts"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // withExportKey is an install where the user set CRYPTKEEPER_SECRET_KEY (d.Box holds the key).

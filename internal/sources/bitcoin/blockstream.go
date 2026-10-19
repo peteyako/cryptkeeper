@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 // A Blockstream Explorer API key is a client ID and secret from dashboard.blockstream.info.

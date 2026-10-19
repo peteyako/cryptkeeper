@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
+	"cryptkeeper/web/templates"
 )
 
 func TestDemoTaxConsistent(t *testing.T) {

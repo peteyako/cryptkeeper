@@ -5,7 +5,7 @@ package portfolio
 import (
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // Status of a wallet in the last refresh.

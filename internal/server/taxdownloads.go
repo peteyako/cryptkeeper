@@ -16,11 +16,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/irs"
-	"crypto-portfolio/internal/tax/report"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/irs"
+	"cryptkeeper/internal/tax/report"
+	"cryptkeeper/web/templates"
 )
 
 // Downloads of the Tax section: Koinly-format CSVs, TurboTax CSV/TXF, the printable Form 8949

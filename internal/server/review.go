@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/web/templates"
 )
 
 // reviewCap is how many items a review group lists before "+N more".

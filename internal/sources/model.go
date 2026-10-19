@@ -10,9 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/brokerage"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/brokerage"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // Source types.

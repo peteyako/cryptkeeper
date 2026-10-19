@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/demo"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/demo"
+	"cryptkeeper/web/templates"
 )
 
 // ---- activity -----------------------------------------------------------------------------

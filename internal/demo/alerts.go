@@ -3,7 +3,7 @@ package demo
 import (
 	"time"
 
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/web/templates"
 )
 
 // Alert rule ids used by the fixtures.

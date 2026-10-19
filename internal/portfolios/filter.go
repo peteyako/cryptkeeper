@@ -3,7 +3,7 @@ package portfolios
 import (
 	"slices"
 
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/portfolio"
 )
 
 // Apply returns snap restricted to portfolio p. Each wallet keeps only the rows whose

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
 )
 
 func openFixture(t *testing.T, name string) *os.File {

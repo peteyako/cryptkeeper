@@ -3,7 +3,7 @@ package tax
 import (
 	"testing"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // tagged computes in with tx tagged tag.

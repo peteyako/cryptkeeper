@@ -10,10 +10,10 @@ import (
 
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/backup"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/store"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/backup"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/store"
+	"cryptkeeper/web/templates"
 )
 
 // uiSettings are display options changed from Settings and stored in the database

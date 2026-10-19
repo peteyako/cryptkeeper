@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
 )
 
 var (

@@ -6,6 +6,7 @@
 # generated from the .templ files (task generate, air and the Docker build make them)
 *_templ.go
 # build output
+/cryptkeeper
 /crypto-portfolio
 /tmp/
 /dist/

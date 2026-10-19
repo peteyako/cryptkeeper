@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 const bip84Receive0 = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"

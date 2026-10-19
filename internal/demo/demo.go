@@ -17,9 +17,9 @@ import (
 	"github.com/a-h/templ"
 	"rsc.io/qr"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/templates"
 )
 
 // Source ids used by the fixtures.

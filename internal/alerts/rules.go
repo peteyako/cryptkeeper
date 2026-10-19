@@ -15,7 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/yamlfile"
 )
 
 // Rule types.

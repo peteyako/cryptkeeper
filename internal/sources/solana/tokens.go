@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 const (

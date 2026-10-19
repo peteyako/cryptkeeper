@@ -1,13 +1,13 @@
-// Command crypto-portfolio is CryptKeeper: a self-hosted, read-only crypto portfolio monitor.
+// Command cryptkeeper is CryptKeeper: a self-hosted, read-only crypto portfolio monitor.
 //
-//	crypto-portfolio serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
-//	crypto-portfolio portfolios export [-o file.yaml] [-id ID]
-//	crypto-portfolio portfolios import file.yaml [-replace]
-//	crypto-portfolio backup export [-o file.yaml] [-secrets]
-//	crypto-portfolio backup import file.yaml [-replace]
-//	crypto-portfolio sources export [-o file.yaml] [-secrets]
-//	crypto-portfolio sources import file.yaml [-replace]
-//	crypto-portfolio healthcheck [-addr 127.0.0.1:8787]
+//	cryptkeeper serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
+//	cryptkeeper portfolios export [-o file.yaml] [-id ID]
+//	cryptkeeper portfolios import file.yaml [-replace]
+//	cryptkeeper backup export [-o file.yaml] [-secrets]
+//	cryptkeeper backup import file.yaml [-replace]
+//	cryptkeeper sources export [-o file.yaml] [-secrets]
+//	cryptkeeper sources import file.yaml [-replace]
+//	cryptkeeper healthcheck [-addr 127.0.0.1:8787]
 package main
 
 import (
@@ -26,28 +26,28 @@ import (
 	"time"
 	_ "time/tzdata" // TZ works in the distroless image (no system zoneinfo)
 
-	"crypto-portfolio/internal/activity"
-	"crypto-portfolio/internal/alerts"
-	"crypto-portfolio/internal/backup"
-	"crypto-portfolio/internal/config"
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/costbasis"
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/internal/secrets"
-	"crypto-portfolio/internal/server"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/bitcoin"
-	"crypto-portfolio/internal/sources/brokerage"
-	"crypto-portfolio/internal/sources/coinbase"
-	"crypto-portfolio/internal/sources/kraken"
-	"crypto-portfolio/internal/sources/manual"
-	"crypto-portfolio/internal/sources/solana"
-	"crypto-portfolio/internal/store"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/yamlfile"
+	"cryptkeeper/internal/activity"
+	"cryptkeeper/internal/alerts"
+	"cryptkeeper/internal/backup"
+	"cryptkeeper/internal/config"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/costbasis"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/internal/secrets"
+	"cryptkeeper/internal/server"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/bitcoin"
+	"cryptkeeper/internal/sources/brokerage"
+	"cryptkeeper/internal/sources/coinbase"
+	"cryptkeeper/internal/sources/kraken"
+	"cryptkeeper/internal/sources/manual"
+	"cryptkeeper/internal/sources/solana"
+	"cryptkeeper/internal/store"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/yamlfile"
 )
 
 var version = "dev"

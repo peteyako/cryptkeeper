@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/config"
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/config"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 // Compile-time checks that the source plugs into the rest of the app.

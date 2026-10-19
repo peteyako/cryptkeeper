@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
 )
 
 func nowAt(t time.Time) func(*Deps) { return func(d *Deps) { d.Now = func() time.Time { return t } } }

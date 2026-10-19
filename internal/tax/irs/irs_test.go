@@ -18,8 +18,8 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
 )
 
 // Field names relative to topmostSubform[0].

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
+	"cryptkeeper/internal/httpx"
 )
 
 func fastClient(srv *httptest.Server) *httpx.Client {

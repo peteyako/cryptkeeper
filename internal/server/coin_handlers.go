@@ -9,9 +9,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/prices"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/prices"
+	"cryptkeeper/web/templates"
 )
 
 // coinSeriesTimeout bounds one on-demand price series load.

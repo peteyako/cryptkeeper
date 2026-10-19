@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
 )
 
 func f64(v float64) *float64 { return &v }

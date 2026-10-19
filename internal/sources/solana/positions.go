@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/sources/solana/defi"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/sources/solana/defi"
 )
 
 // defiTimeout bounds each DeFi adapter per fetch; adapters run concurrently.

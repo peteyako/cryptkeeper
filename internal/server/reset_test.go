@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolios"
-	"crypto-portfolio/internal/sources"
-	"crypto-portfolio/internal/sources/manual"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolios"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 )
 
 // TestReset: Settings offers the reset; without the typed word nothing is erased; with it

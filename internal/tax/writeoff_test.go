@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 func TestComputeToExcludesLater(t *testing.T) {

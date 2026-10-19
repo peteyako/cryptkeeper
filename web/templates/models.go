@@ -5,10 +5,10 @@ import (
 
 	"github.com/a-h/templ"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/internal/tax"
-	"crypto-portfolio/internal/tax/report"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/tax"
+	"cryptkeeper/internal/tax/report"
 )
 
 // Shell is what every full page needs to draw the app chrome.

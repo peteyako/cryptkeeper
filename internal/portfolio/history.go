@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/store"
 )
 
 // History records amounts and prices (not just totals) so any portfolio, including one

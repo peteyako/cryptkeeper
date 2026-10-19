@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"crypto-portfolio/internal/httpx"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/httpx"
+	"cryptkeeper/internal/store"
 )
 
 func init() {

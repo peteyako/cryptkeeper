@@ -26,7 +26,7 @@ Product words and code names that disagree, or one word with two meanings:
 
 | Word | Means | Not to be confused with |
 |---|---|---|
-| CryptKeeper | the app; the Go module and binary are `crypto-portfolio` | its earlier names CryptKeep and Vault, kept only as legacy fallbacks (`CRYPTKEEP_SECRET_KEY`/`VAULT_SECRET_KEY`, `cryptkeep.db`/`vault.db`, the `cryptkeep:` export tag, old localStorage keys) |
+| CryptKeeper | the app, and the Go module and binary `cryptkeeper` (only the repo folder is still `crypto-portfolio`) | its earlier names CryptKeep and Vault, kept only as legacy fallbacks (`CRYPTKEEP_SECRET_KEY`/`VAULT_SECRET_KEY`, `cryptkeep.db`/`vault.db`, the `cryptkeep:` export tag, old localStorage keys) |
 | vault | `core.Holding.Vault`: a Coinbase vault account or the Jupiter limit-order vault; also Solana pool/escrow token vaults | the app's old name, or the "Vault design system" boards in `docs/design/` |
 | Wallet (UI) | any connected source, exchanges included: `sources.Def` + its `core.Source` | `portfolio.Wallet` (the aggregator's fetch input) and `portfolio.WalletView` (a priced row in the snapshot) |
 | `portfolio` / `portfolios` | `portfolio`: aggregation (`Snapshot`, `Refresher`, SSE `Broker`, value `History`) | `portfolios`: the user's named views in `data/portfolios.yaml` |

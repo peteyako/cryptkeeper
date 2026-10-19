@@ -36,10 +36,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
-	"crypto-portfolio/internal/demo"
-	"crypto-portfolio/internal/portfolio"
-	"crypto-portfolio/web/static"
-	"crypto-portfolio/web/templates"
+	"cryptkeeper/internal/demo"
+	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/web/static"
+	"cryptkeeper/web/templates"
 )
 
 // signals are the client signals the overview endpoints read.

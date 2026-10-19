@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 // PriceAt returns the historical USD price (the daily close) of an asset on a UTC day. ok is

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/tax"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/tax"
 )
 
 func parseKr(t *testing.T, name string, opts ...ParseOptions) []core.Tx {

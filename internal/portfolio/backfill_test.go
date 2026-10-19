@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
+	"cryptkeeper/internal/core"
 )
 
 var bfNow = time.Date(2026, 10, 16, 15, 0, 0, 0, time.UTC)

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"crypto-portfolio/internal/core"
-	"crypto-portfolio/internal/store"
+	"cryptkeeper/internal/core"
+	"cryptkeeper/internal/store"
 )
 
 type stubSource struct {
