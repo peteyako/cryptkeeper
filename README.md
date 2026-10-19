@@ -51,14 +51,19 @@ Use **Test connection** before saving.
 
 ### Bitcoin
 Paste any of:
-- An extended public key: **xpub** (legacy), **ypub** (nested SegWit), **zpub** (native SegWit). Taproot xpubs: choose *Taproot* under script type.
+- An extended public key: **xpub** (legacy), **ypub** (nested SegWit), **zpub** (native SegWit).
+  An xpub from a SegWit or Taproot account (Ledger shows an xpub for every account) needs its
+  *Script type* set: Native SegWit (`bc1q…`, path 84'), Nested SegWit (`3…`, 49'), Taproot
+  (`bc1p…`, 86'). Left on auto-detect, an xpub is read as Legacy (`1…`) and usually shows 0 BTC.
 - An **output descriptor**, including multisig, e.g. `wsh(sortedmulti(2,[fp/48h/0h/0h/2h]xpub…/<0;1>/*,…))#checksum`.
 - A single **address**.
 - Or upload a **wallet file**: a Caravan/Unchained wallet config (JSON) or a Sparrow descriptor export.
 
 Where to find them:
 - **Sparrow**: Settings → Script Policy shows the descriptor; *Export* → *Output Descriptor*.
-- **Ledger Live**: Account → ⋯ → Edit account → Advanced → extended public key.
+- **Ledger Wallet** (formerly Ledger Live): Account → wrench icon (Edit account) → Advanced → copy
+  `xpub`. `freshAddressPath` gives the script type: `84'/…` Native SegWit, `49'/…` Nested SegWit,
+  `86'/…` Taproot, `44'/…` Legacy.
 - **Trezor Suite**: Account → Details → Show public key.
 - **Unchained / Caravan**: download the wallet configuration JSON.
 - **Nunchuk**: Wallet → ⋯ → Export wallet → descriptor / BSMS file.

@@ -727,7 +727,8 @@ func TestSourceFlow(t *testing.T) {
 	btc := byName(t, pages, "form add bitcoin")
 	has(t, btc, "Track a Bitcoin wallet", `enctype="multipart/form-data"`, `type="file"`, `name="walletFile"`, `accept=".json,.txt"`,
 		"zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Extended public key, output descriptor, or address",
-		`<option value="hardware" selected>`, `<option value="hot">`, `<option value="p2tr">`, "Auto-detect",
+		`<option value="hardware" selected>`, `<option value="hot">`, "Auto-detect",
+		`<option value="p2wpkh">Native SegWit`, `<option value="p2sh-p2wpkh">Nested SegWit`, `<option value="p2tr">Taproot`, `<option value="p2pkh">Legacy`,
 		"Watch-only. Never enter a seed phrase or private key here.")
 	sol := byName(t, pages, "form add solana")
 	has(t, sol, "Track a Solana wallet", `<option value="hot" selected>`, `name="address"`)

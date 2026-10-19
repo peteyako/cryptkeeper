@@ -130,6 +130,43 @@ func TestScriptTypeOverride(t *testing.T) {
 	}
 }
 
+// TestLedgerXpubWithScriptType: Ledger shows every account's key as an xpub, whatever its
+// script type. Left on auto-detect it derives legacy addresses; with the account's script
+// type set it derives the same addresses as the matching ypub/zpub.
+func TestLedgerXpubWithScriptType(t *testing.T) {
+	asXpub := func(key string) string {
+		payload, _, err := decodeExtendedKey(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encodeAsXpub(payload)
+	}
+	tests := []struct {
+		name, key, scriptType, want string
+	}{
+		{"native segwit", asXpub(bip84Zpub), "p2wpkh", "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"},
+		{"nested segwit", asXpub(bip49Ypub), "p2sh-p2wpkh", "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			auto, err := newTestSource(t, Config{Key: tc.key}).addressAt(0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(auto, "1") {
+				t.Errorf("auto-detect = %s, want a legacy 1… address", auto)
+			}
+			got, err := newTestSource(t, Config{Key: tc.key, ScriptType: tc.scriptType}).addressAt(0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("%s = %s, want %s", tc.scriptType, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestInvalidScriptTypeRejected(t *testing.T) {
 	_, err := New(Config{Key: bip84Zpub, ScriptType: "p2wsh-magic", EsploraURL: "http://x"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "script type") {

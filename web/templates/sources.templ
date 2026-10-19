@@ -312,12 +312,18 @@ templ bitcoinFields(p SourceFormPage) {
 	@textField(label)
 	@selectField("kind", "Wallet type", p.kindValue("hardware"), []selectOpt{{"hardware", "Hardware wallet"}, {"hot", "Hot wallet"}}, p.Errors["kind"])
 	{{ key := p.field("key", "Extended public key, output descriptor, or address") }}
-	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. CryptKeep scans the addresses it derives." }}
+	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. CryptKeep scans the addresses it derives. Ledger shows an xpub for every account: pick its script type below." }}
 	if key.Value == "" {
 		{{ key.Value = p.Values["descriptor"] }}
 	}
 	@areaField(key, 3)
-	@selectField("scriptType", "Script type", p.Values["scriptType"], []selectOpt{{"", "Auto-detect"}, {"p2tr", "Taproot (p2tr) override"}}, p.Errors["scriptType"])
+	@selectField("scriptType", "Script type", p.Values["scriptType"], []selectOpt{
+		{"", "Auto-detect from the key (xpub = Legacy, ypub, zpub)"},
+		{"p2wpkh", "Native SegWit: bc1q… addresses, path 84'"},
+		{"p2sh-p2wpkh", "Nested SegWit: 3… addresses, path 49'"},
+		{"p2tr", "Taproot: bc1p… addresses, path 86'"},
+		{"p2pkh", "Legacy: 1… addresses, path 44'"},
+	}, p.Errors["scriptType"])
 	<div class="field">
 		<label class="field__label" for="f-walletFile">Wallet file <span class="field__opt">optional</span></label>
 		<input
