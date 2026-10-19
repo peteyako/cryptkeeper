@@ -32,6 +32,8 @@ const (
 )
 
 // Historical returns the closing USD price of symbol for the UTC day containing day.
+// A "stock:<TICKER>" key is a stock's close (the previous close on a day without trading;
+// see stockClose).
 //
 // Closes come from the price_history table, else from Coinbase Exchange daily candles; one
 // request warms a window of up to 300 days around the requested day. USD/USDC/USDT are 1.
@@ -39,6 +41,12 @@ const (
 // candle and future days. A day that is still in progress is answered from the live candle
 // but never stored.
 func (s *Service) Historical(ctx context.Context, symbol string, day time.Time) (usd float64, ok bool, err error) {
+	if raw, isStock := core.IsStockKey(strings.TrimSpace(symbol)); isStock {
+		if ticker, valid := core.NormalizeTicker(raw); valid {
+			return s.stockClose(ctx, ticker, day, false)
+		}
+		return 0, false, nil
+	}
 	sym := strings.ToUpper(strings.TrimSpace(symbol))
 	if core.Pegged[sym] {
 		return 1, true, nil

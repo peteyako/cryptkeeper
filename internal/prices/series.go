@@ -18,6 +18,7 @@ type Point struct {
 // today, ascending, built from Historical / HistoricalMintClose (so the price_history cache
 // bounds the requests); today's is the latest price. assetKey is a symbol or "spl:<mint>";
 // mint is the fallback for symbols Coinbase does not list. Pegged assets are 1 every day.
+// A stock ("stock:<TICKER>") has a point for each trading day only.
 // Days with no price are omitted and per-day errors are logged and skipped; only a context
 // error is returned.
 func (s *Service) Series(ctx context.Context, assetKey, mint string, days int) ([]Point, error) {
@@ -32,6 +33,7 @@ func (s *Service) Series(ctx context.Context, assetKey, mint string, days int) (
 		}
 	}
 	pegged := core.Pegged[strings.ToUpper(key)]
+	ticker, isStock := core.IsStockKey(key)
 	for i := days - 1; i >= 0; i-- {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -45,6 +47,8 @@ func (s *Service) Series(ctx context.Context, assetKey, mint string, days int) (
 		switch {
 		case pegged:
 			usd, ok = 1, true
+		case isStock:
+			usd, ok, err = s.stockClose(ctx, ticker, d, true) // trading days only
 		case splMint != "":
 			usd, ok, err = s.HistoricalMintClose(ctx, splMint, d)
 		default:

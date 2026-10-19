@@ -8,6 +8,8 @@
 //     caller supplied one), then, for USDC/USDT only, the 1.0 peg.
 //   - "spl:<mint>": Jupiter only. Symbol sources are never consulted because scam tokens
 //     reuse real tickers.
+//   - "stock:<TICKER>": Yahoo Finance (see stocks.go). Its last-good price is usable for
+//     stockStaleMax, since markets close for whole weekends.
 //
 // Every live price is cached in memory for Options.TTL and written to the lastgood_price table.
 // When the chain fails, the last-good row is served marked Stale until it is older than
@@ -64,6 +66,8 @@ type Options struct {
 	KrakenURL           string // default https://api.kraken.com
 	JupiterPriceURL     string // default https://lite-api.jup.ag/price/v3
 	CoinGeckoURL        string // default https://api.coingecko.com/api/v3
+	YahooURL            string // default https://query1.finance.yahoo.com
+	YahooFallbackURL    string // default https://query2.finance.yahoo.com
 	// CoinGeckoKey returns the CoinGecko demo API key, or "" for none. Called per request.
 	CoinGeckoKey func() string
 	TTL          time.Duration // in-memory cache TTL, default 60s
@@ -97,6 +101,9 @@ type Service struct {
 	noPrice    map[string]time.Time      // mint -> when Jupiter last had no price for it
 	todayCache map[string]todayEntry     // "key|variant" -> a still-forming day's answer, for todayTTL
 	cgPause    time.Time                 // CoinGecko lookups fail fast until then (after a 429)
+
+	stockInfo    map[string]stockInfoEntry // ticker -> Yahoo's name and type
+	stockUnknown map[string]time.Time      // ticker -> not asked again until
 }
 
 type cacheEntry struct {
@@ -107,6 +114,13 @@ type cacheEntry struct {
 type quote struct {
 	usd    float64
 	change *float64
+	// Stocks only: when the exchange set the price, and whether its session was open.
+	marketTime time.Time
+	open       bool
+}
+
+func (q quote) price(asOf time.Time) core.Price {
+	return core.Price{USD: q.usd, AsOf: asOf, Change24h: q.change, MarketTime: q.marketTime, MarketOpen: q.open}
 }
 
 // New returns a Service. db must not be nil; c may be nil to use httpx.New().
@@ -120,6 +134,13 @@ func New(c *httpx.Client, db *store.DB, opts Options) *Service {
 	o.KrakenURL = urlOrDefault(o.KrakenURL, DefaultKrakenURL)
 	o.JupiterPriceURL = urlOrDefault(o.JupiterPriceURL, DefaultJupiterPriceURL)
 	o.CoinGeckoURL = urlOrDefault(o.CoinGeckoURL, DefaultCoinGeckoURL)
+	o.YahooURL = urlOrDefault(o.YahooURL, DefaultYahooURL)
+	o.YahooFallbackURL = urlOrDefault(o.YahooFallbackURL, DefaultYahooFallbackURL)
+	for _, u := range []string{o.YahooURL, o.YahooFallbackURL} {
+		if host, ok := isYahooHost(u); ok {
+			httpx.SetPace(host, yahooPace)
+		}
+	}
 	if o.TTL <= 0 {
 		o.TTL = DefaultTTL
 	}
@@ -141,6 +162,9 @@ func New(c *httpx.Client, db *store.DB, opts Options) *Service {
 		cbStatus:   map[string]statusEntry{},
 		noPrice:    map[string]time.Time{},
 		todayCache: map[string]todayEntry{},
+
+		stockInfo:    map[string]stockInfoEntry{},
+		stockUnknown: map[string]time.Time{},
 	}
 }
 
@@ -179,7 +203,7 @@ func (s *Service) Get(ctx context.Context, wants []Want) map[string]core.Price {
 	asOf := s.now()
 	fresh := make(map[string]core.Price, len(live))
 	for k, q := range live {
-		fresh[k] = core.Price{USD: q.usd, AsOf: asOf, Change24h: q.change}
+		fresh[k] = q.price(asOf)
 		out[k] = fresh[k]
 	}
 	s.cachePut(fresh, asOf)
@@ -264,8 +288,12 @@ func (s *Service) fetchLive(ctx context.Context, todo []Want) map[string]quote {
 	res := make(map[string]quote, len(todo))
 	var bySymbol []Want
 	seen := map[string]bool{}
-	var mints []string
+	var mints, tickers []string
 	for _, w := range todo {
+		if t, ok := core.IsStockKey(w.Key); ok {
+			tickers = append(tickers, t)
+			continue
+		}
 		if m := mintOf(w); m != "" {
 			if !seen[m] {
 				seen[m] = true
@@ -274,6 +302,11 @@ func (s *Service) fetchLive(ctx context.Context, todo []Want) map[string]quote {
 			continue
 		}
 		bySymbol = append(bySymbol, w)
+	}
+	if len(tickers) > 0 {
+		for t, q := range s.stockQuotes(ctx, tickers) {
+			res[core.StockKey(t)] = q
+		}
 	}
 	if len(mints) > 0 {
 		jq := s.jupiter(ctx, mints)
@@ -457,7 +490,11 @@ func (s *Service) lastGood(ctx context.Context, key string, now time.Time) (core
 		return core.Price{}, false
 	}
 	at := time.Unix(asOf, 0).UTC()
-	if now.Sub(at) > s.o.StaleMax || !positive(usd) {
+	maxAge := s.o.StaleMax
+	if _, ok := core.IsStockKey(key); ok {
+		maxAge = max(maxAge, stockStaleMax)
+	}
+	if now.Sub(at) > maxAge || !positive(usd) {
 		return core.Price{}, false
 	}
 	p := core.Price{USD: usd, AsOf: at, Stale: true}

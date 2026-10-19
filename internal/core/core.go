@@ -75,8 +75,13 @@ type Price struct {
 	USD   float64   `json:"usd"`
 	AsOf  time.Time `json:"asOf"`
 	Stale bool      `json:"stale,omitempty"` // served from the last-good cache
-	// Change24h is the 24h price change in percent when the price source provides it.
+	// Change24h is the 24h price change in percent when the price source provides it. For a
+	// stock or fund it is the change since the previous session's close.
 	Change24h *float64 `json:"change24h,omitempty"`
+	// MarketTime is when a stock or fund's price was set on its exchange (the last trade, or
+	// the close), and MarketOpen whether its regular session was open when it was quoted.
+	MarketTime time.Time `json:"marketTime,omitempty"`
+	MarketOpen bool      `json:"marketOpen,omitempty"`
 }
 
 // Address is a derived or watched on-chain address, for the wallet detail Addresses tab.
@@ -122,6 +127,34 @@ func IsSPLKey(key string) (string, bool) {
 		return m, true
 	}
 	return "", false
+}
+
+// StockKey returns the asset key of a stock, ETF or fund: "stock:VTI". The prefix keeps
+// tickers apart from coin symbols (BTC and ETH are ETF tickers too).
+func StockKey(ticker string) string { return "stock:" + ticker }
+
+// IsStockKey reports whether key is a "stock:<TICKER>" key, returning the ticker.
+func IsStockKey(key string) (string, bool) {
+	if t, ok := strings.CutPrefix(key, "stock:"); ok {
+		return t, true
+	}
+	return "", false
+}
+
+// NormalizeTicker upper-cases a ticker as Yahoo Finance writes it ("VTI", "BRK-B", "VOD.L")
+// and reports whether it is one: 1–15 letters, digits and . - ^ =.
+func NormalizeTicker(s string) (string, bool) {
+	t := strings.ToUpper(strings.TrimSpace(s))
+	if t == "" || len(t) > 15 {
+		return t, false
+	}
+	for i := 0; i < len(t); i++ {
+		c := t[i]
+		if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '^' || c == '=') {
+			return t, false
+		}
+	}
+	return t, true
 }
 
 // Stablecoins pegged to 1 USD when no price is available.
