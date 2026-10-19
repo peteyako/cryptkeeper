@@ -661,10 +661,11 @@ func portfoliosCmd(args []string) error {
 	return fmt.Errorf("unknown portfolios command %q", sub)
 }
 
-// backupCmd exports or restores everything (sources, portfolios, alert rules, cost basis).
+// backupCmd exports or restores everything (sources, portfolios, alert rules, cost basis, tax),
+// and with -db the database.
 func backupCmd(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: backup export [-o file] [-secrets] | backup import FILE [-replace]")
+		return errors.New("usage: backup export [-o file] [-secrets] [-db] | backup import FILE [-replace]")
 	}
 	sub, rest := args[0], args[1:]
 	fs := flag.NewFlagSet("backup "+sub, flag.ExitOnError)
@@ -672,12 +673,19 @@ func backupCmd(args []string) error {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
 		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key; always on when CRYPTKEEP_SECRET_KEY is set)")
+		withDB := fs.Bool("db", false, "include the database: activity, price and chart history, saved scans")
 		a, _, err := setup(fs, rest)
 		if err != nil {
 			return err
 		}
 		defer a.db.Close()
-		raw, err := backup.Export(a.backupStores(), *withSecrets || a.cfg.EncryptExports())
+		keepSecrets := *withSecrets || a.cfg.EncryptExports()
+		var raw []byte
+		if *withDB {
+			raw, err = backup.ExportDatabase(context.Background(), a.backupStores(), keepSecrets)
+		} else {
+			raw, err = backup.Export(a.backupStores(), keepSecrets)
+		}
 		if err != nil {
 			return err
 		}
@@ -690,7 +698,7 @@ func backupCmd(args []string) error {
 		}
 		return os.WriteFile(*out, raw, 0o600)
 	case "import":
-		replace := fs.Bool("replace", false, "each section in the file replaces the current one")
+		replace := fs.Bool("replace", false, "each section in the file replaces the current one (the database included)")
 		a, fs, err := setup(fs, rest)
 		if err != nil {
 			return err
@@ -736,7 +744,7 @@ func (a *app) readImport(path string) ([]byte, error) {
 func (a *app) backupStores() backup.Stores {
 	return backup.Stores{
 		Sources: a.registry, Portfolios: a.portfolios, Alerts: a.alertRules, CostBasis: a.costbasis,
-		Tax: a.taxSet, TaxYears: a.taxYears,
+		Tax: a.taxSet, TaxYears: a.taxYears, DB: a.db,
 		OnSourceRemoved: func(id string) {
 			a.portfolios.RemoveWallet(id)
 			a.activity.DeleteSource(context.Background(), id)

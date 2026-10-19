@@ -4759,6 +4759,33 @@ body.amounts-hidden .fig-m {
   align-items: center;
 }
 
+/* Settings → Backup: the database choice above the export buttons. */
+.backup-export {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.backup-export__db {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.backup-export__db input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.backup-export__db .muted-text {
+  font-size: 13px;
+}
+
 /* Activity: custom period dates sit in the filter row and wrap with it. */
 .act-dates {
   display: contents;

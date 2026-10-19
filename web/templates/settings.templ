@@ -305,9 +305,9 @@ templ BackupIO(p SettingsPage) {
 		<div class="pf-io__intro">
 			<h2 id="set-backup-h" class="h-card">{ "Backup & restore" }</h2>
 			if p.EncryptedExports {
-				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings, closed tax years and exchange API secrets. The whole file is encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>, so it only restores into a CryptKeep with the same key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings, closed tax years and exchange API secrets. The whole file is encrypted with your <span class="mono">CRYPTKEEP_SECRET_KEY</span>, so it only restores into a CryptKeep with the same key. Include the database to keep your synced activity, price and chart history too; without it CryptKeep fetches them again.</p>
 			} else {
-				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings and closed tax years. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a CryptKeep with the same secret key. Balances and activity aren't included; CryptKeep fetches them again.</p>
+				<p class="muted-text">One YAML file with everything you set up: sources, portfolios, alert rules, manual cost basis, tax settings and closed tax years. Exchange API secrets are left out unless you include them encrypted, and encrypted secrets only restore into a CryptKeep with the same secret key. Include the database to keep your synced activity, price and chart history too; without it CryptKeep fetches them again.</p>
 			}
 		</div>
 		<div class="pf-io__block pf-io__row">
@@ -319,19 +319,26 @@ templ BackupIO(p SettingsPage) {
 					<p class="muted-text">Without secrets you re-enter exchange keys after restoring.</p>
 				}
 			</div>
-			<div class="btn-row">
-				<a class="btn btn--secondary" href="/backup/export" download>
-					@Icon("download", 16)
-					if p.EncryptedExports {
-						Export encrypted
-					} else {
-						Export
+			<form class="backup-export" method="get" action="/backup/export">
+				<label class="backup-export__db" for="f-backup-db">
+					<input id="f-backup-db" type="checkbox" name="db" value="1"/>
+					Include the database
+					<span class="muted-text">activity, price and chart history, saved wallet scans</span>
+				</label>
+				<div class="btn-row">
+					<button class="btn btn--secondary" type="submit">
+						@Icon("download", 16)
+						if p.EncryptedExports {
+							Export encrypted
+						} else {
+							Export
+						}
+					</button>
+					if !p.EncryptedExports {
+						<button class="btn btn--ghost" type="submit" name="secrets" value="1">With encrypted secrets</button>
 					}
-				</a>
-				if !p.EncryptedExports {
-					<a class="btn btn--ghost" href="/backup/export?secrets=1" download>With encrypted secrets</a>
-				}
-			</div>
+				</div>
+			</form>
 		</div>
 		<div class="pf-io__block">
 			<h3 class="h-card">Restore</h3>
@@ -355,7 +362,7 @@ templ BackupIO(p SettingsPage) {
 						required
 						aria-describedby="f-backup-file-help"
 					/>
-					<p id="f-backup-file-help" class="field__help">A CryptKeep backup, or a sources or portfolios export. Everything is checked before anything changes, and each file is backed up first.</p>
+					<p id="f-backup-file-help" class="field__help">A CryptKeep backup, or a sources or portfolios export. A backup with the database restores it too: Merge adds the rows you don't have, Replace makes the database the backup's. Everything is checked before anything changes, and each file is backed up first.</p>
 				</div>
 				<fieldset class="pf-section">
 					<legend class="field__label pf-legend">How to restore</legend>

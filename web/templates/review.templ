@@ -126,8 +126,8 @@ templ reviewGroup(g ReviewGroup, i int) {
 			<form id={ bulk } class="review__bulk" method="post" action="/reports/tax/tag-bulk">
 				<input type="hidden" name="kind" value={ string(g.Kind) }/>
 				<input type="hidden" name="asset" value={ g.Asset }/>
-				<label class="review__all">
-					<input type="checkbox" data-on:change={ reviewSelectAll(bulk) }/>
+				<label class="review__all" for={ bulk + "-all" }>
+					<input id={ bulk + "-all" } type="checkbox" data-on:change={ reviewSelectAll(bulk) }/>
 					Select all
 				</label>
 				<select class="input" name="tag" aria-label={ "Tag for the " + g.Symbol + " transactions" }>
@@ -156,7 +156,7 @@ templ reviewGroup(g ReviewGroup, i int) {
 templ reviewItem(it ReviewItem, bulk string) {
 	<li class="review__row review__tx" data-tx={ it.TxID }>
 		if bulk != "" {
-			<input class="review__pick" type="checkbox" name="tx" value={ it.TxID } form={ bulk } aria-label={ "Select " + it.Symbol + " on " + it.Time }/>
+			<input id={ "pick-" + it.TxID } class="review__pick" type="checkbox" name="tx" value={ it.TxID } form={ bulk } aria-label={ "Select " + it.Symbol + " on " + it.Time }/>
 		} else {
 			<span></span>
 		}

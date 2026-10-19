@@ -1,10 +1,18 @@
 // Package backup exports and restores everything a user configures in one YAML file:
-// sources, portfolios, alert rules and manual cost basis, tax settings and closed tax years. Every section is optional on
-// import, so a sources-only or portfolios-only export restores through the same path.
+// sources, portfolios, alert rules and manual cost basis, tax settings and closed tax years,
+// and optionally the database (activity, price and chart history, saved scans). Every
+// section is optional on import, so a sources-only or portfolios-only export restores
+// through the same path.
 package backup
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"reflect"
 	"slices"
@@ -15,6 +23,7 @@ import (
 	"crypto-portfolio/internal/costbasis"
 	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/sources"
+	"crypto-portfolio/internal/store"
 	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/internal/yamlfile"
 )
@@ -31,6 +40,9 @@ type File struct {
 	CostBasis  *costbasis.Manual      `yaml:"costBasis,omitempty"`
 	Tax        *tax.Settings          `yaml:"tax,omitempty"`
 	TaxYears   []tax.Year             `yaml:"taxYears,omitempty"`
+	// Database is the SQLite database (store.DB.Snapshot), gzip-compressed and base64
+	// encoded; present only in an export that asked for it.
+	Database string `yaml:"database,omitempty"`
 }
 
 // Stores are the places a backup reads from and restores into. Any may be nil (that
@@ -42,6 +54,7 @@ type Stores struct {
 	CostBasis  *costbasis.ManualStore
 	Tax        *tax.SettingsStore
 	TaxYears   *tax.YearStore
+	DB         *store.DB
 	// OnSourceRemoved runs for each source a replace import deletes, before portfolios are
 	// restored (callers drop the source's activity and portfolio references).
 	OnSourceRemoved func(id string)
@@ -50,26 +63,85 @@ type Stores struct {
 // Export builds a backup. Without withSecrets, exchange secrets are blanked; with it they
 // stay sealed (only importable by a CryptKeep with the same secret key).
 func Export(st Stores, withSecrets bool) ([]byte, error) {
+	f, err := build(st, withSecrets)
+	if err != nil {
+		return nil, err
+	}
+	return yamlfile.Encode(f)
+}
+
+// ExportDatabase is Export with the database included (st.DB): a consistent snapshot taken
+// while the app runs. Secrets the database holds (saved API keys) stay sealed either way.
+func ExportDatabase(ctx context.Context, st Stores, withSecrets bool) ([]byte, error) {
+	if st.DB == nil {
+		return nil, errors.New("no database to export")
+	}
+	f, err := build(st, withSecrets)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := st.DB.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(snap); err != nil {
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	f.Database = base64.StdEncoding.EncodeToString(buf.Bytes())
+	return yamlfile.Encode(f)
+}
+
+// maxDatabase bounds the database a restore unpacks, against a file that would inflate
+// without end.
+const maxDatabase = 2 << 30
+
+// database unpacks the backup's database section.
+func (f File) database() ([]byte, error) {
+	packed, err := base64.StdEncoding.DecodeString(f.Database)
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(packed))
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	raw, err := io.ReadAll(io.LimitReader(zr, maxDatabase+1))
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	if len(raw) > maxDatabase {
+		return nil, errors.New("database: larger than 2 GB unpacked")
+	}
+	return raw, nil
+}
+
+// build gathers every section but the database.
+func build(st Stores, withSecrets bool) (File, error) {
 	f := File{Version: Version}
 	if st.Sources != nil {
 		raw, err := st.Sources.Export(withSecrets)
 		if err != nil {
-			return nil, err
+			return File{}, err
 		}
 		sf, err := sources.ParseFile(raw)
 		if err != nil {
-			return nil, err
+			return File{}, err
 		}
 		f.Sources = sf.Sources
 	}
 	if st.Portfolios != nil {
 		raw, err := st.Portfolios.Export("")
 		if err != nil {
-			return nil, err
+			return File{}, err
 		}
 		pf, err := portfolios.Parse(raw)
 		if err != nil {
-			return nil, err
+			return File{}, err
 		}
 		f.Portfolios = pf.Portfolios
 	}
@@ -93,13 +165,13 @@ func Export(st Stores, withSecrets bool) ([]byte, error) {
 			}
 		}
 	}
-	return yamlfile.Encode(f)
+	return f, nil
 }
 
 func isEmptySettings(t tax.Settings) bool {
 	return len(t.WalletMap) == 0 && len(t.AssetMap) == 0 && len(t.ManualLots) == 0 &&
 		len(t.Tags) == 0 && len(t.Prices) == 0 && len(t.WalletBox) == 0 &&
-		len(t.WriteOffs) == 0
+		len(t.WriteOffs) == 0 && t.Scope == ""
 }
 
 // Parse strictly decodes a backup (unknown fields are line-numbered errors) and validates
@@ -116,8 +188,8 @@ func Parse(raw []byte) (File, error) {
 		return File{}, fmt.Errorf("unsupported backup version %d (this build reads version %d)", f.Version, Version)
 	}
 	if len(f.Sources) == 0 && len(f.Portfolios) == 0 && len(f.Alerts) == 0 && f.CostBasis == nil &&
-		f.Tax == nil && len(f.TaxYears) == 0 {
-		return File{}, fmt.Errorf("the file has nothing to import (no sources, portfolios, alerts, cost basis or tax data)")
+		f.Tax == nil && len(f.TaxYears) == 0 && f.Database == "" {
+		return File{}, fmt.Errorf("the file has nothing to import (no sources, portfolios, alerts, cost basis, tax data or database)")
 	}
 	for i := range f.Sources {
 		if f.Sources[i].Kind == "" {
@@ -188,6 +260,8 @@ type Result struct {
 	// TaxYearsSkipped are incoming years a merge left out: the year exists locally, or a
 	// later local year is closed.
 	TaxYearsSkipped []int
+	// Database is set when the file's database was restored (merged, or replacing this one).
+	Database bool
 }
 
 // TouchedTax reports whether the import changed tax settings or closed years.
@@ -204,6 +278,12 @@ func Import(st Stores, raw []byte, replace bool) (Result, error) {
 	}
 	if err := st.check(f); err != nil {
 		return Result{}, err
+	}
+	var db []byte
+	if f.Database != "" {
+		if db, err = f.database(); err != nil { // unpacked before anything changes
+			return Result{}, err
+		}
 	}
 	var res Result
 	if len(f.Sources) > 0 {
@@ -274,6 +354,13 @@ func Import(st Stores, raw []byte, replace bool) (Result, error) {
 			return res, fmt.Errorf("tax years: %w", err)
 		}
 	}
+	// Last, so a replace that removed sources (and their activity) gets the backup's back.
+	if f.Database != "" {
+		if _, err := st.DB.Restore(context.Background(), db, replace); err != nil {
+			return res, fmt.Errorf("database: %w", err)
+		}
+		res.Database = true
+	}
 	return res, nil
 }
 
@@ -284,7 +371,8 @@ func (st Stores) check(f File) error {
 		len(f.Alerts) > 0 && st.Alerts == nil,
 		f.CostBasis != nil && st.CostBasis == nil,
 		f.Tax != nil && st.Tax == nil,
-		len(f.TaxYears) > 0 && st.TaxYears == nil:
+		len(f.TaxYears) > 0 && st.TaxYears == nil,
+		f.Database != "" && st.DB == nil:
 		return fmt.Errorf("this CryptKeep can't restore every section of the file")
 	}
 	return nil
@@ -313,8 +401,8 @@ func mergeManual(cur, in costbasis.Manual) costbasis.Manual {
 	return out
 }
 
-// mergeTax overlays the backup's map entries per key and appends manual lots that aren't
-// already there.
+// mergeTax overlays the backup's map entries per key, takes its tax scope when it has one,
+// and appends manual lots that aren't already there.
 func mergeTax(cur, in tax.Settings) tax.Settings {
 	out := cur
 	out.WalletMap = overlay(cur.WalletMap, in.WalletMap)
@@ -322,6 +410,9 @@ func mergeTax(cur, in tax.Settings) tax.Settings {
 	out.Tags = overlay(cur.Tags, in.Tags)
 	out.Prices = overlay(cur.Prices, in.Prices)
 	out.WalletBox = overlay(cur.WalletBox, in.WalletBox)
+	if in.Scope != "" {
+		out.Scope = in.Scope
+	}
 	out.ManualLots = slices.Clone(cur.ManualLots)
 	for _, l := range in.ManualLots {
 		if !slices.ContainsFunc(out.ManualLots, func(x tax.Lot) bool {
@@ -407,6 +498,9 @@ func (r Result) Summary() string {
 	}
 	if r.Tax {
 		parts = append(parts, "tax settings restored")
+	}
+	if r.Database {
+		parts = append(parts, "database restored")
 	}
 	if r.TaxYears > 0 || len(r.TaxYearsSkipped) > 0 {
 		s := fmt.Sprintf("%d closed tax %s restored", r.TaxYears, plural(r.TaxYears, "year", "years"))

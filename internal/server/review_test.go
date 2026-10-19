@@ -554,7 +554,7 @@ func TestTagBulkSelected(t *testing.T) {
 		t.Fatalf("tags %v, want hot:a and hot:c only", tags)
 	}
 	_, page := e.do("GET", "/reports/tax?tab=review", nil, nil)
-	if !strings.Contains(page, `class="review__pick" type="checkbox" name="tx" value="hot:b" form="review-bulk-`) || !strings.Contains(page, "Tag selected") {
+	if !strings.Contains(page, `class="review__pick" type="checkbox" name="tx" value="hot:b" form="review-bulk-`) || !strings.Contains(page, `id="pick-hot:b"`) || !strings.Contains(page, "Tag selected") {
 		t.Errorf("the review rows have no tick boxes:\n%s", within(page, "review__bulk", 1500))
 	}
 }

@@ -32,9 +32,12 @@ func fmRestore(e *env, raw []byte, mode string) string {
 
 func TestRestoreRefusesOversizeFile(t *testing.T) {
 	e := newEnv(t, "")
-	big := bytes.Repeat([]byte("# padding\n"), (64<<20)/10+10)
+	limit := backupRestoreLimit
+	backupRestoreLimit = 1 << 20
+	t.Cleanup(func() { backupRestoreLimit = limit })
+	big := bytes.Repeat([]byte("# padding\n"), (1<<20)/10+10)
 	out := fmRestore(e, big, "merge")
-	if !strings.Contains(out, "too large") || !strings.Contains(out, "64 MB") {
+	if !strings.Contains(out, "too large") || !strings.Contains(out, "1 MB") {
 		t.Fatalf("oversize restore not refused clearly: %.300s", out)
 	}
 }

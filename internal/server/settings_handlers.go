@@ -223,24 +223,35 @@ func (s *Server) saveBlockstreamKey(ctx context.Context, k BlockstreamKey) error
 func (s *Server) backupStores() backup.Stores {
 	return backup.Stores{
 		Sources: s.Registry, Portfolios: s.Portfolios, Alerts: s.AlertRules, CostBasis: s.CostBasis,
-		Tax: s.TaxSettings, TaxYears: s.TaxYears,
+		Tax: s.TaxSettings, TaxYears: s.TaxYears, DB: s.DB,
 		OnSourceRemoved: func(id string) { s.cleanupSource(context.Background(), id) },
 	}
 }
 
-// backupExport downloads everything the user configured; ?secrets=1 keeps sealed secrets.
-// With CRYPTKEEP_SECRET_KEY set the whole file is encrypted, secrets always included.
+// backupExport downloads everything the user configured; ?secrets=1 keeps sealed secrets,
+// and ?db=1 adds the database. With CRYPTKEEP_SECRET_KEY set the whole file is encrypted,
+// secrets always included.
 func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
 	encrypt := s.Cfg.EncryptExports()
 	withSecrets := encrypt || r.URL.Query().Get("secrets") == "1"
-	raw, err := backup.Export(s.backupStores(), withSecrets)
+	withDB := r.URL.Query().Get("db") == "1"
+	var raw []byte
+	var err error
+	if withDB {
+		raw, err = backup.ExportDatabase(r.Context(), s.backupStores(), withSecrets)
+	} else {
+		raw, err = backup.Export(s.backupStores(), withSecrets)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	name := "cryptkeep-backup"
+	if withDB {
+		name += "-with-database"
+	}
 	if withSecrets && !encrypt {
-		name = "cryptkeep-backup-with-encrypted-secrets"
+		name += "-with-encrypted-secrets"
 	}
 	if raw, name, err = s.sealExport(raw, name); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -264,25 +275,28 @@ func (s *Server) sealExport(raw []byte, name string) ([]byte, string, error) {
 
 // backupRestoreLimit is the biggest backup file a restore reads. A larger one is refused
 // rather than read cut off, which would restore only part of it.
-const (
-	backupRestoreLimit = 64 << 20
-	backupTooBig       = "That file is too large to restore (the limit is 64 MB), so nothing was restored."
-)
+// (A variable so tests can lower it.)
+var backupRestoreLimit = 512 << 20 // a backup with the database can be large
+
+// backupTooBig says a restore was refused for its size.
+func backupTooBig() string {
+	return fmt.Sprintf("That file is too large to restore (the limit is %d MB), so nothing was restored.", backupRestoreLimit>>20)
+}
 
 // backupImport restores a backup (or an older sources or portfolios export).
 func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 	outcome := templates.ImportOutcome{}
-	r.Body = http.MaxBytesReader(w, r.Body, backupRestoreLimit+multipartSlack)
+	r.Body = http.MaxBytesReader(w, r.Body, int64(backupRestoreLimit)+multipartSlack)
 	var raw []byte
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
-		outcome.Message = uploadErrMsg(err, "Choose a backup file to restore.", backupTooBig)
+		outcome.Message = uploadErrMsg(err, "Choose a backup file to restore.", backupTooBig())
 	} else if file, _, err := r.FormFile("file"); err != nil {
 		outcome.Message = "Choose a backup file to restore."
 	} else {
-		raw, _ = io.ReadAll(io.LimitReader(file, backupRestoreLimit+1))
+		raw, _ = io.ReadAll(io.LimitReader(file, int64(backupRestoreLimit)+1))
 		file.Close()
 		if len(raw) > backupRestoreLimit {
-			outcome.Message = backupTooBig
+			outcome.Message = backupTooBig()
 		}
 	}
 	if outcome.Message == "" {
@@ -292,7 +306,7 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 			res, err = backup.Import(s.backupStores(), raw, r.PostFormValue("mode") == "replace")
 		}
 		switch {
-		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis && !res.TouchedTax():
+		case err != nil && res.Sources == nil && res.Portfolios == nil && res.Alerts == nil && !res.CostBasis && !res.TouchedTax() && !res.Database:
 			outcome.Message = "Nothing was restored: " + err.Error()
 		case err != nil:
 			outcome.Message = res.Summary() + " Then stopped: " + err.Error()
@@ -303,7 +317,7 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 				outcome.Message += " Exchange sources restored without secrets need their keys re-entered (Edit)."
 			}
 		}
-		if res.TouchedTax() {
+		if res.TouchedTax() || res.Database {
 			s.invalidateTax()
 		}
 		s.Refresher.Kick()

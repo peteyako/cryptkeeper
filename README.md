@@ -354,8 +354,12 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 portfolios, alert rules, manual cost basis, tax settings and closed tax years — and restores it (merge, or replace the
 sections the file contains). Exchange secrets are left out unless you choose "with encrypted
 secrets"; those stay AES-256-GCM sealed and only restore into a CryptKeep with the same key
-(`CRYPTKEEP_SECRET_KEY` or `data/secret.key`). Balances and activity aren't included: CryptKeep fetches
-them again. Restore also accepts an older sources or portfolios export.
+(`CRYPTKEEP_SECRET_KEY` or `data/secret.key`). Tick **Include the database** to add the database
+too: synced activity (CSV imports included), price and chart history, saved wallet scans, the Koinly
+import in progress. It's a consistent copy taken while CryptKeep runs, compressed into the same
+file. Restoring a backup that has one brings the database back as well: **Merge** adds the rows you
+don't have and keeps yours, **Replace** makes the database the backup's. Without it, CryptKeep
+fetches balances and activity again. Restore also accepts an older sources or portfolios export.
 
 **Encrypted exports.** When `CRYPTKEEP_SECRET_KEY` is set, every YAML export (the Settings
 backup, the portfolios export and the `backup`, `sources` and `portfolios export` commands) is
@@ -366,7 +370,7 @@ the generated `data/secret.key`, which would be lost with the disk) exports stay
 CSV exports are never encrypted.
 
 ```sh
-crypto-portfolio backup export -o cryptkeep-backup.yaml [-secrets]
+crypto-portfolio backup export -o cryptkeep-backup.yaml [-secrets] [-db]
 crypto-portfolio backup import cryptkeep-backup.yaml [-replace]
 ```
 
