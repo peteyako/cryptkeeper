@@ -1526,6 +1526,35 @@ body.amounts-hidden .fig-m {
   font: 400 14px/20px var(--font-mono);
 }
 
+/* Cash & stablecoins: one legend row that opens to each of them. */
+.alloc__group summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.alloc__group summary::-webkit-details-marker {
+  display: none;
+}
+
+/* No room for a chevron in the narrow legend: a dotted underline says it opens. */
+.alloc__group summary .alloc__name {
+  text-decoration: underline dotted var(--text-3);
+  text-underline-offset: 3px;
+}
+
+.alloc__parts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0 0 0 20px;
+  list-style: none;
+}
+
+.alloc__part {
+  font-size: 13px;
+}
+
 .sources {
   display: flex;
   flex-direction: column;
@@ -1871,6 +1900,48 @@ body.amounts-hidden .fig-m {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+/* Holdings: the Cash & stablecoins row is a button that opens its assets' rows. */
+.cash-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cash-toggle__chev {
+  display: inline-flex;
+  color: var(--text-3);
+}
+
+.cash-toggle__chev .icon {
+  transition: transform 0.15s;
+}
+
+.cash-toggle[aria-expanded="true"] .cash-toggle__chev .icon {
+  transform: rotate(180deg);
+}
+
+.disc--cash {
+  background: var(--disc-usd-bg);
+  color: var(--disc-usd-fg);
+  font-size: 15px;
+}
+
+.cash-row:hover {
+  background: var(--row);
+}
+
+.cash-part .asset {
+  padding-left: 24px;
 }
 
 .asset__name {

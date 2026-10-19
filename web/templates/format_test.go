@@ -311,7 +311,7 @@ func TestAllocationPinsBTCFirst(t *testing.T) {
 		row("LINK", "Chainlink", 20),
 	}
 	got := Allocation(assets)
-	wantNames := []string{"Bitcoin", "Ethereum", "Solana", "USD Coin", "Other"}
+	wantNames := []string{"Bitcoin", "Ethereum", "Solana", AllocCashName, "Other"}
 	wantColors := []string{"--src-hardware", "--accent", "--src-hot", "--gain", "--src-other"}
 	if len(got) != len(wantNames) {
 		t.Fatalf("got %d slices: %+v", len(got), got)
@@ -576,5 +576,71 @@ func TestHeldChange(t *testing.T) {
 		if ok != tt.ok || (ok && ChangeAbs(got) != tt.want) {
 			t.Errorf("HeldChange(%v, %v) = %v (%s), %v; want %s, %v", tt.value, tt.pct, got, ChangeAbs(got), ok, tt.want, tt.ok)
 		}
+	}
+}
+
+// TestAllocationGroupsCash: cash and dollar stablecoins are one green slice whatever their
+// size, with each of them in Parts; a stock whose ticker is USD is not cash.
+func TestAllocationGroupsCash(t *testing.T) {
+	got := Allocation([]portfolio.AssetRow{
+		row("ETH", "Ethereum", 500),
+		row("SOL", "Solana", 400),
+		row("DOT", "Polkadot", 300),
+		row("LINK", "Chainlink", 200),
+		row("USDC", "USD Coin", 30),
+		row("USD", "US Dollar", 15),
+		{AssetKey: "stock:USD", Symbol: "USD", Name: "ProShares Ultra Semiconductors", ValueUSD: 5, Priced: true},
+		row("USDT", "Tether", 5),
+	})
+	var cash *AllocSlice
+	for i := range got {
+		if got[i].Name == AllocCashName {
+			cash = &got[i]
+		}
+	}
+	if cash == nil || cash.ColorVar != "--gain" || cash.ValueUSD != 50 {
+		t.Fatalf("cash slice %+v in %+v", cash, got)
+	}
+	var parts []string
+	for _, p := range cash.Parts {
+		parts = append(parts, p.Name)
+	}
+	if strings.Join(parts, ",") != "USDC,USD,USDT" {
+		t.Errorf("parts %v, want USDC, USD, USDT by value", parts)
+	}
+	// Without BTC, cash takes green and two colors are left: ETH and SOL are named, then
+	// cash however small, and DOT, LINK and the USD ETF are Other.
+	var names []string
+	for _, s := range got {
+		names = append(names, s.Name)
+	}
+	if strings.Join(names, ",") != "Ethereum,Solana,"+AllocCashName+",Other" || got[3].ValueUSD != 505 {
+		t.Errorf("slices %v, Other %v; want Ethereum, Solana, cash, Other of 505", names, got[len(got)-1].ValueUSD)
+	}
+}
+
+// TestHoldingItemsGroupCash: the holdings table's lines group cash and dollar stablecoins
+// into one, in order of value, holding its assets.
+func TestHoldingItemsGroupCash(t *testing.T) {
+	items := HoldingItems([]portfolio.AssetRow{
+		row("BTC", "Bitcoin", 1000),
+		row("USDC", "USD Coin", 300),
+		row("ETH", "Ethereum", 200),
+		row("USD", "US Dollar", 150),
+		{AssetKey: "stock:USD", Symbol: "USD", Name: "ProShares Ultra Semiconductors", ValueUSD: 100, Priced: true},
+	})
+	var names []string
+	for _, it := range items {
+		names = append(names, it.Asset.Name)
+	}
+	if strings.Join(names, ",") != "Bitcoin,"+CashName+",Ethereum,ProShares Ultra Semiconductors" {
+		t.Fatalf("lines %v", names)
+	}
+	cash := items[1]
+	if cash.Asset.ValueUSD != 450 || len(cash.Cash) != 2 || cash.Cash[0].Symbol != "USDC" || cash.Cash[1].Symbol != "USD" {
+		t.Errorf("cash line %+v", cash)
+	}
+	if got := HoldingItems([]portfolio.AssetRow{row("BTC", "Bitcoin", 1)}); len(got) != 1 || got[0].Cash != nil {
+		t.Errorf("no cash, no group: %+v", got)
 	}
 }

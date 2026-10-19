@@ -174,7 +174,9 @@ Group what you hold into named portfolios (sidebar → **New portfolio**, or **M
 - **Both** — only those coins inside those wallets.
 - **Watch list** — coins shown with a live price but not counted.
 
-Each portfolio gets its own tab with total, chart, allocation and holdings. Portfolios live in
+Each portfolio gets its own tab with total, chart, allocation and holdings. In the allocation
+and the holdings, cash and dollar stablecoins (USD, USDC, USDT, DAI and the like) are one line,
+**Cash & stablecoins**; click it to see each of them. Portfolios live in
 `data/portfolios.yaml`, which you can edit by hand (typos are reported with line numbers):
 
 ```yaml

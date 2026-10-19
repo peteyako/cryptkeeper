@@ -12,6 +12,7 @@ package templates
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -369,53 +370,82 @@ type AllocSlice struct {
 	PctText  string  // "56%", or "<1%"
 	ValueUSD float64
 	ColorVar string // CSS custom property name, e.g. "--src-hardware"
+	// Parts are what a grouped slice (CashName) is made of, each with its share of the total.
+	Parts []AllocSlice
 }
 
 // Color is ColorVar wrapped in var(), ready for a style declaration.
 func (s AllocSlice) Color() string { return "var(" + s.ColorVar + ")" }
 
-// Allocation builds the allocation bar from merged asset rows. Colors keep a fixed order
-// in both themes: BTC is pinned first and warm (--src-hardware), then --accent,
-// --src-hot and --gain for the next largest assets, and everything past the top 4 is
-// summed into "Other" (--src-other). Without BTC the warm color stays unused, so only the
-// top 3 assets get their own segment. Assets with no positive value are ignored.
+// CashName is the one line cash and dollar stablecoins share in the holdings table, and
+// AllocCashName its shorter name in the narrow allocation legend.
+const (
+	CashName      = "Cash & stablecoins"
+	AllocCashName = "Cash & stables"
+)
+
+// isCash reports whether an asset is cash (USD) or a dollar stablecoin; a stock whose ticker
+// looks like one (the USD ETF) is not.
+func isCash(a portfolio.AssetRow) bool {
+	_, stock := core.IsStockKey(a.AssetKey)
+	return !stock && core.IsStable(a.AssetKey, a.Symbol)
+}
+
+// Allocation builds the allocation bar from merged asset rows. Cash and dollar stablecoins
+// are one slice, AllocCashName, always named and green (--gain), with the share of each in
+// Parts.
+// The other colors keep a fixed order in both themes: BTC is pinned first and warm
+// (--src-hardware), then --accent and --src-hot (and --gain, without cash) for the next
+// largest assets, and the rest is summed into "Other" (--src-other). Without BTC the warm
+// color stays unused. Assets with no positive value are ignored.
 func Allocation(assets []portfolio.AssetRow) []AllocSlice {
-	var rows []portfolio.AssetRow
-	var total float64
+	var rows, cash []portfolio.AssetRow
+	var total, cashUSD float64
 	for _, a := range assets {
-		if a.ValueUSD > 0 && finite(a.ValueUSD) {
+		if !(a.ValueUSD > 0) || !finite(a.ValueUSD) {
+			continue
+		}
+		total += a.ValueUSD
+		if isCash(a) {
+			cash = append(cash, a)
+			cashUSD += a.ValueUSD
+		} else {
 			rows = append(rows, a)
-			total += a.ValueUSD
 		}
 	}
 	if total <= 0 {
 		return nil
 	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].ValueUSD > rows[j].ValueUSD })
+	byValue := func(rs []portfolio.AssetRow) {
+		sort.SliceStable(rs, func(i, j int) bool { return rs[i].ValueUSD > rs[j].ValueUSD })
+	}
+	byValue(rows)
+	byValue(cash)
 
+	var out []AllocSlice
+	if i := slices.IndexFunc(rows, func(a portfolio.AssetRow) bool { return strings.EqualFold(a.Symbol, "BTC") }); i >= 0 {
+		out = append(out, newSlice(sliceName(rows[i]), rows[i].Symbol, rows[i].ValueUSD, total, "--src-hardware"))
+		rows = slices.Delete(rows, i, i+1)
+	}
 	palette := []string{"--accent", "--src-hot", "--gain"}
-	var named []portfolio.AssetRow
-	for i, a := range rows {
-		if strings.EqualFold(a.Symbol, "BTC") {
-			named = append(named, a)
-			rows = append(rows[:i:i], rows[i+1:]...)
-			palette = []string{"--src-hardware", "--accent", "--src-hot", "--gain"}
+	var named []AllocSlice
+	if len(cash) > 0 {
+		palette = palette[:2] // green is cash's
+		c := newSlice(AllocCashName, "", cashUSD, total, "--gain")
+		for _, a := range cash {
+			c.Parts = append(c.Parts, newSlice(a.Symbol, a.Symbol, a.ValueUSD, total, "--gain"))
+		}
+		named = append(named, c)
+	}
+	for _, color := range palette {
+		if len(rows) == 0 {
 			break
 		}
-	}
-	for len(named) < len(palette) && len(rows) > 0 {
-		named = append(named, rows[0])
+		named = append(named, newSlice(sliceName(rows[0]), rows[0].Symbol, rows[0].ValueUSD, total, color))
 		rows = rows[1:]
 	}
-
-	out := make([]AllocSlice, 0, len(named)+1)
-	for i, a := range named {
-		name := a.Name
-		if _, stock := core.IsStockKey(a.AssetKey); name == "" || stock {
-			name = a.Symbol // fund names run long and alike ("Vanguard Total…")
-		}
-		out = append(out, newSlice(name, a.Symbol, a.ValueUSD, total, palette[i]))
-	}
+	sort.SliceStable(named, func(i, j int) bool { return named[i].ValueUSD > named[j].ValueUSD })
+	out = append(out, named...)
 	if len(rows) > 0 {
 		var other float64
 		for _, a := range rows {
@@ -423,6 +453,52 @@ func Allocation(assets []portfolio.AssetRow) []AllocSlice {
 		}
 		out = append(out, newSlice("Other", "", other, total, "--src-other"))
 	}
+	return out
+}
+
+// sliceName is an asset's name in the allocation: its name, or for a stock or fund its
+// ticker (fund names run long and alike: "Vanguard Total…").
+func sliceName(a portfolio.AssetRow) string {
+	if _, stock := core.IsStockKey(a.AssetKey); a.Name == "" || stock {
+		return a.Symbol
+	}
+	return a.Name
+}
+
+// HoldingItem is one line of the holdings table: an asset, or with Cash set the cash and
+// dollar stablecoins as one line (Asset then sums them up).
+type HoldingItem struct {
+	Asset portfolio.AssetRow
+	Cash  []portfolio.AssetRow // the group's assets, by value
+}
+
+// HoldingItems is the holdings table's lines: every asset, but cash and dollar stablecoins
+// grouped into one CashName line, in order of value.
+func HoldingItems(assets []portfolio.AssetRow) []HoldingItem {
+	var out []HoldingItem
+	var cash []portfolio.AssetRow
+	group := portfolio.AssetRow{AssetKey: "cash", Name: CashName, Priced: true}
+	for _, a := range assets {
+		if !isCash(a) {
+			out = append(out, HoldingItem{Asset: a})
+			continue
+		}
+		cash = append(cash, a)
+		group.ValueUSD += a.ValueUSD
+		group.Share += a.Share
+		group.Priced = group.Priced && a.Priced
+		for _, w := range a.HeldIn {
+			if !slices.Contains(group.HeldIn, w) {
+				group.HeldIn = append(group.HeldIn, w)
+			}
+		}
+	}
+	if len(cash) == 0 {
+		return out
+	}
+	sort.SliceStable(cash, func(i, j int) bool { return cash[i].ValueUSD > cash[j].ValueUSD })
+	out = append(out, HoldingItem{Asset: group, Cash: cash})
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Asset.ValueUSD > out[j].Asset.ValueUSD })
 	return out
 }
 

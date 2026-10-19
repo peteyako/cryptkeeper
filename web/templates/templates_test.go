@@ -457,7 +457,7 @@ func TestLayoutHead(t *testing.T) {
 	}
 	un := html.UnescapeString(body)
 	has(t, page{"body", un, false},
-		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}"`,
+		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false, cashOpen: false}"`,
 		`data-class="{'amounts-hidden': $hide}"`,
 		`$hide = s.getItem('cryptkeep.hide') === '1'`,
 		`document.documentElement.dataset.theme`,
@@ -1202,8 +1202,8 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 		`href="/portfolios/new"`,
 	)
 	lacks(t, ov, `nav-head--on`, "pf-edit", "/portfolios/all/edit")
-	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 12 {
-		t.Errorf("want a 7d cell on every holdings row (12), got %d", n)
+	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 13 {
+		t.Errorf("want a 7d cell on every holdings row (12 assets and the cash group), got %d", n)
 	}
 	// The watch list has no 7d data, so it keeps just 24h.
 	if strings.Contains(byName(t, pages, "overview empty").html, "col-chg7") {
@@ -1585,10 +1585,10 @@ func TestOverviewPnLColumn(t *testing.T) {
 	)
 	has(t, un,
 		`data-on:click="$showPnl = !$showPnl"`, `data-attr:aria-pressed="$showPnl ? 'true' : 'false'"`, `data-class="{'is-pressed': $showPnl}"`,
-		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}"`,
+		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false, cashOpen: false}"`,
 	)
-	if n := strings.Count(ov.html, `<td class="col-pnl num"`); n != 12 {
-		t.Errorf("want a P/L cell on every holdings row (12), got %d", n)
+	if n := strings.Count(ov.html, `<td class="col-pnl num"`); n != 13 {
+		t.Errorf("want a P/L cell on every holdings row (12 assets and the cash group), got %d", n)
 	}
 	// Without P/L data there is no toggle and no column.
 	bare := demo.Overview(now)

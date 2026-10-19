@@ -351,7 +351,7 @@ func TestExpressionBuilders(t *testing.T) {
 	if pfEditHref("a b") != "/portfolios/a%20b/edit" || pfExportHref("a/b") != "/portfolios/a%2Fb/export" {
 		t.Error("portfolio hrefs must path-escape the id")
 	}
-	if got := bodySignals(Shell{}); got != `{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false}` {
+	if got := bodySignals(Shell{}); got != `{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false, cashOpen: false}` {
 		t.Errorf("bodySignals defaults = %s", got)
 	}
 	if got := bodySignals(Shell{Range: "bogus", PF: "x"}); !strings.Contains(got, "range: '1W'") {

@@ -271,14 +271,40 @@ templ AllocationCard(snap portfolio.Snapshot) {
 			</div>
 			<ul class="alloc__legend">
 				for _, s := range slices {
-					<li class="alloc__row">
-						<span class="alloc__swatch" style={ swatchStyle(s) } aria-hidden="true"></span>
-						<span class="alloc__name">{ s.Name }</span>
-						<span class="alloc__val">
-							@FigFiat(s.ValueUSD)
-						</span>
-						<span class="alloc__pct">{ s.PctText }</span>
-					</li>
+					if len(s.Parts) > 0 {
+						<li class="alloc__group">
+							<details>
+								<summary class="alloc__row">
+									<span class="alloc__swatch" style={ swatchStyle(s) } aria-hidden="true"></span>
+									<span class="alloc__name">{ s.Name }</span>
+									<span class="alloc__val">
+										@FigFiat(s.ValueUSD)
+									</span>
+									<span class="alloc__pct">{ s.PctText }</span>
+								</summary>
+								<ul class="alloc__parts">
+									for _, part := range s.Parts {
+										<li class="alloc__row alloc__part">
+											<span class="alloc__name">{ part.Name }</span>
+											<span class="alloc__val">
+												@FigFiat(part.ValueUSD)
+											</span>
+											<span class="alloc__pct">{ part.PctText }</span>
+										</li>
+									}
+								</ul>
+							</details>
+						</li>
+					} else {
+						<li class="alloc__row">
+							<span class="alloc__swatch" style={ swatchStyle(s) } aria-hidden="true"></span>
+							<span class="alloc__name">{ s.Name }</span>
+							<span class="alloc__val">
+								@FigFiat(s.ValueUSD)
+							</span>
+							<span class="alloc__pct">{ s.PctText }</span>
+						</li>
+					}
 				}
 			</ul>
 		}
@@ -301,6 +327,98 @@ templ sourcesSection(p OverviewPage) {
 }
 
 const searchShow = `!$q || el.dataset.search.includes($q.toLowerCase())`
+
+// cashPartShow shows a row of the cash group while the group is open, or, during a search,
+// when it matches (the group's own row is hidden then).
+const cashPartShow = `$q ? el.dataset.search.includes($q.toLowerCase()) : $cashOpen`
+
+// cashToggle opens or closes the cash group in the holdings table.
+const cashToggle = `$cashOpen = !$cashOpen`
+
+// holdingsRow is one asset of the holdings table; a part of the cash group starts hidden and
+// indented under the group's row.
+templ holdingsRow(p OverviewPage, a portfolio.AssetRow, show string, part bool) {
+	<tr
+		class={ templ.KV("cash-part", part) }
+		data-search={ SearchKey(a) }
+		data-show={ show }
+		if part {
+			style="display:none"
+		}
+	>
+		<td class="col-asset">
+			<div class="asset">
+				@AssetMark(a.Symbol, a.LogoURL, p.ShowLogos)
+				<div class="asset__id">
+					@coinLink(a.AssetKey, AssetName(a))
+					<span class="asset__sub">{ Plural(len(a.HeldIn), "source") }</span>
+				</div>
+			</div>
+		</td>
+		<td class="col-held">{ strings.Join(a.HeldIn, " · ") }</td>
+		<td class="col-price num">
+			@priceCell(a.Price, p.Now)
+		</td>
+		<td class="col-amt num">
+			@FigUnits(a.AssetKey, a.Amount, a.Symbol)
+		</td>
+		<td class="col-val num">
+			if a.Priced {
+				@FigFiat(a.ValueUSD)
+			} else {
+				<span class="muted">—</span>
+			}
+		</td>
+		<td class="col-chg num">
+			@changeCell(pct24h(a.Price), a.ValueUSD, a.Priced, "24 hour")
+		</td>
+		<td class="col-chg7 num">
+			@changeCell(a.Change7d, a.ValueUSD, a.Priced, "7 day")
+		</td>
+		if len(p.PnL) > 0 {
+			<td class="col-pnl num" data-show="$showPnl" style="display:none">
+				@pnlCell(p.PnL[a.AssetKey])
+			</td>
+		}
+	</tr>
+}
+
+// cashGroupRow is the holdings table's one line for cash and dollar stablecoins: their total
+// value; its button opens their own rows under it. A search hides it and shows the matching
+// rows instead.
+templ cashGroupRow(p OverviewPage, it HoldingItem) {
+	<tr class="cash-row" data-show="!$q">
+		<td class="col-asset">
+			<button
+				type="button"
+				class="cash-toggle"
+				aria-expanded="false"
+				data-attr:aria-expanded="$cashOpen ? 'true' : 'false'"
+				data-on:click={ cashToggle }
+			>
+				<span class="disc disc--cash" aria-hidden="true">$</span>
+				<span class="asset__id">
+					<span class="asset__name">{ CashName }</span>
+					<span class="asset__sub">{ Plural(len(it.Cash), "asset") }</span>
+				</span>
+				<span class="cash-toggle__chev" aria-hidden="true">
+					@Icon("chevron-down", 16)
+				</span>
+			</button>
+		</td>
+		<td class="col-held">{ strings.Join(it.Asset.HeldIn, " · ") }</td>
+		<td class="col-price num"><span class="muted">—</span></td>
+		<td class="col-amt num"><span class="muted">—</span></td>
+		<td class="col-val num">
+			@FigFiat(it.Asset.ValueUSD)
+		</td>
+		<td class="col-chg num"><span class="chg chg--none" aria-label="No 24 hour change for a group">—</span></td>
+		<td class="col-chg7 num"><span class="chg chg--none" aria-label="No 7 day change for a group">—</span></td>
+		if len(p.PnL) > 0 {
+			<td class="col-pnl num" data-show="$showPnl" style="display:none"><span class="chg chg--none" aria-label="No profit or loss for a group">—</span></td>
+		}
+	</tr>
+}
 
 templ holdingsCard(p OverviewPage) {
 	<section class="card holdings" aria-labelledby="holdings-h">
@@ -344,43 +462,15 @@ templ holdingsCard(p OverviewPage) {
 						</tr>
 					</thead>
 					<tbody>
-						for _, a := range p.Snap.Assets {
-							<tr data-search={ SearchKey(a) } data-show={ searchShow }>
-								<td class="col-asset">
-									<div class="asset">
-										@AssetMark(a.Symbol, a.LogoURL, p.ShowLogos)
-										<div class="asset__id">
-											@coinLink(a.AssetKey, AssetName(a))
-											<span class="asset__sub">{ Plural(len(a.HeldIn), "source") }</span>
-										</div>
-									</div>
-								</td>
-								<td class="col-held">{ strings.Join(a.HeldIn, " · ") }</td>
-								<td class="col-price num">
-									@priceCell(a.Price, p.Now)
-								</td>
-								<td class="col-amt num">
-									@FigUnits(a.AssetKey, a.Amount, a.Symbol)
-								</td>
-								<td class="col-val num">
-									if a.Priced {
-										@FigFiat(a.ValueUSD)
-									} else {
-										<span class="muted">—</span>
-									}
-								</td>
-								<td class="col-chg num">
-									@changeCell(pct24h(a.Price), a.ValueUSD, a.Priced, "24 hour")
-								</td>
-								<td class="col-chg7 num">
-									@changeCell(a.Change7d, a.ValueUSD, a.Priced, "7 day")
-								</td>
-								if len(p.PnL) > 0 {
-									<td class="col-pnl num" data-show="$showPnl" style="display:none">
-										@pnlCell(p.PnL[a.AssetKey])
-									</td>
+						for _, it := range HoldingItems(p.Snap.Assets) {
+							if len(it.Cash) > 0 {
+								@cashGroupRow(p, it)
+								for _, a := range it.Cash {
+									@holdingsRow(p, a, cashPartShow, true)
 								}
-							</tr>
+							} else {
+								@holdingsRow(p, it.Asset, searchShow, false)
+							}
 						}
 					</tbody>
 				</table>

@@ -73,7 +73,7 @@ func normPF(id string) string {
 // signals live for the whole page.
 func bodySignals(s Shell) string {
 	return "{hide: false, theme: 'system', range: " + JSString(normRange(s.Range)) +
-		", pf: " + JSString(normPF(s.PF)) + ", q: '', showHidden: false, showPnl: false}"
+		", pf: " + JSString(normPF(s.PF)) + ", q: '', showHidden: false, showPnl: false, cashOpen: false}"
 }
 
 // bodyInit restores the persisted privacy and theme choice. Every storage access is
