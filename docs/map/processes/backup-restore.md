@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ e280a97
+verified: 2026-10-19 @ d4899f7
 consumes: [source-def, portfolio-view, alert-rule, manual-cost-basis, tax-lot, yaml-store, database, secret-key, config]
 produces: [backup-file, source-def, portfolio-view, alert-rule, manual-cost-basis, tax-lot, yaml-store, database]
 ---

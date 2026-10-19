@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ e280a97
+verified: 2026-10-19 @ d4899f7
 consumes: [server, page-model, templ-components, snapshot, config, static-assets]
 produces: [page-model]
 ---

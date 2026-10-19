@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ e280a97
+verified: 2026-10-19 @ d4899f7
 consumes: [activity-entry, manual-cost-basis, koinly-import, tax-lot, price, portfolio-view, snapshot, yaml-store]
 produces: [tax-lot, tax-report, csv-export, yaml-store]
 ---

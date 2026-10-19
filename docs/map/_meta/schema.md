@@ -31,7 +31,7 @@ type: object            # or process
 cluster: sources        # objects only
 universe: live          # live | leftover | ghost (see ../CONTEXT.md)
 status: verified        # stub | verified | stale
-verified: 2026-10-19 @ e280a97   # date @ short commit; required when status is verified
+verified: 2026-10-19 @ 1a2b3c4   # date @ short commit; required when status is verified
 entity: internal/sources/registry.go   # objects: the file that owns the noun
 consumes: [source-def]  # processes: object slugs read
 produces: [snapshot]    # processes: object slugs written

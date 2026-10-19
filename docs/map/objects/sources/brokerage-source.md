@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ e280a97
+verified: 2026-10-19 @ d4899f7
 entity: internal/sources/brokerage/brokerage.go
 ---
 

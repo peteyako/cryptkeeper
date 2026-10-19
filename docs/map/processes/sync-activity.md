@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ e280a97
+verified: 2026-10-19 @ d4899f7
 consumes: [source-contract, source-def, price, config, tax-lot]
 produces: [activity-entry, database, value-history, alert-rule]
 ---
