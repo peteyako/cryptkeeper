@@ -261,20 +261,16 @@ var serverPauses = struct {
 // fetch GETs base+path with c, sending token as a bearer token when set. A server that
 // answers 429 is left alone for its Retry-After, at least rateLimitPause: until then fetch
 // fails at once with a 429 of its own, so no wallet keeps spending the server's request
-// allowance.
+// allowance. That includes requests already waiting their turn on the server when the
+// pause begins: the pause is checked again as each one's turn comes.
 func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, out any, token string) error {
-	serverPauses.Lock()
-	until := serverPauses.until[base]
-	serverPauses.Unlock()
-	if s.now().Before(until) {
-		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
-			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeeper to slow down"}
-	}
 	var headers map[string]string
 	if token != "" {
 		headers = map[string]string{"Authorization": "Bearer " + token}
 	}
-	err := c.GetJSON(ctx, base+path, headers, out)
+	cc := *c
+	cc.Ready = func() error { return s.paused(base) }
+	err := cc.GetJSON(ctx, base+path, headers, out)
 	var se *httpx.StatusError
 	if errors.As(err, &se) && se.Status == http.StatusTooManyRequests {
 		serverPauses.Lock()
@@ -282,6 +278,18 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 		serverPauses.Unlock()
 	}
 	return err
+}
+
+// paused is a 429 of fetch's own while base is left alone after answering 429, else nil.
+func (s *Source) paused(base string) error {
+	serverPauses.Lock()
+	until := serverPauses.until[base]
+	serverPauses.Unlock()
+	if s.now().Before(until) {
+		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
+			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeeper to slow down"}
+	}
+	return nil
 }
 
 // unavailable reports whether err means the server didn't answer, rather than answered no.

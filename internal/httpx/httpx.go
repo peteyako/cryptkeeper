@@ -25,6 +25,11 @@ type Client struct {
 	// PaceOwn429 returns a 429 at once instead of retrying it, for callers that pace their
 	// own requests to a rate-limited server. Other failures still retry.
 	PaceOwn429 bool
+	// Ready, when set, is asked before each request is sent, and on a paced host again when
+	// the request's turn comes. An error drops the request unsent, returned as is, and its
+	// turn goes to the next one. A caller that pauses a server itself uses it so requests
+	// already waiting when the pause begins aren't sent.
+	Ready func() error
 }
 
 // New returns a client with a 20 s per-request timeout and 3 retries.
@@ -69,7 +74,7 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 		if err != nil {
 			return nil, err
 		}
-		if err := Wait(ctx, req.URL.Host); err != nil {
+		if err := wait(ctx, req.URL.Host, c.Ready); err != nil {
 			return nil, err
 		}
 		if req.Header.Get("User-Agent") == "" {
@@ -257,7 +262,17 @@ func Pace(host string) time.Duration {
 }
 
 // Wait blocks until a request to host (or another paced key) may start.
-func Wait(ctx context.Context, host string) error {
+func Wait(ctx context.Context, host string) error { return wait(ctx, host, nil) }
+
+// wait is Wait asking ready, when set, before the request is let go: first, and again each
+// time it reaches the head of the line or wakes there. A ready error drops the request.
+func wait(ctx context.Context, host string, ready func() error) error {
+	if ready == nil {
+		ready = func() error { return nil }
+	}
+	if err := ready(); err != nil {
+		return err
+	}
 	v, ok := pacers.Load(host)
 	if !ok {
 		return ctx.Err()
@@ -279,6 +294,10 @@ func Wait(ctx context.Context, host string) error {
 	// At the head of the line. next is read again after every sleep: a hold may have moved it.
 	for {
 		if err := ctx.Err(); err != nil {
+			p.leave(turn)
+			return err
+		}
+		if err := ready(); err != nil {
 			p.leave(turn)
 			return err
 		}

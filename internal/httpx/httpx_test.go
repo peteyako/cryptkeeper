@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -171,6 +172,61 @@ func TestHoldStopsRequestsAlreadyWaiting(t *testing.T) {
 		if d := at.Sub(arrivals[0]); d < 900*time.Millisecond {
 			t.Errorf("a waiting request reached the server %v after the 429, inside its 1 s Retry-After", d)
 		}
+	}
+}
+
+// TestReadyDropsAWaitingRequest: a request whose Ready check fails by the time its turn comes
+// is dropped with that error and never sent, and the request behind it takes the turn.
+func TestReadyDropsAWaitingRequest(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	host := strings.TrimPrefix(srv.URL, "http://")
+	const interval = 60 * time.Millisecond
+	SetPace(host, interval)
+	t.Cleanup(func() { SetPace(host, 0) })
+	errPaused := errors.New("paused")
+	var paused atomic.Bool
+	pausable := New()
+	pausable.Ready = func() error {
+		if paused.Load() {
+			return errPaused
+		}
+		return nil
+	}
+
+	t0 := time.Now()
+	if err := pausable.GetJSON(context.Background(), srv.URL, nil, nil); err != nil { // goes at once
+		t.Fatal(err)
+	}
+	dropped := make(chan error, 1)
+	go func() { dropped <- pausable.GetJSON(context.Background(), srv.URL, nil, nil) }() // for the turn at 60ms
+	time.Sleep(10 * time.Millisecond)
+	next := make(chan time.Duration, 1)
+	go func() { // behind it, for the turn at 120ms; it has no Ready, so it goes
+		if err := New().GetJSON(context.Background(), srv.URL, nil, nil); err != nil {
+			t.Error(err)
+		}
+		next <- time.Since(t0)
+	}()
+	time.Sleep(10 * time.Millisecond)
+	paused.Store(true)
+	if err := <-dropped; !errors.Is(err, errPaused) {
+		t.Errorf("waiting request = %v, want the Ready error", err)
+	}
+	if d := <-next; d >= 2*interval-10*time.Millisecond {
+		t.Errorf("the request behind a dropped one went after %v, want its turn at %v", d, interval)
+	}
+	if n := hits.Load(); n != 2 {
+		t.Errorf("server got %d requests, want 2 (the dropped one never sent)", n)
+	}
+	// Without pacing, Ready is still asked before sending.
+	SetPace(host, 0)
+	if err := pausable.GetJSON(context.Background(), srv.URL, nil, nil); !errors.Is(err, errPaused) || hits.Load() != 2 {
+		t.Errorf("unpaced request with failing Ready = %v after %d requests", err, hits.Load())
 	}
 }
 

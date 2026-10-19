@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,6 +62,41 @@ func TestWalletsShareThePace(t *testing.T) {
 	}
 	if took, least := seen.last.Sub(start), time.Duration(seen.n-1)*pace; took < least {
 		t.Errorf("%d requests took %v; paced %v apart across the wallets they take at least %v", seen.n, took, pace, least)
+	}
+}
+
+// TestNoRequestsReachAPausedServer: when a server answers 429, the requests already waiting
+// their turn on it go to the next server instead. A public mempool server blocks an IP that
+// keeps going after a 429, so the paused server must hear nothing more.
+func TestNoRequestsReachAPausedServer(t *testing.T) {
+	f := newFake()
+	seedBusyWallet(t, f)
+	var refused atomic.Bool
+	var after atomic.Int32
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if refused.Load() {
+			after.Add(1)
+		} else if strings.Contains(r.URL.Path, "/address/") && refused.CompareAndSwap(false, true) {
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+			return
+		}
+		f.ServeHTTP(w, r)
+	}))
+	t.Cleanup(primary.Close)
+	fallback := httptest.NewServer(f)
+	t.Cleanup(fallback.Close)
+	host := strings.TrimPrefix(primary.URL, "http://")
+	httpx.SetPace(host, 10*time.Millisecond) // address lookups queue on it, as on a public server
+	t.Cleanup(func() { httpx.SetPace(host, 0) })
+	s := sourceWithFallback(t, Config{ID: "w", Key: bip84Zpub}, primary.URL, fallback.URL)
+	if _, err := s.Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !refused.Load() {
+		t.Fatal("the primary never answered 429; the test proves nothing")
+	}
+	if n := after.Load(); n != 0 {
+		t.Errorf("the paused server got %d more requests after its 429, want none", n)
 	}
 }
 
