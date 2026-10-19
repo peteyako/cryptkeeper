@@ -96,15 +96,51 @@ func failFast(c *httpx.Client) *httpx.Client {
 
 func addressPath(a string) string { return "/address/" + url.PathEscape(a) }
 
-// get reads path from the Esplora server into out. With a fallback, a primary that doesn't
+// get reads path from the Esplora server into out. With a Blockstream API key, Blockstream's
+// enterprise server answers first; when it can't, the public servers do.
+func (s *Source) get(ctx context.Context, path string, out any) error {
+	if s.auth != nil && s.auth.Configured() {
+		if err := s.getWithKey(ctx, path, out); err == nil || ctx.Err() != nil {
+			return err
+		}
+	}
+	return s.getPublic(ctx, path, out)
+}
+
+// getWithKey reads path from Blockstream's enterprise server with the key's access token. A
+// token the server refuses is dropped, so the next request fetches a new one.
+func (s *Source) getWithKey(ctx context.Context, path string, out any) error {
+	tok, err := s.auth.token(ctx)
+	keyProblem := err != nil
+	if err == nil {
+		err = s.fetch(ctx, s.client, s.auth.baseURL, path, out, tok)
+		var se *httpx.StatusError
+		if errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden) {
+			s.auth.drop(tok)
+			keyProblem = true
+		}
+	}
+	s.mu.Lock()
+	s.keyUsed = err == nil
+	switch {
+	case err == nil:
+		s.keyErr = ""
+	case keyProblem:
+		s.keyErr = err.Error()
+	}
+	s.mu.Unlock()
+	return err
+}
+
+// getPublic reads path from the configured server. With a fallback, a primary that doesn't
 // answer (a network error, a timeout, 429 or 5xx) hands the request to the fallback, which
 // then serves every request for primaryRetry.
-func (s *Source) get(ctx context.Context, path string, out any) error {
+func (s *Source) getPublic(ctx context.Context, path string, out any) error {
 	if s.fallback == "" {
-		return s.fetch(ctx, s.client, s.esplora, path, out)
+		return s.fetch(ctx, s.client, s.esplora, path, out, "")
 	}
 	if !s.usingFallback() {
-		err := s.fetch(ctx, s.fast, s.esplora, path, out)
+		err := s.fetch(ctx, s.fast, s.esplora, path, out, "")
 		if err == nil || ctx.Err() != nil || !unavailable(err) {
 			return err
 		}
@@ -116,13 +152,14 @@ func (s *Source) get(ctx context.Context, path string, out any) error {
 			slog.Warn("bitcoin: Esplora server isn't answering; using the fallback", "wallet", s.id, "server", s.node, "fallback", s.fallbackNode)
 		}
 	}
-	return s.fetch(ctx, s.client, s.fallback, path, out)
+	return s.fetch(ctx, s.client, s.fallback, path, out, "")
 }
 
-// fetch GETs base+path with c. A server that answers 429 is left alone for its Retry-After,
-// at least rateLimitPause: until then fetch fails at once with a 429 of its own, so a scan
-// doesn't keep spending the server's request allowance.
-func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, out any) error {
+// fetch GETs base+path with c, sending token as a bearer token when set. A server that
+// answers 429 is left alone for its Retry-After, at least rateLimitPause: until then fetch
+// fails at once with a 429 of its own, so a scan doesn't keep spending the server's request
+// allowance.
+func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, out any, token string) error {
 	s.mu.Lock()
 	until := s.paused[base]
 	s.mu.Unlock()
@@ -130,7 +167,11 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
 			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeep to slow down"}
 	}
-	err := c.GetJSON(ctx, base+path, nil, out)
+	var headers map[string]string
+	if token != "" {
+		headers = map[string]string{"Authorization": "Bearer " + token}
+	}
+	err := c.GetJSON(ctx, base+path, headers, out)
 	var se *httpx.StatusError
 	if errors.As(err, &se) && se.Status == http.StatusTooManyRequests {
 		s.mu.Lock()
@@ -345,9 +386,19 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 		out.Meta = append(out.Meta, core.KV{K: "Derivation", V: s.derivation})
 	}
 	node := s.node
-	if s.usingFallback() {
+	s.mu.Lock()
+	keyUsed, keyErr := s.keyUsed, s.keyErr
+	s.mu.Unlock()
+	switch {
+	case keyUsed:
+		host, _ := esploraHost(s.auth.baseURL)
+		node = host + " (API key)"
+	case s.usingFallback():
 		node = s.fallbackNode
 		out.Warnings = append(out.Warnings, fmt.Sprintf("%s isn't answering; using %s for now.", s.node, s.fallbackNode))
+	}
+	if keyErr != "" {
+		out.Warnings = append(out.Warnings, "Blockstream API key isn't working ("+keyErr+"); using the public servers.")
 	}
 	out.Meta = append(out.Meta,
 		core.KV{K: "Addresses used", V: fmt.Sprintf("%d of %d", used, scanned)},

@@ -69,6 +69,8 @@ type Deps struct {
 	WalletFileToDescriptor func(data []byte) (string, error)
 	// ParseLedgerExport reads Ledger Wallet's account JSON into its xpub and script type.
 	ParseLedgerExport func(input string) (key, scriptType string, ok bool)
+	// Blockstream checks a Blockstream API key saved from Settings and hands it to the wallets.
+	Blockstream BlockstreamKeys
 
 	// Now is overridable in tests.
 	Now func() time.Time
@@ -179,6 +181,7 @@ func New(d Deps) http.Handler {
 		r.Get("/settings", s.settings)
 		r.Post("/settings/logos", s.settingsLogos)
 		r.Post("/settings/prices", s.settingsPrices)
+		r.Post("/settings/bitcoin", s.settingsBitcoin)
 		r.Get("/backup/export", s.backupExport)
 		r.Post("/backup/import", s.backupImport)
 	})

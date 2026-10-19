@@ -379,6 +379,12 @@ const pricesSubmit = `@post('/settings/prices', {contentType: 'form'})`
 // pricesClear deletes the saved CoinGecko key (a submitter button's value isn't in the form body).
 const pricesClear = `@post('/settings/prices?clear=1')`
 
+// bitcoinKeySubmit checks and saves the Blockstream API key.
+const bitcoinKeySubmit = `@post('/settings/bitcoin', {contentType: 'form'})`
+
+// bitcoinKeyClear deletes the saved Blockstream API key.
+const bitcoinKeyClear = `@post('/settings/bitcoin?clear=1')`
+
 // backupImportSubmit posts the restore form (multipart: the file and the mode).
 const backupImportSubmit = `@post('/backup/import', {contentType: 'form'})`
 

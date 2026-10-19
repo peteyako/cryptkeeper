@@ -101,6 +101,7 @@ templ settingsBody(p SettingsPage) {
 			</section>
 			@SettingsDisplay(p)
 			@SettingsPrices(p)
+			@SettingsBitcoin(p)
 			@BackupIO(p)
 			@ActivitySyncCard(p.Sync, p.Now)
 			@SyncStream(syncInit)
@@ -212,6 +213,83 @@ templ SettingsPrices(p SettingsPage) {
 			<div class="btn-row">
 				<button type="submit" class="btn btn--secondary" disabled?={ p.PriceKeyFromEnv }>Save</button>
 				<button type="button" class="btn btn--ghost" data-on:click={ pricesClear } disabled?={ p.PriceKeyFromEnv }>Clear</button>
+			</div>
+		</form>
+	</section>
+}
+
+// SettingsBitcoin holds the Blockstream Explorer API key, which lifts the public servers'
+// rate limits for Bitcoin wallets.
+templ SettingsBitcoin(p SettingsPage) {
+	<section id="settings-bitcoin" class="card setting" aria-labelledby="set-btc-h">
+		<div class="setting__text">
+			<h2 id="set-btc-h" class="h-card">Bitcoin API key</h2>
+			<p class="muted-text">
+				Blockstream key:
+				if p.BlockstreamFromEnv {
+					set by BLOCKSTREAM_CLIENT_ID
+				} else if p.BlockstreamID != "" {
+					<span class="mono">{ p.BlockstreamID }</span>
+				} else {
+					not set
+				}
+			</p>
+		</div>
+		<form
+			id="bitcoin-key-form"
+			class="form"
+			method="post"
+			action="/settings/bitcoin"
+			data-indicator="savingBitcoinKey"
+			data-on:submit={ bitcoinKeySubmit }
+		>
+			if p.BlockstreamNote != "" {
+				<div role="status">
+					if p.BlockstreamNoteErr {
+						@Notice("loss", "alert") {
+							{ p.BlockstreamNote }
+						}
+					} else {
+						@Notice("gain", "check") {
+							{ p.BlockstreamNote }
+						}
+					}
+				</div>
+			}
+			<div class="field">
+				<label class="field__label" for="f-blockstream-id">Client ID</label>
+				<input
+					class="input input--mono"
+					id="f-blockstream-id"
+					name="blockstreamId"
+					type="text"
+					autocomplete="off"
+					spellcheck="false"
+					disabled?={ p.BlockstreamFromEnv }
+				/>
+			</div>
+			<div class="field">
+				<label class="field__label" for="f-blockstream-secret">Client secret</label>
+				<input
+					class="input input--mono"
+					id="f-blockstream-secret"
+					name="blockstreamSecret"
+					type="password"
+					autocomplete="off"
+					spellcheck="false"
+					disabled?={ p.BlockstreamFromEnv }
+					aria-describedby="f-blockstream-help"
+				/>
+				<p id="f-blockstream-help" class="field__help">From dashboard.blockstream.info → Manage Keys. Bitcoin wallets that use mempool.space or blockstream.info then go through Blockstream's API, which allows far more requests, with the public servers standing by. A wallet on your own node is never switched.</p>
+			</div>
+			<div class="btn-row">
+				<button
+					type="submit"
+					class="btn btn--secondary"
+					disabled?={ p.BlockstreamFromEnv }
+					data-class="{'is-busy': $savingBitcoinKey}"
+				>Save</button>
+				<button type="button" class="btn btn--ghost" data-on:click={ bitcoinKeyClear } disabled?={ p.BlockstreamFromEnv }>Clear</button>
 			</div>
 		</form>
 	</section>

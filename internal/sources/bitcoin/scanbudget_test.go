@@ -154,17 +154,16 @@ func TestRateLimitPausesServer(t *testing.T) {
 	if _, err := s.Fetch(context.Background()); err == nil || !strings.Contains(err.Error(), "429") {
 		t.Fatalf("Fetch error = %v, want the 429", err)
 	}
-	before := hits.Load()
+	// While paused, every request fails at once without reaching the server. (Counting the
+	// server's hits here would race with lookups the first 429 cancelled in flight.)
 	_, err := s.Fetch(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "429") {
-		t.Fatalf("paused Fetch error = %v, want a 429", err)
+	if err == nil || !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "paused") {
+		t.Fatalf("paused Fetch error = %v, want the pause's own 429", err)
 	}
-	if after := hits.Load(); after != before {
-		t.Errorf("server asked %d more times while paused", after-before)
-	}
+	before := hits.Load()
 	s.now = func() time.Time { return fixedNow.Add(rateLimitPause + time.Second) }
-	s.Fetch(context.Background())
-	if hits.Load() == before {
-		t.Error("server not asked again after the pause")
+	_, err = s.Fetch(context.Background())
+	if strings.Contains(err.Error(), "paused") || hits.Load() == before {
+		t.Errorf("server not asked again after the pause: %v", err)
 	}
 }

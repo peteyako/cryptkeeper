@@ -133,6 +133,13 @@ type SettingsPage struct {
 	PriceKey string
 	// PriceKeyFromEnv: COINGECKO_API_KEY is set, so the Settings form is disabled.
 	PriceKeyFromEnv bool
+	// BlockstreamID is the saved Blockstream API key's client ID, masked; empty when none is saved.
+	BlockstreamID string
+	// BlockstreamFromEnv: BLOCKSTREAM_CLIENT_ID is set, so the Settings form is disabled.
+	BlockstreamFromEnv bool
+	// BlockstreamNote is the outcome of the last save ("" on a plain page load).
+	BlockstreamNote    string
+	BlockstreamNoteErr bool
 }
 
 // PortfolioItem is one portfolio on the manager page.

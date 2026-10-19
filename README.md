@@ -85,6 +85,13 @@ While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (
 round), and the wallet says so. A private node gets no fallback unless you set
 `bitcoin.esploraFallbackUrl`; `esploraFallbackUrl: "off"` turns the fallback off.
 
+**Blockstream API key.** For far higher limits, create a key at
+[dashboard.blockstream.info](https://dashboard.blockstream.info) → Manage Keys and enter its client
+ID and secret under **Settings → Bitcoin API key** (stored encrypted; CryptKeep checks it with
+Blockstream before saving), or set `BLOCKSTREAM_CLIENT_ID` and `BLOCKSTREAM_CLIENT_SECRET`. Wallets
+on mempool.space or blockstream.info then go through `enterprise.blockstream.info`, with the public
+servers standing by if it fails. A wallet on your own node never uses the key.
+
 ### Solana
 Paste the wallet's public address. CryptKeep reads SOL, every SPL token (classic and Token-2022),
 native stake accounts, and counts NFTs without valuing them.

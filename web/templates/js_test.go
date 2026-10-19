@@ -176,6 +176,8 @@ func TestExpressionsAreValidJavaScript(t *testing.T) {
 		{"coin chart busy", "$coinCharting ? 'true' : 'false'", true},
 		{"coin range disabled", "$coinCharting", true},
 		{"write-off delete", writeOffDeleteSubmit, false},
+		{"bitcoin key save", bitcoinKeySubmit, false},
+		{"bitcoin key clear", bitcoinKeyClear, false},
 		{"portfolio click", pfClick(hostile), false},
 		{"portfolio class", pfClass(hostile), true},
 		{"portfolio current", pfCurrent(hostile), true},

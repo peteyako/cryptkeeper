@@ -34,6 +34,10 @@ type Config struct {
 	NtfyToken string `yaml:"-"` // NTFY_TOKEN
 	// CoinGeckoKey is the CoinGecko demo API key (COINGECKO_API_KEY); it wins over the one saved in Settings.
 	CoinGeckoKey string `yaml:"-"`
+	// BlockstreamClientID and BlockstreamClientSecret are a Blockstream Explorer API key
+	// (BLOCKSTREAM_CLIENT_ID, BLOCKSTREAM_CLIENT_SECRET); they win over the one saved in Settings.
+	BlockstreamClientID     string `yaml:"-"`
+	BlockstreamClientSecret string `yaml:"-"`
 }
 
 // Tax holds tax-report settings.
@@ -172,6 +176,8 @@ func Load(path string) (Config, error) {
 	}
 	cfg.NtfyToken = os.Getenv("NTFY_TOKEN")
 	cfg.CoinGeckoKey = os.Getenv("COINGECKO_API_KEY")
+	cfg.BlockstreamClientID = os.Getenv("BLOCKSTREAM_CLIENT_ID")
+	cfg.BlockstreamClientSecret = os.Getenv("BLOCKSTREAM_CLIENT_SECRET")
 	return cfg, nil
 }
 

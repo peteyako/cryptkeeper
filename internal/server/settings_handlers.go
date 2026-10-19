@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"crypto-portfolio/internal/backup"
 	"crypto-portfolio/internal/secrets"
+	"crypto-portfolio/internal/store"
 	"crypto-portfolio/web/templates"
 )
 
@@ -58,6 +60,7 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
 		Sync: s.syncRows(r.Context()), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports(),
 		PriceKeyFromEnv: s.Cfg.CoinGeckoKey != "", PriceKey: s.maskedPriceKey(r.Context()),
+		BlockstreamFromEnv: s.Cfg.BlockstreamClientID != "", BlockstreamID: s.maskedBlockstreamID(r.Context()),
 	}
 }
 
@@ -120,6 +123,101 @@ func (s *Server) settingsPrices(w http.ResponseWriter, r *http.Request) {
 	}
 	sse := datastar.NewSSE(w, r)
 	_ = sse.PatchElementTempl(templates.SettingsPrices(s.settingsPage(r)))
+}
+
+// BlockstreamKeyKV is the kv key holding the box-sealed Blockstream API key saved from Settings.
+const BlockstreamKeyKV = "bitcoin.blockstreamKey"
+
+// BlockstreamKey is a Blockstream Explorer API key: an OAuth client ID and secret.
+type BlockstreamKey struct {
+	ID     string `json:"id"`
+	Secret string `json:"secret"`
+}
+
+// BlockstreamKeys checks a Blockstream API key and hands it to the Bitcoin wallets.
+type BlockstreamKeys interface {
+	Check(ctx context.Context, id, secret string) error
+	SetCredentials(id, secret string)
+}
+
+// LoadBlockstreamKey reads the key saved from Settings; ok is false when none is saved.
+func LoadBlockstreamKey(ctx context.Context, db *store.DB, box *secrets.Box) (k BlockstreamKey, ok bool, err error) {
+	var sealed string
+	if ok, err = db.GetJSON(ctx, BlockstreamKeyKV, &sealed); err != nil || !ok {
+		return k, false, err
+	}
+	plain, err := box.Open(sealed)
+	if err != nil {
+		return k, false, err
+	}
+	if err := json.Unmarshal([]byte(plain), &k); err != nil {
+		return k, false, err
+	}
+	return k, true, nil
+}
+
+// maskedBlockstreamID returns the saved key's client ID masked, or "" when none is saved or readable.
+func (s *Server) maskedBlockstreamID(ctx context.Context) string {
+	if s.DB == nil || s.Box == nil {
+		return ""
+	}
+	k, ok, err := LoadBlockstreamKey(ctx, s.DB, s.Box)
+	if err != nil {
+		s.Log.Warn("open blockstream key", "err", err)
+	}
+	if !ok {
+		return ""
+	}
+	return secrets.Mask(k.ID)
+}
+
+// settingsBitcoin checks and saves (sealed) or clears the Blockstream API key. A key is only
+// saved once Blockstream has issued a token for it.
+func (s *Server) settingsBitcoin(w http.ResponseWriter, r *http.Request) {
+	_ = parseBody(r)
+	note, noteErr := "", false
+	if s.DB != nil && s.Box != nil && s.Blockstream != nil && s.Cfg.BlockstreamClientID == "" {
+		ctx := r.Context()
+		id, secret := strings.TrimSpace(r.PostFormValue("blockstreamId")), strings.TrimSpace(r.PostFormValue("blockstreamSecret"))
+		switch {
+		case r.URL.Query().Get("clear") == "1" || r.PostFormValue("clear") == "1":
+			if err := s.DB.DeleteKV(ctx, BlockstreamKeyKV); err != nil {
+				s.Log.Warn("clear blockstream key", "err", err)
+			}
+			s.Blockstream.SetCredentials("", "")
+		case id == "" || secret == "":
+			note, noteErr = "Enter both the client ID and the client secret.", true
+		default:
+			if err := s.Blockstream.Check(ctx, id, secret); err != nil {
+				note, noteErr = err.Error(), true
+			} else if err := s.saveBlockstreamKey(ctx, BlockstreamKey{ID: id, Secret: secret}); err != nil {
+				s.Log.Warn("save blockstream key", "err", err)
+				note, noteErr = "Couldn't save the key.", true
+			} else {
+				s.Blockstream.SetCredentials(id, secret)
+				note = "Saved. Bitcoin wallets now go through Blockstream's API."
+				if s.Refresher != nil {
+					s.Refresher.Kick()
+				}
+			}
+		}
+	}
+	p := s.settingsPage(r)
+	p.BlockstreamNote, p.BlockstreamNoteErr = note, noteErr
+	sse := datastar.NewSSE(w, r)
+	_ = sse.PatchElementTempl(templates.SettingsBitcoin(p))
+}
+
+func (s *Server) saveBlockstreamKey(ctx context.Context, k BlockstreamKey) error {
+	plain, err := json.Marshal(k)
+	if err != nil {
+		return err
+	}
+	sealed, err := s.Box.Seal(string(plain))
+	if err != nil {
+		return err
+	}
+	return s.DB.PutJSON(ctx, BlockstreamKeyKV, sealed)
 }
 
 func (s *Server) backupStores() backup.Stores {

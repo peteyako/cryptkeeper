@@ -89,11 +89,13 @@ type app struct {
 	registry   *sources.Registry
 	portfolios *portfolios.Store
 	prices     *prices.Service
-	activity   *activity.Store
-	costbasis  *costbasis.ManualStore
-	alertRules *alerts.RuleStore
-	taxSet     *tax.SettingsStore // data/tax.yaml
-	taxYears   *tax.YearStore     // data/tax/<year>.yaml
+	// blockstream is the Blockstream API key shared by every Bitcoin wallet.
+	blockstream *bitcoin.BlockstreamAuth
+	activity    *activity.Store
+	costbasis   *costbasis.ManualStore
+	alertRules  *alerts.RuleStore
+	taxSet      *tax.SettingsStore // data/tax.yaml
+	taxYears    *tax.YearStore     // data/tax/<year>.yaml
 }
 
 // dbName is the SQLite database in the data directory. Before the app was renamed from
@@ -156,6 +158,7 @@ func setup(fs *flag.FlagSet, args []string) (*app, *flag.FlagSet, error) {
 		return nil, fs, err
 	}
 	a := &app{cfg: cfg, dataDir: *dataDir, log: log, db: db, box: box, client: httpx.New()}
+	a.blockstream = blockstreamAuth(cfg, db, box, a.client, log)
 	a.prices = prices.New(a.client, db, prices.Options{TTL: time.Minute, StaleMax: cfg.StaleMax(), CoinGeckoKey: coinGeckoKey(cfg.CoinGeckoKey, db, box)})
 	meta := solana.NewSQLiteMetaCache(db, 24*time.Hour)
 	reg, err := sources.NewRegistry(filepath.Join(*dataDir, "sources.yaml"), filepath.Join(*dataDir, "backups"), box, a.factory(meta))
@@ -260,6 +263,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 			return asSource(bitcoin.New(bitcoin.Config{
 				ID: d.ID, Label: d.Label, Key: d.Key, Descriptor: d.Descriptor, ScriptType: d.ScriptType,
 				EsploraURL: a.cfg.Bitcoin.EsploraURL, FallbackURL: a.cfg.Bitcoin.EsploraFallbackURL, GapLimit: a.cfg.Bitcoin.GapLimit,
+				Auth: a.blockstream,
 			}, a.client))
 		case sources.TypeSolana:
 			return asSource(solana.New(solana.Config{
@@ -478,6 +482,7 @@ func serve(args []string) error {
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
 		ParseLedgerExport:      bitcoin.ParseLedgerExport,
+		Blockstream:            a.blockstream,
 	})
 	srv := &http.Server{Addr: *addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
@@ -729,6 +734,24 @@ func healthcheck(args []string) error {
 		return fmt.Errorf("unhealthy: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// blockstreamAuth returns the Blockstream API key holder, loaded from the environment when
+// BLOCKSTREAM_CLIENT_ID is set, else from the key saved in Settings.
+func blockstreamAuth(cfg config.Config, db *store.DB, box *secrets.Box, c *httpx.Client, log *slog.Logger) *bitcoin.BlockstreamAuth {
+	auth := bitcoin.NewBlockstreamAuth(c)
+	if cfg.BlockstreamClientID != "" {
+		auth.SetCredentials(cfg.BlockstreamClientID, cfg.BlockstreamClientSecret)
+		return auth
+	}
+	k, ok, err := server.LoadBlockstreamKey(context.Background(), db, box)
+	if err != nil {
+		log.Warn("open blockstream key", "err", err)
+	}
+	if ok {
+		auth.SetCredentials(k.ID, k.Secret)
+	}
+	return auth
 }
 
 // coinGeckoKey returns the CoinGecko demo key: the environment's when set, else the one saved
