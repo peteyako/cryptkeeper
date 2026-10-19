@@ -259,7 +259,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 		case sources.TypeBitcoin:
 			return asSource(bitcoin.New(bitcoin.Config{
 				ID: d.ID, Label: d.Label, Key: d.Key, Descriptor: d.Descriptor, ScriptType: d.ScriptType,
-				EsploraURL: a.cfg.Bitcoin.EsploraURL, GapLimit: a.cfg.Bitcoin.GapLimit,
+				EsploraURL: a.cfg.Bitcoin.EsploraURL, FallbackURL: a.cfg.Bitcoin.EsploraFallbackURL, GapLimit: a.cfg.Bitcoin.GapLimit,
 			}, a.client))
 		case sources.TypeSolana:
 			return asSource(solana.New(solana.Config{
@@ -477,6 +477,7 @@ func serve(args []string) error {
 		TaxSettings: a.taxSet, TaxYears: a.taxYears, TaxLoc: taxLoc,
 		DetectBitcoin:          bitcoin.Detect,
 		WalletFileToDescriptor: bitcoin.DescriptorFromWalletFile,
+		ParseLedgerExport:      bitcoin.ParseLedgerExport,
 	})
 	srv := &http.Server{Addr: *addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)

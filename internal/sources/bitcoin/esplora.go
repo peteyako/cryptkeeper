@@ -2,12 +2,17 @@ package bitcoin
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"crypto-portfolio/internal/core"
+	"crypto-portfolio/internal/httpx"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -17,6 +22,11 @@ const (
 	fetchConcurrency = 4
 	maxScanPerChain  = 10_000 // safety stop against a server that reports every address as used
 	satsPerBTC       = 100_000_000
+
+	// With a fallback server, one primary request gets primaryTimeout, and a primary that
+	// doesn't answer is skipped for primaryRetry before it is tried again.
+	primaryTimeout = 8 * time.Second
+	primaryRetry   = 10 * time.Minute
 )
 
 // addrState is one scanned address.
@@ -55,12 +65,74 @@ type esploraUTXO struct {
 	} `json:"status"`
 }
 
-func (s *Source) addressURL(a string) string { return s.esplora + "/address/" + url.PathEscape(a) }
+// esploraHost validates an Esplora base URL and returns its host.
+func esploraHost(base string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("invalid Esplora URL")
+	}
+	return u.Host, nil
+}
+
+// failFast is c cut to one attempt of primaryTimeout, so a primary server that doesn't
+// answer costs seconds before the fallback is asked, not c's full retries.
+func failFast(c *httpx.Client) *httpx.Client {
+	h := http.Client{}
+	if c.HTTP != nil {
+		h = *c.HTTP
+	}
+	h.Timeout = primaryTimeout
+	return &httpx.Client{HTTP: &h, MaxRetries: 0, BaseDelay: c.BaseDelay}
+}
+
+func addressPath(a string) string { return "/address/" + url.PathEscape(a) }
+
+// get reads path from the Esplora server into out. With a fallback, a primary that doesn't
+// answer (a network error, a timeout, 429 or 5xx) hands the request to the fallback, which
+// then serves every request for primaryRetry.
+func (s *Source) get(ctx context.Context, path string, out any) error {
+	if s.fallback == "" {
+		return s.client.GetJSON(ctx, s.esplora+path, nil, out)
+	}
+	if !s.usingFallback() {
+		err := s.fast.GetJSON(ctx, s.esplora+path, nil, out)
+		if err == nil || ctx.Err() != nil || !unavailable(err) {
+			return err
+		}
+		s.mu.Lock()
+		first := !s.now().Before(s.primaryDown)
+		s.primaryDown = s.now().Add(primaryRetry)
+		s.mu.Unlock()
+		if first {
+			slog.Warn("bitcoin: Esplora server isn't answering; using the fallback", "wallet", s.id, "server", s.node, "fallback", s.fallbackNode)
+		}
+	}
+	return s.client.GetJSON(ctx, s.fallback+path, nil, out)
+}
+
+// usingFallback reports whether the primary server is being skipped.
+func (s *Source) usingFallback() bool {
+	if s.fallback == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.now().Before(s.primaryDown)
+}
+
+// unavailable reports whether err means the server didn't answer, rather than answered no.
+func unavailable(err error) bool {
+	var se *httpx.StatusError
+	if errors.As(err, &se) {
+		return se.Status == http.StatusTooManyRequests || se.Status >= 500
+	}
+	return true
+}
 
 // lookup fills a.sats and a.txs from GET /address/{a}.
 func (s *Source) lookup(ctx context.Context, a *addrState) error {
 	var r esploraAddress
-	if err := s.client.GetJSON(ctx, s.addressURL(a.address), nil, &r); err != nil {
+	if err := s.get(ctx, addressPath(a.address), &r); err != nil {
 		return err
 	}
 	a.sats = (r.ChainStats.FundedTxoSum - r.ChainStats.SpentTxoSum) + (r.MempoolStats.FundedTxoSum - r.MempoolStats.SpentTxoSum)
@@ -188,14 +260,22 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 	if s.derivation != "" {
 		out.Meta = append(out.Meta, core.KV{K: "Derivation", V: s.derivation})
 	}
+	node := s.node
+	if s.usingFallback() {
+		node = s.fallbackNode
+		out.Warnings = append(out.Warnings, fmt.Sprintf("%s isn't answering; using %s for now.", s.node, s.fallbackNode))
+	}
 	out.Meta = append(out.Meta,
 		core.KV{K: "Addresses used", V: fmt.Sprintf("%d of %d", used, scanned)},
-		core.KV{K: "Node", V: s.node})
+		core.KV{K: "Node", V: node})
 	if res.truncated {
 		out.Warnings = append(out.Warnings, fmt.Sprintf("address scan stopped after %d addresses on one chain", maxScanPerChain))
 	}
+	if used == 0 && s.autoKey != nil {
+		out.Warnings = append(out.Warnings, s.scriptHint(ctx))
+	}
 	var height int64
-	if err := s.client.GetJSON(ctx, s.esplora+"/blocks/tip/height", nil, &height); err != nil {
+	if err := s.get(ctx, "/blocks/tip/height", &height); err != nil {
 		out.Warnings = append(out.Warnings, "could not read block height: "+err.Error())
 	} else {
 		out.Meta = append(out.Meta, core.KV{K: "Block height", V: strconv.FormatInt(height, 10)})
@@ -243,7 +323,7 @@ func (s *Source) UTXOs(ctx context.Context) ([]core.UTXO, error) {
 	for i, a := range funded {
 		g.Go(func() error {
 			var raw []esploraUTXO
-			if err := s.client.GetJSON(gctx, s.addressURL(a.address)+"/utxo", nil, &raw); err != nil {
+			if err := s.get(gctx, addressPath(a.address)+"/utxo", &raw); err != nil {
 				return err
 			}
 			for _, u := range raw {
@@ -276,4 +356,39 @@ func (s *Source) NextReceiveAddress(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return s.addressAt(0, res.lastUsed[0]+1)
+}
+
+// scriptHint explains an empty wallet whose xpub was read as Legacy. It checks the first
+// receive address of each other script type once and names the one with history; while
+// the server can't be reached it gives the general advice and checks again next time.
+func (s *Source) scriptHint(ctx context.Context) string {
+	s.mu.Lock()
+	hint, done := s.hint, s.hintDone
+	s.mu.Unlock()
+	if done {
+		return hint
+	}
+	hint = "No transactions at this key's Legacy (1…) addresses. Ledger and some other wallets show an xpub " +
+		"for SegWit and Taproot accounts too: if this account's addresses start with bc1q, 3 or bc1p, " +
+		"edit the wallet and set its Script type."
+	for _, st := range []scriptType{scriptP2WPKH, scriptP2SHP2WPKH, scriptP2TR} {
+		a, err := descriptorFromXpub(s.autoKey, st).address(0, 0)
+		if err != nil {
+			continue
+		}
+		var r esploraAddress
+		if err := s.get(ctx, addressPath(a.EncodeAddress()), &r); err != nil {
+			return hint
+		}
+		if r.ChainStats.TxCount+r.MempoolStats.TxCount > 0 {
+			name, _, _ := strings.Cut(st.label(), " (")
+			hint = fmt.Sprintf("No transactions at this key's Legacy (1…) addresses, but its %s addresses have history: "+
+				"edit the wallet and set Script type to %s.", st.label(), name)
+			break
+		}
+	}
+	s.mu.Lock()
+	s.hint, s.hintDone = hint, true
+	s.mu.Unlock()
+	return hint
 }

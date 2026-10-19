@@ -8,7 +8,6 @@ package bitcoin
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -23,13 +22,14 @@ import (
 // Config configures one Bitcoin wallet source. Exactly one of Key, Descriptor or
 // WalletFile must be set.
 type Config struct {
-	ID, Label  string
-	Key        string // xpub/ypub/zpub OR a plain address (bc1…/1…/3…)
-	Descriptor string // output descriptor, or "receive descriptor\nchange descriptor"
-	WalletFile []byte // Caravan/Unchained JSON or a text file containing a descriptor (Sparrow export)
-	ScriptType string // optional override for an extended Key: "p2pkh", "p2sh-p2wpkh", "p2wpkh", "p2tr"
-	EsploraURL string // e.g. https://mempool.space/api (no trailing slash); DefaultEsploraURL if empty
-	GapLimit   int    // DefaultGapLimit if zero or negative
+	ID, Label   string
+	Key         string // xpub/ypub/zpub OR a plain address (bc1…/1…/3…)
+	Descriptor  string // output descriptor, or "receive descriptor\nchange descriptor"
+	WalletFile  []byte // Caravan/Unchained JSON or a text file containing a descriptor (Sparrow export)
+	ScriptType  string // optional override for an extended Key: "p2pkh", "p2sh-p2wpkh", "p2wpkh", "p2tr"
+	EsploraURL  string // e.g. https://mempool.space/api (no trailing slash); DefaultEsploraURL if empty
+	FallbackURL string // a second Esplora server, asked while EsploraURL isn't answering; "" for none
+	GapLimit    int    // DefaultGapLimit if zero or negative
 }
 
 const (
@@ -73,12 +73,24 @@ type Source struct {
 	client      *httpx.Client
 	now         func() time.Time
 
+	// fallback is the second Esplora server ("" for none); fast is client cut to one short
+	// attempt, used for the primary server when there is a fallback to turn to.
+	fallback, fallbackNode string
+	fast                   *httpx.Client
+
+	// autoKey is an xpub read as Legacy because no script type was chosen. Ledger shows an
+	// xpub for SegWit and Taproot accounts too, so an empty scan of it earns a hint.
+	autoKey *hdkeychain.ExtendedKey
+
 	chains []chainSpec // chains[0] is receive; chains[1], when present, is change
 	ranged bool        // false for a single address
 
-	mu    sync.Mutex
-	addrs map[[2]int]string // derived address cache, keyed by (chain, index)
-	last  *scanResult
+	mu          sync.Mutex
+	addrs       map[[2]int]string // derived address cache, keyed by (chain, index)
+	last        *scanResult
+	primaryDown time.Time // the primary server isn't answering; use the fallback until then
+	hint        string    // script-type hint for autoKey, once checked
+	hintDone    bool
 }
 
 // New parses and validates cfg. It does no network I/O. A nil client means httpx.New().
@@ -107,8 +119,8 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 	if esplora == "" {
 		esplora = DefaultEsploraURL
 	}
-	u, err := url.Parse(esplora)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	node, err := esploraHost(esplora)
+	if err != nil {
 		return nil, fmt.Errorf("invalid Esplora URL %q: want e.g. https://mempool.space/api", cfg.EsploraURL)
 	}
 	if c == nil {
@@ -117,11 +129,17 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 	s := &Source{
 		id:      cfg.ID,
 		esplora: esplora,
-		node:    u.Host,
+		node:    node,
 		gap:     cfg.GapLimit,
 		client:  c,
 		now:     time.Now,
 		addrs:   map[[2]int]string{},
+	}
+	if fb := strings.TrimRight(strings.TrimSpace(cfg.FallbackURL), "/"); fb != "" {
+		if s.fallbackNode, err = esploraHost(fb); err != nil {
+			return nil, fmt.Errorf("invalid fallback Esplora URL %q: want e.g. https://blockstream.info/api", cfg.FallbackURL)
+		}
+		s.fallback, s.fast = fb, failFast(c)
 	}
 	if s.gap <= 0 {
 		s.gap = DefaultGapLimit
@@ -172,6 +190,8 @@ func (s *Source) initKey(key, scriptOverride string) error {
 		st := v.script
 		if scriptOverride != "" {
 			st, _ = parseScriptType(scriptOverride) // validated in New
+		} else if v.name == "xpub" {
+			s.autoKey = k
 		}
 		d := descriptorFromXpub(k, st)
 		s.importedVia = viaKey

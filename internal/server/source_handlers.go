@@ -133,6 +133,14 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 	case sources.TypeBitcoin:
 		d.ScriptType = f("scriptType")
 		key := f("key")
+		if s.ParseLedgerExport != nil {
+			if xpub, st, ok := s.ParseLedgerExport(key); ok {
+				key = xpub
+				if d.ScriptType == "" {
+					d.ScriptType = st
+				}
+			}
+		}
 		if file, _, err := r.FormFile("walletFile"); err == nil {
 			raw, _ := io.ReadAll(io.LimitReader(file, 1<<20))
 			file.Close()

@@ -134,18 +134,11 @@ func TestScriptTypeOverride(t *testing.T) {
 // script type. Left on auto-detect it derives legacy addresses; with the account's script
 // type set it derives the same addresses as the matching ypub/zpub.
 func TestLedgerXpubWithScriptType(t *testing.T) {
-	asXpub := func(key string) string {
-		payload, _, err := decodeExtendedKey(key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return encodeAsXpub(payload)
-	}
 	tests := []struct {
 		name, key, scriptType, want string
 	}{
-		{"native segwit", asXpub(bip84Zpub), "p2wpkh", "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"},
-		{"nested segwit", asXpub(bip49Ypub), "p2sh-p2wpkh", "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"},
+		{"native segwit", asXpub(t, bip84Zpub), "p2wpkh", "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"},
+		{"nested segwit", asXpub(t, bip49Ypub), "p2sh-p2wpkh", "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

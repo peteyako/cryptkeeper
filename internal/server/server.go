@@ -67,6 +67,8 @@ type Deps struct {
 	// Bitcoin helpers, injected so the server doesn't depend on the bitcoin package.
 	DetectBitcoin          func(input string) (kind string, err error)
 	WalletFileToDescriptor func(data []byte) (string, error)
+	// ParseLedgerExport reads Ledger Wallet's account JSON into its xpub and script type.
+	ParseLedgerExport func(input string) (key, scriptType string, ok bool)
 
 	// Now is overridable in tests.
 	Now func() time.Time

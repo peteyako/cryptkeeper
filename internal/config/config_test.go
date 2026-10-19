@@ -61,3 +61,28 @@ func TestLoadTaxTimezone(t *testing.T) {
 		t.Fatalf("Load = %+v, %v", cfg.Tax, err)
 	}
 }
+
+// TestEsploraFallback: the two public servers back each other up; a private node gets no
+// fallback unless one is set, and "off" turns it off.
+func TestEsploraFallback(t *testing.T) {
+	for _, tc := range []struct{ yaml, want string }{
+		{"", "https://blockstream.info/api"},
+		{"bitcoin:\n  esploraUrl: https://mempool.space/api/\n", "https://blockstream.info/api"},
+		{"bitcoin:\n  esploraUrl: https://blockstream.info/api\n", "https://mempool.space/api"},
+		{"bitcoin:\n  esploraUrl: http://node.lan:3002/api\n", ""},
+		{"bitcoin:\n  esploraUrl: http://node.lan:3002/api\n  esploraFallbackUrl: http://node2.lan/api/\n", "http://node2.lan/api"},
+		{"bitcoin:\n  esploraFallbackUrl: \"off\"\n", ""},
+	} {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte(tc.yaml), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Bitcoin.EsploraFallbackURL != tc.want {
+			t.Errorf("%q: fallback = %q, want %q", tc.yaml, cfg.Bitcoin.EsploraFallbackURL, tc.want)
+		}
+	}
+}

@@ -61,9 +61,11 @@ Paste any of:
 
 Where to find them:
 - **Sparrow**: Settings → Script Policy shows the descriptor; *Export* → *Output Descriptor*.
-- **Ledger Wallet** (formerly Ledger Live): Account → wrench icon (Edit account) → Advanced → copy
-  `xpub`. `freshAddressPath` gives the script type: `84'/…` Native SegWit, `49'/…` Nested SegWit,
-  `86'/…` Taproot, `44'/…` Legacy.
+- **Ledger Wallet** (formerly Ledger Live): Account → wrench icon (Edit account) → Advanced. Paste
+  the whole JSON shown there: CryptKeep takes the `xpub` and the script type from it. Pasting
+  just the `xpub` works too; then set the script type (`freshAddressPath` `84'/…` Native SegWit,
+  `49'/…` Nested SegWit, `86'/…` Taproot, `44'/…` Legacy). An xpub left on auto-detect whose
+  Legacy addresses have no history gets a hint naming the script type that does.
 - **Trezor Suite**: Account → Details → Show public key.
 - **Unchained / Caravan**: download the wallet configuration JSON.
 - **Nunchuk**: Wallet → ⋯ → Export wallet → descriptor / BSMS file.
@@ -72,6 +74,10 @@ CryptKeep derives receive and change addresses with a gap limit of 20 (configura
 
 **Privacy:** balances are looked up on `mempool.space` by default, which lets that server see
 your addresses together. Point `bitcoin.esploraUrl` at your own mempool/electrs node to avoid it.
+
+While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (and the other way
+round), and the wallet says so. A private node gets no fallback unless you set
+`bitcoin.esploraFallbackUrl`; `esploraFallbackUrl: "off"` turns the fallback off.
 
 ### Solana
 Paste the wallet's public address. CryptKeep reads SOL, every SPL token (classic and Token-2022),

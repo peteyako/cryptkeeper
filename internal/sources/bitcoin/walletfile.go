@@ -12,6 +12,7 @@ import (
 //   - Caravan/Unchained multisig JSON (quorum + extendedPublicKeys) becomes a checksummed
 //     sortedmulti descriptor with /<0;1>/* derivation (Caravan uses BIP67 sorted multisig);
 //   - JSON with a "descriptor" field (Specter, BlueWallet and similar exports);
+//   - Ledger Wallet's account export (the Advanced JSON with "xpub" and "freshAddressPath");
 //   - a text file (Sparrow "Output Descriptor" export): the first line that parses as a
 //     descriptor. Lines starting with '#' are comments. If that line is a receive-only /0/*
 //     descriptor and the next descriptor is its /1/* change twin, both are returned, one per line.
@@ -59,7 +60,10 @@ func fromJSONWalletFile(b []byte) (string, error) {
 		}
 		return desc, nil
 	}
-	return "", errors.New(`unrecognised JSON wallet file: expected a Caravan/Unchained multisig config or a "descriptor" field`)
+	if key, st, ok := ParseLedgerExport(string(b)); ok {
+		return ledgerDescriptor(key, st)
+	}
+	return "", errors.New(`unrecognised JSON wallet file: expected a Caravan/Unchained multisig config, a Ledger account export or a "descriptor" field`)
 }
 
 func caravanToDescriptor(f jsonWalletFile) (string, error) {

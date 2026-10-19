@@ -224,7 +224,7 @@ func (r *activityRun) take() bool {
 func (r *activityRun) stopped() bool { return r.err != nil || r.exhausted }
 
 func (r *activityRun) get(path string, out any) error {
-	return r.s.client.GetJSON(r.ctx, r.s.esplora+path, nil, out)
+	return r.s.get(r.ctx, path, out)
 }
 
 // page reads one list of transactions; failures are recorded in r.err.

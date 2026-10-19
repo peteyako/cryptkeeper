@@ -57,7 +57,17 @@ func (c Config) TaxLocation() (*time.Location, error) {
 
 type Bitcoin struct {
 	EsploraURL string `yaml:"esploraUrl"`
-	GapLimit   int    `yaml:"gapLimit"`
+	// EsploraFallbackURL is asked while EsploraURL isn't answering. It defaults to the other
+	// public server when EsploraURL is mempool.space or blockstream.info, and to none for a
+	// private node (a fallback would send its addresses to a public server); "off" disables it.
+	EsploraFallbackURL string `yaml:"esploraFallbackUrl"`
+	GapLimit           int    `yaml:"gapLimit"`
+}
+
+// publicEsplora pairs each public Esplora server with the one that backs it up.
+var publicEsplora = map[string]string{
+	"https://mempool.space/api":    "https://blockstream.info/api",
+	"https://blockstream.info/api": "https://mempool.space/api",
 }
 
 type TokenOverride struct {
@@ -134,6 +144,14 @@ func Load(path string) (Config, error) {
 		cfg.Bitcoin.EsploraURL = d.Bitcoin.EsploraURL
 	}
 	cfg.Bitcoin.EsploraURL = strings.TrimRight(cfg.Bitcoin.EsploraURL, "/")
+	switch fb := strings.TrimRight(strings.TrimSpace(cfg.Bitcoin.EsploraFallbackURL), "/"); fb {
+	case "off":
+		cfg.Bitcoin.EsploraFallbackURL = ""
+	case "":
+		cfg.Bitcoin.EsploraFallbackURL = publicEsplora[cfg.Bitcoin.EsploraURL]
+	default:
+		cfg.Bitcoin.EsploraFallbackURL = fb
+	}
 	if cfg.Bitcoin.GapLimit <= 0 {
 		cfg.Bitcoin.GapLimit = d.Bitcoin.GapLimit
 	}

@@ -33,3 +33,28 @@ func TestSourceFormSolanaVault(t *testing.T) {
 		t.Fatalf("a seed phrase in the vault field must be refused: %v", errs)
 	}
 }
+
+// TestSourceFormLedgerExport: Ledger's account JSON pasted as the key is saved as its xpub,
+// with the export's script type unless the form chose one.
+func TestSourceFormLedgerExport(t *testing.T) {
+	s := &Server{}
+	s.ParseLedgerExport = func(in string) (string, string, bool) {
+		if strings.HasPrefix(in, "{") {
+			return "xpub6LedgerAccountKey", "p2wpkh", true
+		}
+		return "", "", false
+	}
+	for _, tc := range []struct{ chosen, want string }{{"", "p2wpkh"}, {"p2tr", "p2tr"}} {
+		form := url.Values{"type": {sources.TypeBitcoin}, "label": {"Ledger"}, "kind": {"hardware"},
+			"key": {"{\n  \"xpub\": \"xpub6LedgerAccountKey\",\n  \"freshAddressPath\": \"84'/0'/0'/0/3\"\n}"}, "scriptType": {tc.chosen}}
+		r := httptest.NewRequest("POST", "/sources", strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		d, errs := s.parseSourceForm(r, "")
+		if len(errs) != 0 {
+			t.Fatalf("errs = %v", errs)
+		}
+		if d.Key != "xpub6LedgerAccountKey" || d.ScriptType != tc.want {
+			t.Errorf("chosen %q: key %q script %q, want the xpub and %q", tc.chosen, d.Key, d.ScriptType, tc.want)
+		}
+	}
+}
