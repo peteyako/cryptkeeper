@@ -14,7 +14,8 @@ import (
 var ErrTooSoon = errors.New("refreshed moments ago")
 
 // Refresher keeps the latest Snapshot fresh in the background and publishes every new
-// one to the broker. Page loads never wait on slow APIs.
+// one to the broker, including a refresh's progress as wallets finish (Warm snapshots), so
+// one slow wallet doesn't hold back the others. Page loads never wait on slow APIs.
 type Refresher struct {
 	Agg              *Aggregator
 	Broker           *Broker
@@ -31,6 +32,8 @@ type Refresher struct {
 	lastForced  time.Time
 	lastSuccess time.Time
 	kick        chan struct{}
+	gen         uint64             // bumped by Kick: a build publishes only while it is the newest
+	cancelBuild context.CancelFunc // stops the build in progress when a kick replaces it
 }
 
 // Run refreshes immediately and then every Interval until ctx is done. Kick() triggers an
@@ -67,13 +70,19 @@ func (r *Refresher) Run(ctx context.Context) {
 	}
 }
 
-// Kick schedules a refresh as soon as possible.
+// Kick schedules a refresh as soon as possible. A refresh in progress is out of date (a
+// source was added, changed or removed, or a backup restored): it stops without publishing
+// anything more, and the new one starts at once instead of waiting for its slow wallets.
 func (r *Refresher) Kick() {
 	r.mu.Lock()
 	if r.kick == nil {
 		r.kick = make(chan struct{}, 1)
 	}
 	k := r.kick
+	r.gen++
+	if r.cancelBuild != nil {
+		r.cancelBuild()
+	}
 	r.mu.Unlock()
 	select {
 	case k <- struct{}{}:
@@ -119,14 +128,28 @@ func (r *Refresher) Force(ctx context.Context) (Snapshot, error) {
 // snapshot must not be served again.
 func (r *Refresher) Rebuild(ctx context.Context) Snapshot { return r.refresh(ctx) }
 
-// refresh builds a snapshot; concurrent callers share one build.
+// refresh builds a snapshot, publishing its progress; concurrent callers share one build.
+// A build a kick replaced returns the latest snapshot instead of its own.
 func (r *Refresher) refresh(ctx context.Context) Snapshot {
 	v, _, _ := r.sf.Do("refresh", func() (any, error) {
 		// Detach from a request context so a closed browser tab doesn't cancel the build.
 		bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 		defer cancel()
+		r.mu.Lock()
+		gen := r.gen
+		r.cancelBuild = cancel
+		r.mu.Unlock()
 		start := time.Now()
-		s := r.Agg.Build(bctx)
+		s := r.Agg.BuildProgress(bctx, func(p Snapshot) {
+			r.mu.Lock() // held while publishing, so a replaced build can't publish after a kick
+			defer r.mu.Unlock()
+			if r.gen == gen {
+				r.latest = &p
+				if r.Broker != nil {
+					r.Broker.Publish(p)
+				}
+			}
+		})
 		ok := 0
 		for _, w := range s.Wallets {
 			if w.Status == StatusSynced {
@@ -134,6 +157,15 @@ func (r *Refresher) refresh(ctx context.Context) Snapshot {
 			}
 		}
 		r.mu.Lock()
+		r.cancelBuild = nil
+		if r.gen != gen {
+			latest := r.latest
+			r.mu.Unlock()
+			if latest == nil {
+				return Snapshot{}, nil
+			}
+			return *latest, nil
+		}
 		r.latest = &s
 		if ok > 0 || len(s.Wallets) == 0 {
 			r.lastSuccess = s.UpdatedAt

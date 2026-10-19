@@ -23,8 +23,10 @@ type Snapshot struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	TotalUSD  float64   `json:"totalUsd"`
 	HasStale  bool      `json:"hasStale"` // total includes stale prices or balances
-	// Warm: built at startup from the last session's balances and prices while the first live
-	// refresh runs. Its wallets are pending; nothing that needs live data should use it.
+	// Warm: not a finished live refresh. Built at startup from the last session's balances
+	// and prices while the first refresh runs, or published while a refresh is still going,
+	// its wallets not done yet showing what they showed before. Nothing that needs live data
+	// should use it.
 	Warm    bool                  `json:"warm,omitempty"`
 	Assets  []AssetRow            `json:"assets"` // merged across wallets, sorted by value desc
 	Wallets []WalletView          `json:"wallets"`

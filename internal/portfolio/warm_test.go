@@ -21,9 +21,11 @@ func noLivePrices(t *testing.T) PriceFunc {
 func lastSession(t *testing.T, a *Aggregator, at time.Time) {
 	t.Helper()
 	src := &stubSource{id: "cold", res: core.WalletResult{Holdings: []core.Holding{h("cold", "BTC", 1)}, AsOf: at}}
-	prev := *a
-	prev.Wallets = func() []Wallet { return []Wallet{{ID: "cold", Label: "Cold", Type: "bitcoin", Source: src}} }
-	prev.Prices = fixedPrices(map[string]float64{"BTC": 100})
+	prev := &Aggregator{ // the previous run: same database and clock, nothing else shared
+		DB: a.DB, StaleMax: a.StaleMax, Now: a.Now,
+		Wallets: func() []Wallet { return []Wallet{{ID: "cold", Label: "Cold", Type: "bitcoin", Source: src}} },
+		Prices:  fixedPrices(map[string]float64{"BTC": 100}),
+	}
 	prev.Build(context.Background())
 }
 
