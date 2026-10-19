@@ -101,7 +101,6 @@ type Source struct {
 	last       *scanResult
 	down       map[string]time.Time // by server base URL: didn't answer, asked last until then
 	answeredBy string               // host of the server that answered the last request
-	paused     map[string]time.Time // by server base URL: answered 429, left alone until then
 	keyUsed    bool                 // the last request was answered through the Blockstream key
 	keyErr     string               // why the Blockstream key didn't work last time; "" when it did
 	hint       string               // script-type hint for autoKey, once checked
@@ -153,7 +152,6 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 		client:  c,
 		now:     time.Now,
 		addrs:   map[[2]int]string{},
-		paused:  map[string]time.Time{},
 		down:    map[string]time.Time{},
 		store:   cfg.ScanStore,
 		servers: []esploraServer{{base: esplora, host: node}},
@@ -174,6 +172,11 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 	}
 	if len(s.servers) > 1 {
 		s.fast = failFast(c)
+	}
+	for _, srv := range s.servers {
+		if !privateHost(srv.host) {
+			httpx.SetPace(srv.host, publicPace)
+		}
 	}
 	if s.gap <= 0 {
 		s.gap = DefaultGapLimit

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -67,6 +68,9 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 		if err != nil {
 			return nil, err
 		}
+		if err := Wait(ctx, req.URL.Host); err != nil {
+			return nil, err
+		}
 		if req.Header.Get("User-Agent") == "" {
 			req.Header.Set("User-Agent", userAgent)
 		}
@@ -85,7 +89,11 @@ func (c *Client) Do(ctx context.Context, newReq func(context.Context) (*http.Req
 			continue
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && c.PaceOwn429 {
+			hold(req.URL.Host, retryAfterHeader(resp))
 			return nil, &StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req), RetryAfter: retryAfterHeader(resp)}
+		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			hold(req.URL.Host, retryAfterHeader(resp))
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			se := StatusError{Status: resp.StatusCode, Body: string(body), URL: safeURL(req), RetryAfter: retryAfterHeader(resp)}
@@ -186,4 +194,84 @@ func decode(body []byte, out any, url string) error {
 		return fmt.Errorf("decode %s: %w", url, err)
 	}
 	return nil
+}
+
+// Some public APIs block an IP that keeps going over their rate limit, so requests to their
+// hosts are spaced out process-wide, whichever Client sends them.
+var pacers sync.Map // host → *pacer
+
+type pacer struct {
+	mu       sync.Mutex
+	interval time.Duration
+	next     time.Time
+}
+
+// SetPace spaces the requests to host (as in a URL, with any port) at least interval apart,
+// across every Client in the process; the longest interval set for a host wins, and 0 removes
+// the pacing. Callers may pace finer-grained keys of their own (a host and an RPC method) and
+// wait on them with Wait.
+func SetPace(host string, interval time.Duration) {
+	if interval <= 0 {
+		pacers.Delete(host)
+		return
+	}
+	v, _ := pacers.LoadOrStore(host, &pacer{interval: interval})
+	p := v.(*pacer)
+	p.mu.Lock()
+	p.interval = max(p.interval, interval)
+	p.mu.Unlock()
+}
+
+// hold keeps every request to a paced host waiting for d after it answered 429, so the
+// others don't run into the same refusal one by one.
+func hold(host string, d time.Duration) {
+	v, ok := pacers.Load(host)
+	if !ok || d <= 0 {
+		return
+	}
+	p := v.(*pacer)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if until := time.Now().Add(d); until.After(p.next) {
+		p.next = until
+	}
+}
+
+// Pace is the interval set for host, 0 when it isn't paced.
+func Pace(host string) time.Duration {
+	v, ok := pacers.Load(host)
+	if !ok {
+		return 0
+	}
+	p := v.(*pacer)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.interval
+}
+
+// Wait blocks until a request to host (or another paced key) may start.
+func Wait(ctx context.Context, host string) error {
+	v, ok := pacers.Load(host)
+	if !ok {
+		return ctx.Err()
+	}
+	p := v.(*pacer)
+	p.mu.Lock()
+	now := time.Now()
+	start := now
+	if p.next.After(now) {
+		start = p.next
+	}
+	p.next = start.Add(p.interval)
+	p.mu.Unlock()
+	if d := start.Sub(now); d > 0 {
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return ctx.Err()
 }

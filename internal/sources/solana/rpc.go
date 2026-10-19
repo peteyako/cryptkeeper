@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"crypto-portfolio/internal/httpx"
 )
@@ -18,10 +19,19 @@ type rpcClient struct {
 	url      string
 	hc       *httpx.Client
 	scrubber *strings.Replacer
+	// methodPace spaces the calls of each method (the public RPC limits every method
+	// separately); 0 for none.
+	methodPace time.Duration
+	host       string
 }
 
 func newRPCClient(rawURL string, hc *httpx.Client) *rpcClient {
-	return &rpcClient{url: rawURL, hc: hc, scrubber: urlScrubber(rawURL)}
+	u, _ := url.Parse(rawURL)
+	host := ""
+	if u != nil {
+		host = u.Host
+	}
+	return &rpcClient{url: rawURL, hc: hc, scrubber: urlScrubber(rawURL), host: host}
 }
 
 // rpcError is a JSON-RPC error object.
@@ -41,6 +51,13 @@ type rpcResponse struct {
 func (r *rpcClient) call(ctx context.Context, method string, params []any, out any) error {
 	if params == nil {
 		params = []any{}
+	}
+	if r.methodPace > 0 {
+		key := r.host + " " + method
+		httpx.SetPace(key, r.methodPace)
+		if err := httpx.Wait(ctx, key); err != nil {
+			return err
+		}
 	}
 	req := map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
 	var resp rpcResponse

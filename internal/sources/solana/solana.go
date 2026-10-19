@@ -28,6 +28,9 @@ import (
 
 const (
 	defaultRPCURL           = "https://api.mainnet-beta.solana.com"
+	publicRPCHost           = "api.mainnet-beta.solana.com"
+	publicRPCPace           = 120 * time.Millisecond // about 83 requests per 10 s
+	publicRPCMethodPace     = 300 * time.Millisecond // about 33 of one method per 10 s
 	defaultJupiterTokensURL = "https://lite-api.jup.ag/tokens/v2/search"
 
 	lamportsDecimals = 9
@@ -98,6 +101,12 @@ func New(cfg Config, c *httpx.Client, cache MetaCache) (*Source, error) {
 		cache = NewMemoryMetaCache()
 	}
 	rpc := newRPCClient(cfg.RPCURL, c)
+	if rpc.host == publicRPCHost {
+		// The public RPC allows 100 requests per 10 s per IP, and 40 of any one method, and
+		// answers more with a 429 and a 10 s Retry-After. Every wallet stays under it together.
+		httpx.SetPace(rpc.host, publicRPCPace)
+		rpc.methodPace = publicRPCMethodPace
+	}
 	s := &Source{
 		cfg:   cfg,
 		rpc:   rpc,

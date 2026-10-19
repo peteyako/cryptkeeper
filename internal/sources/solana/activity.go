@@ -53,6 +53,9 @@ var _ core.ActivitySource = (*Source)(nil)
 
 const (
 	defaultActivityBudget = 40
+	// activityReserve: a call stops starting requests this close to its deadline, so a slow
+	// RPC ends it cleanly instead of cutting it off.
+	activityReserve = 10 * time.Second
 	// maxSeenSigs bounds the dedupe set carried in the state (~95 bytes per signature).
 	maxSeenSigs = 1000
 	// maxWatchedTokenAccts bounds how many token accounts are watched. Wallets drowning in spam
@@ -246,10 +249,14 @@ type activityRun struct {
 
 func (r *activityRun) canSpend() bool { return !r.stopped && r.left > r.floor }
 
-// take spends one RPC request; false means the budget (above the reserve) is gone or the run
-// has stopped.
+// take spends one RPC request; false means the budget (above the reserve) is gone, the run
+// has stopped, or the call's time is nearly up: then it ends like an exhausted budget, with
+// its progress and no error, rather than running into its deadline.
 func (r *activityRun) take() bool {
 	if !r.canSpend() || r.ctx.Err() != nil {
+		return false
+	}
+	if dl, ok := r.ctx.Deadline(); ok && time.Until(dl) < activityReserve {
 		return false
 	}
 	r.left--

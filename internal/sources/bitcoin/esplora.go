@@ -31,9 +31,12 @@ const (
 	// quietRescan: while the chain tip doesn't move, a scan this fresh is reused. A payment
 	// still in the mempool shows at the next block or after quietRescan.
 	quietRescan = 15 * time.Minute
-	// rateLimitPause is the least time a server that still answers 429 after paceRetries is
-	// left alone.
-	rateLimitPause  = 5 * time.Minute
+	// rateLimitPause is the least time a server that answered 429 is left alone. Public
+	// mempool servers block an IP that keeps going after a 429, so it isn't retried.
+	rateLimitPause = 5 * time.Minute
+	// publicPace spaces the requests to a public Esplora server, across all wallets: a
+	// mempool instance allows about one a second after a short burst.
+	publicPace      = time.Second
 	maxScanPerChain = 10_000 // safety stop against a server that reports every address as used
 	satsPerBTC      = 100_000_000
 
@@ -42,71 +45,10 @@ const (
 	quickTimeout = 8 * time.Second
 	downFor      = 10 * time.Minute
 
-	// paceRetries: a request answered 429 is tried this many more times, at the slower pace.
-	paceRetries = 4
 	// scanTimeout bounds a scan, which runs on after its callers give up: through a
 	// rate-limited server a full scan can take minutes.
 	scanTimeout = 10 * time.Minute
 )
-
-// minPace and maxPace bound the spacing of requests to a server that answered 429.
-var (
-	minPace = 250 * time.Millisecond
-	maxPace = 4 * time.Second
-)
-
-// hostPacer spaces the requests to one Esplora server, shared by every wallet that uses it.
-// Public servers limit request rates (a mempool instance allows a burst of about four, then
-// about one a second): a 429 doubles the spacing and every answer shortens it a little, so
-// the pace settles just under the server's limit.
-type hostPacer struct {
-	mu       sync.Mutex
-	interval time.Duration
-	next     time.Time
-}
-
-var pacers sync.Map // server base URL → *hostPacer
-
-func pacerFor(base string) *hostPacer {
-	p, _ := pacers.LoadOrStore(base, &hostPacer{})
-	return p.(*hostPacer)
-}
-
-// wait blocks until a request to the server may start.
-func (p *hostPacer) wait(ctx context.Context) error {
-	p.mu.Lock()
-	now := time.Now()
-	start := now
-	if p.next.After(now) {
-		start = p.next
-	}
-	p.next = start.Add(p.interval)
-	p.mu.Unlock()
-	if d := start.Sub(now); d > 0 {
-		t := time.NewTimer(d)
-		defer t.Stop()
-		select {
-		case <-t.C:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return nil
-}
-
-func (p *hostPacer) limited() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.interval = min(max(2*p.interval, minPace), maxPace)
-}
-
-func (p *hostPacer) answered() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.interval = p.interval * 9 / 10; p.interval < minPace/10 {
-		p.interval = 0
-	}
-}
 
 // addrState is one scanned address.
 type addrState struct {
@@ -147,6 +89,27 @@ type esploraUTXO struct {
 	} `json:"status"`
 }
 
+// privateHost reports whether host (with any port) is on this machine or the local
+// network, a node of the user's own, which needs no pacing.
+func privateHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(strings.ToLower(host), "[]")
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+	}
+	if host == "localhost" || !strings.Contains(host, ".") {
+		return true
+	}
+	for _, suffix := range []string{".local", ".lan", ".home", ".internal", ".home.arpa", ".onion"} {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // esploraHost validates an Esplora base URL and returns its host.
 func esploraHost(base string) (string, error) {
 	u, err := url.Parse(base)
@@ -167,7 +130,7 @@ func failFast(c *httpx.Client) *httpx.Client {
 	return &httpx.Client{HTTP: &h, MaxRetries: 0, BaseDelay: c.BaseDelay, PaceOwn429: true}
 }
 
-// ownPacing is c returning 429s at once, for fetch to pace.
+// ownPacing is c returning 429s at once: fetch pauses the server instead of retrying.
 func ownPacing(c *httpx.Client) *httpx.Client {
 	cc := *c
 	cc.PaceOwn429 = true
@@ -288,14 +251,21 @@ func (s *Source) usingFallback() bool {
 	return s.answeredBy != "" && s.answeredBy != s.node
 }
 
+// serverPauses holds, by server base URL, until when a server that answered 429 is left
+// alone. It is shared by every wallet, so one wallet's 429 keeps all of them off the server.
+var serverPauses = struct {
+	sync.Mutex
+	until map[string]time.Time
+}{until: map[string]time.Time{}}
+
 // fetch GETs base+path with c, sending token as a bearer token when set. A server that
 // answers 429 is left alone for its Retry-After, at least rateLimitPause: until then fetch
-// fails at once with a 429 of its own, so a scan doesn't keep spending the server's request
+// fails at once with a 429 of its own, so no wallet keeps spending the server's request
 // allowance.
 func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, out any, token string) error {
-	s.mu.Lock()
-	until := s.paused[base]
-	s.mu.Unlock()
+	serverPauses.Lock()
+	until := serverPauses.until[base]
+	serverPauses.Unlock()
 	if s.now().Before(until) {
 		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
 			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeep to slow down"}
@@ -304,27 +274,13 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 	if token != "" {
 		headers = map[string]string{"Authorization": "Bearer " + token}
 	}
-	pacer := pacerFor(base)
-	var err error
-	for range paceRetries + 1 {
-		if err = pacer.wait(ctx); err != nil {
-			return err
-		}
-		err = c.GetJSON(ctx, base+path, headers, out)
-		var se *httpx.StatusError
-		if !errors.As(err, &se) || se.Status != http.StatusTooManyRequests {
-			if err == nil {
-				pacer.answered()
-			}
-			return err
-		}
-		pacer.limited()
-	}
+	err := c.GetJSON(ctx, base+path, headers, out)
 	var se *httpx.StatusError
-	errors.As(err, &se)
-	s.mu.Lock()
-	s.paused[base] = s.now().Add(max(se.RetryAfter, rateLimitPause))
-	s.mu.Unlock()
+	if errors.As(err, &se) && se.Status == http.StatusTooManyRequests {
+		serverPauses.Lock()
+		serverPauses.until[base] = s.now().Add(max(se.RetryAfter, rateLimitPause))
+		serverPauses.Unlock()
+	}
 	return err
 }
 

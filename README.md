@@ -79,10 +79,11 @@ Public Esplora servers allow a few hundred requests an hour per IP (blockstream.
 CryptKeep reads every address of a wallet every 6 hours, and in between only the addresses that
 can change: those holding a balance and the next 5 unused ones on each chain. A payment to an
 old, emptied address shows at the next full scan. When there's no new block, a refresh reads
-only the block height. Requests to each server are paced together across all wallets: a
-"429 Too Many Requests" slows the pace and the request is tried again; a server that keeps
-answering 429 is left alone for at least 5 minutes. A scan through a slow server runs on in the
-background until it's done, and is kept across restarts.
+only the block height. Requests to a public server are spaced at least a second apart across
+all wallets (a node on your own network isn't paced). A server that answers "429 Too Many
+Requests" is left alone by every wallet for its Retry-After, at least 5 minutes: public mempool
+servers block an IP that keeps going. A scan through a slow server runs on in the background
+until it's done, and is kept across restarts.
 
 While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (and the other way
 round), and the wallet says so. List your own fallbacks, asked in order, under
@@ -112,8 +113,10 @@ Tokens that aren't on Jupiter's verified list, have no price, or are worth less 
 are collapsed into "N hidden tokens" and left out of totals: scam airdrops often carry a fake
 price. If you really hold an unverified token, add its mint to `solana.allowMints`.
 
-The public RPC is heavily rate-limited and rejects stake-account lookups. A free
-[Helius](https://www.helius.dev/) key is recommended:
+The public RPC is heavily rate-limited (100 requests per 10 s per IP, 40 of any one method), so
+CryptKeep paces all wallets' requests to it together, and the first history sync of several
+wallets takes a few passes. A free [Helius](https://www.helius.dev/) key is much faster and
+isn't paced:
 
 ```yaml
 solana:
