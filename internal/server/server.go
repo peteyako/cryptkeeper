@@ -156,6 +156,7 @@ func New(d Deps) http.Handler {
 		r.Get("/reports/tax", s.taxView)
 		s.registerTaxDownloads(r)
 		r.Post("/reports/tax/year", s.taxViewYear)
+		r.Post("/reports/tax/scope", s.taxViewScope)
 		r.Post("/reports/tax/close", s.taxClose)
 		r.Post("/reports/tax/close-cancel", s.taxCloseCancel)
 		r.Post("/reports/tax/reopen", s.taxReopen)

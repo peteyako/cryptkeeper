@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"sync"
 	"time"
 
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/portfolio"
+	"crypto-portfolio/internal/portfolios"
 	"crypto-portfolio/internal/tax"
 	"crypto-portfolio/internal/tax/report"
 )
@@ -111,6 +113,8 @@ func (s *Server) taxResult(ctx context.Context) (tax.Result, bool) {
 //     rest counted as their exchange's wallet when there is one.
 //   - Spam is spamSet of the configured hidden mints; Quiet is quietSet of the latest
 //     snapshot (the tokens hidden automatically).
+//   - With a tax scope (a portfolio, see taxScope), only its wallets count: see
+//     applyTaxScope.
 //
 // ready is false until the first live snapshot (before it, the quiet set is incomplete or the
 // last session's).
@@ -148,7 +152,75 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 			}
 		}
 	}
+	if covers, _, scoped := s.taxScope(); scoped {
+		applyTaxScope(&in, covers)
+	}
 	return in, ready, nil
+}
+
+// taxScope is the portfolio the tax reports cover (tax.yaml's scope): covers reports
+// whether a wallet counts, and name is the portfolio's. scoped is false (every wallet counts)
+// without a scope, when its portfolio no longer exists, or when it holds every wallet.
+// Only its wallets matter, not an asset filter. Wallets that aren't sources (the untracked
+// one, CSV pseudo-wallets) always count.
+func (s *Server) taxScope() (covers func(wallet string) bool, name string, scoped bool) {
+	if s.TaxSettings == nil || s.Portfolios == nil {
+		return nil, "", false
+	}
+	id := s.TaxSettings.Get().Scope
+	if id == "" {
+		return nil, "", false
+	}
+	pf, ok := s.Portfolios.Get(id)
+	if !ok || pf.Wallets.All {
+		return nil, pf.Name, false
+	}
+	sources := map[string]bool{}
+	for _, d := range s.Registry.Defs() {
+		sources[d.ID] = true
+	}
+	return func(w string) bool { return !sources[w] || pf.Wallets.Has(w) }, pf.Name, true
+}
+
+// taxScoped is snap with only the wallets the tax scope covers (snap itself without one).
+func (s *Server) taxScoped(snap portfolio.Snapshot) portfolio.Snapshot {
+	covers, _, scoped := s.taxScope()
+	if !scoped {
+		return snap
+	}
+	var ids []string
+	for _, w := range snap.Wallets {
+		if covers(w.ID) {
+			ids = append(ids, w.ID)
+		}
+	}
+	return portfolios.Apply(portfolios.Portfolio{Wallets: portfolios.Selector{IDs: ids}, Assets: portfolios.AllSelector()}, snap)
+}
+
+// applyTaxScope leaves the wallets covers rejects out of the tax entirely: their activity,
+// manual lots, write-offs and opening lots and positions. A transfer between a covered wallet
+// and a left-out one keeps its covered half, tagged own-wallet unless the user tagged it:
+// coins sent there move to the untracked wallet, and coins received from there draw on it,
+// as a move between the user's own wallets rather than a sale or a purchase.
+func applyTaxScope(in *tax.Input, covers func(string) bool) {
+	in.Txs = slices.DeleteFunc(slices.Clone(in.Txs), func(tx core.Tx) bool { return !covers(tx.SourceID) })
+	tags := maps.Clone(in.Tags)
+	if tags == nil {
+		tags = map[string]tax.Tag{}
+	}
+	for _, tx := range in.Txs {
+		if tx.PeerID == "" || tx.PeerSource == "" || covers(tx.PeerSource) {
+			continue
+		}
+		if _, tagged := tags[tx.ID]; !tagged {
+			tags[tx.ID] = tax.TagOwnWallet
+		}
+	}
+	in.Tags = tags
+	in.Manual = slices.DeleteFunc(slices.Clone(in.Manual), func(l tax.Lot) bool { return !covers(l.Wallet) })
+	in.WriteOffs = slices.DeleteFunc(slices.Clone(in.WriteOffs), func(w tax.WriteOff) bool { return !covers(w.Wallet) })
+	in.Opening = slices.DeleteFunc(slices.Clone(in.Opening), func(l tax.Lot) bool { return !covers(l.Wallet) })
+	in.OpeningParked = slices.DeleteFunc(slices.Clone(in.OpeningParked), func(p tax.Parked) bool { return !covers(p.Wallet) })
 }
 
 // taxActivity is every stored activity entry, minus CSV-imported ones the live API already

@@ -221,6 +221,15 @@ activity (including Solana position moves and staking rewards), plus:
   as that wallet's history, so older buys fund its sales; otherwise they stay in a separate CSV
   wallet.
 
+**Which wallets count:** by default every wallet does. To leave some out (an IRA, or wallets
+that aren't yours), make a portfolio of the wallets that should count and pick it in the Tax
+section's **Taxes cover** menu. Wallets outside it are left out of the open year entirely:
+their trades, income, lots and manual lots don't count. Coins moved between a covered wallet
+and a left-out one count as a move between your own wallets, not a sale or a purchase: coins
+sent out move to the untracked wallet with their dates and cost, and coins coming back draw on
+those lots. Only the portfolio's wallets matter, not its asset filter. Closed years keep the
+figures they were closed with.
+
 Tokens you hide in Settings are ignored for tax. Tokens the dashboard hides on its own
 (unverified, unpriced or dust) still count in full; only an airdrop of one that arrived worth
 nothing is left off the Needs review list.

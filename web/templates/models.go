@@ -71,14 +71,16 @@ type WalletsPage struct {
 // WalletPage is the wallet detail (Wallet.dc.html).
 type WalletPage struct {
 	Shell
-	W          portfolio.WalletView
-	Tab        string // "holdings","activity","addresses","utxos"
-	Addresses  []core.Address
-	UTXOs      []core.UTXO
-	Receive    string
-	ReceiveQR  templ.Component // nil if none; an SVG component supplied by the handler
-	IsBitcoin  bool
-	CostBasis  *float64 // from the wallet's tax lots; nil when unknown: the tile shows "—"
+	W         portfolio.WalletView
+	Tab       string // "holdings","activity","addresses","utxos"
+	Addresses []core.Address
+	UTXOs     []core.UTXO
+	Receive   string
+	ReceiveQR templ.Component // nil if none; an SVG component supplied by the handler
+	IsBitcoin bool
+	CostBasis *float64 // from the wallet's tax lots; nil when unknown: the tile shows "—"
+	// NoTax is set for a wallet the tax scope (Reports) leaves out: it has no cost basis.
+	NoTax      bool
 	Unrealized *float64
 	// CostUnits is how many units CostBasis covers (units in missing-basis lots, or with
 	// no lot at all, are left out), so the tile's avg is CostBasis / CostUnits.
@@ -317,7 +319,16 @@ type TaxPage struct {
 	ZoneNote string
 	// Err is shown instead of the report when it could not be built.
 	Err string
+	// ScopeOptions are the choices of what an open year's tax covers ("" = all wallets, else
+	// a portfolio ID); Scope is the chosen one and ScopeName its portfolio's name.
+	// ScopeNote explains a saved scope that no longer applies.
+	ScopeOptions     []ScopeOption
+	Scope, ScopeName string
+	ScopeNote        string
 }
+
+// ScopeOption is one choice of what the tax covers: a portfolio, or all wallets (ID "").
+type ScopeOption struct{ ID, Name string }
 
 // ---- Needs review -----------------------------------------------------------------------
 

@@ -99,9 +99,14 @@ func (s *Server) pnlCells(ctx context.Context, assets []portfolio.AssetRow, wall
 }
 
 // walletCost fills the wallet page's Cost basis and Unrealized tiles from that wallet's own
-// lots, and CostUnits, the units that basis covers. Rows of one asset (liquid and staked
+// lots, and CostUnits, the units that basis covers; or NoTax for a wallet the tax scope
+// leaves out. Rows of one asset (liquid and staked
 // SOL, say) are costed together.
 func (s *Server) walletCost(ctx context.Context, p *templates.WalletPage) {
+	if covers, _, scoped := s.taxScope(); scoped && !covers(p.W.ID) {
+		p.NoTax = true
+		return
+	}
 	res, ok := s.taxResult(ctx)
 	if !ok {
 		return
@@ -197,6 +202,7 @@ func (s *Server) realizedByAsset(res tax.Result) map[string]map[int]float64 {
 
 func (s *Server) reportsPage(r *http.Request) templates.ReportsPage {
 	snap, _ := s.latest()
+	snap = s.taxScoped(snap) // the profit and loss of the wallets the tax covers
 	p := templates.ReportsPage{Shell: s.shell(r, "Reports", "reports", "all", ""), Now: s.Now()}
 	for _, a := range taxedAssets(snap.Assets) {
 		p.TotalValue += a.ValueUSD

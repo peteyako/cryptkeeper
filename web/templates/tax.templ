@@ -14,17 +14,37 @@ templ TaxSection(p TaxPage) {
 					<span class="badge">{ taxSourceText(p.Report) }</span>
 				}
 			</div>
-			if len(p.Years) > 0 {
-				<form method="post" action="/reports/tax/year" data-on:change="@post(el.action, {contentType: 'form'})">
-					<label class="sr-only" for="tax-year">Tax year</label>
-					<select id="tax-year" class="input" name="year">
-						for _, y := range p.Years {
-							<option value={ strconv.Itoa(y) } selected?={ y == p.Year }>{ strconv.Itoa(y) }</option>
-						}
-					</select>
-				</form>
-			}
+			<div class="tax__pickers">
+				if len(p.ScopeOptions) > 1 {
+					<form method="post" action="/reports/tax/scope" data-on:change="@post(el.action, {contentType: 'form'})">
+						<label class="sr-only" for="tax-scope">Taxes cover</label>
+						<select id="tax-scope" class="input" name="scope">
+							for _, o := range p.ScopeOptions {
+								<option value={ o.ID } selected?={ o.ID == p.Scope }>{ scopeOptionLabel(o) }</option>
+							}
+						</select>
+					</form>
+				}
+				if len(p.Years) > 0 {
+					<form method="post" action="/reports/tax/year" data-on:change="@post(el.action, {contentType: 'form'})">
+						<label class="sr-only" for="tax-year">Tax year</label>
+						<select id="tax-year" class="input" name="year">
+							for _, y := range p.Years {
+								<option value={ strconv.Itoa(y) } selected?={ y == p.Year }>{ strconv.Itoa(y) }</option>
+							}
+						</select>
+					</form>
+				}
+			</div>
 		</div>
+		if p.ScopeName != "" {
+			<p class="muted-text">{ "Covers the wallets of " + p.ScopeName + ". Other wallets don't count, and coins moved to or from them count as moves between your own wallets, not sales or purchases." }</p>
+		}
+		if p.ScopeNote != "" {
+			@Notice("warn", "alert") {
+				{ p.ScopeNote }
+			}
+		}
 		if p.Err != "" {
 			<div role="alert">
 				@Notice("loss", "alert") {
@@ -264,4 +284,12 @@ templ taxHoldingsTab(p TaxPage) {
 			</table>
 		</div>
 	}
+}
+
+// scopeOptionLabel is how the scope picker names a choice.
+func scopeOptionLabel(o ScopeOption) string {
+	if o.ID == "" {
+		return "Taxes cover: all wallets"
+	}
+	return "Taxes cover: " + o.Name
 }

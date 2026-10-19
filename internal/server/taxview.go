@@ -314,6 +314,7 @@ func (s *Server) taxPage(ctx context.Context, year int, tab string, page int, re
 	p.Report = rep
 	if !rep.Closed {
 		p.ZoneNote = s.zoneNote(year)
+		s.fillTaxScope(&p)
 	}
 	p.ReviewTab = !rep.Closed && year == years[len(years)-1]
 	p.Pages = max(1, (len(rep.Rows)+templates.TaxPageSize-1)/templates.TaxPageSize)
@@ -364,6 +365,61 @@ func (s *Server) taxView(w http.ResponseWriter, r *http.Request) {
 
 // taxViewYear is the year selector's POST: it shows the chosen year's first capital-gains
 // page (or the posted tab).
+// fillTaxScope sets the tax section's scope picker: every portfolio that picks wallets
+// (one holding them all would change nothing), and the saved choice.
+func (s *Server) fillTaxScope(p *templates.TaxPage) {
+	if s.TaxSettings == nil || s.Portfolios == nil {
+		return
+	}
+	p.ScopeOptions = []templates.ScopeOption{{ID: "", Name: "All wallets"}}
+	for _, pf := range s.Portfolios.List() {
+		if !pf.Wallets.All {
+			p.ScopeOptions = append(p.ScopeOptions, templates.ScopeOption{ID: pf.ID, Name: pf.Name})
+		}
+	}
+	id := s.TaxSettings.Get().Scope
+	_, name, scoped := s.taxScope()
+	switch {
+	case scoped:
+		p.Scope, p.ScopeName = id, name
+	case id != "":
+		p.ScopeNote = "The portfolio these taxes were limited to is gone or now holds every wallet, so they cover every wallet."
+	}
+}
+
+// taxViewScope saves which portfolio the tax covers (scope = portfolio ID, "" for every
+// wallet) and reloads Reports, whose figures all change with it.
+func (s *Server) taxViewScope(w http.ResponseWriter, r *http.Request) {
+	bodyErr := parseBody(r) // before the response starts, which closes the request body
+	sse := datastar.NewSSE(w, r)
+	fail := func(msg string) {
+		p := s.taxPage(r.Context(), 0, "", 1, nil)
+		p.Err = msg
+		_ = sse.PatchElementTempl(templates.TaxSection(p))
+	}
+	if bodyErr != nil {
+		fail("That form could not be read.")
+		return
+	}
+	id := strings.TrimSpace(r.PostFormValue("scope"))
+	if id != "" && s.Portfolios != nil {
+		if _, ok := s.Portfolios.Get(id); !ok {
+			fail("That portfolio no longer exists.")
+			return
+		}
+	}
+	if s.TaxSettings == nil {
+		fail("Tax settings aren't available.")
+		return
+	}
+	if err := s.TaxSettings.Update(func(st *tax.Settings) { st.Scope = id }); err != nil {
+		fail("Couldn't save the choice: " + err.Error())
+		return
+	}
+	s.invalidateTax()
+	_ = sse.Redirect("/reports")
+}
+
 func (s *Server) taxViewYear(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := ctxTimeout(r, 60*time.Second)
 	defer cancel()

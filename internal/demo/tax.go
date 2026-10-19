@@ -215,6 +215,10 @@ func TaxPage(year int, tab string, empty bool) templates.TaxPage {
 	}
 	p := templates.TaxPage{Years: years, Year: year, Tab: "gains", Page: 1, Pages: 1, Report: rep}
 	p.ReviewTab = !rep.Closed && year == years[len(years)-1]
+	if !rep.Closed {
+		// The open year's scope picker: every wallet, or a portfolio that picks wallets.
+		p.ScopeOptions = []templates.ScopeOption{{ID: "", Name: "All wallets"}, {ID: PFLongTerm, Name: "Long-term"}, {ID: PFTrading, Name: "Trading"}}
+	}
 	switch {
 	case tab == "review" && p.ReviewTab:
 		p.Tab = tab

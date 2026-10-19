@@ -4831,6 +4831,12 @@ body.amounts-hidden .fig-m {
   gap: 12px;
 }
 
+.tax__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tax__downloads,
 .tax__pager {
   display: flex;

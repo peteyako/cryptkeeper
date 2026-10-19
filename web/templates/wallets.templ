@@ -179,6 +179,9 @@ templ statTiles(p WalletPage) {
 							<span>/ { rowc.Symbol }</span>
 						</span>
 					}
+				} else if p.NoTax {
+					<span class="stat__value stat__value--none">—</span>
+					<span class="stat__sub">Not in your tax reports</span>
 				} else {
 					<span class="stat__value stat__value--none">—</span>
 					<a class="stat__sub stat__link" href="/reports/koinly" data-on:click={ navClick("/reports/koinly", "") }>Import cost basis</a>
@@ -198,7 +201,11 @@ templ statTiles(p WalletPage) {
 					}
 				} else {
 					<span class="stat__value stat__value--none">—</span>
-					<span class="stat__sub">Needs a cost basis</span>
+					if p.NoTax {
+						<span class="stat__sub">Not in your tax reports</span>
+					} else {
+						<span class="stat__sub">Needs a cost basis</span>
+					}
 				}
 			</div>
 		}

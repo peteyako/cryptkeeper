@@ -34,6 +34,8 @@ type Settings struct {
 	Prices     map[string]float64  `yaml:"prices,omitempty"`     // PriceKey / FeePriceKey → USD
 	WalletBox  map[string]string   `yaml:"walletBox,omitempty"`  // source ID or Koinly wallet name → short-term 8949 box G, H or I
 	WriteOffs  []WriteOff          `yaml:"writeOffs,omitempty"`  // parked units written off
+	// Scope is the portfolio whose wallets the open year's tax covers; "" covers every wallet.
+	Scope string `yaml:"scope,omitempty"`
 }
 
 // ParseSettings decodes and validates a tax.yaml. Decoding is strict (unknown fields are

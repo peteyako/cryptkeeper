@@ -399,10 +399,11 @@ func (s *Server) reportWallets(rep report.YearReport, label func(string) string)
 	if s.TaxSettings != nil {
 		override = s.TaxSettings.Get().WalletBox
 	}
+	covers, _, scoped := s.taxScope()
 	var out []templates.ReportWallet
 	for _, d := range s.Registry.Defs() {
-		if d.Type == sources.TypeBrokerage {
-			continue // the broker's 1099-B covers it
+		if d.Type == sources.TypeBrokerage || (scoped && !covers(d.ID)) {
+			continue // the broker's 1099-B covers it; the scope leaves it out
 		}
 		var box string
 		switch {
