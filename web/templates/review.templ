@@ -9,7 +9,7 @@ import (
 // what is parked in positions, and tags whose transaction is gone. Its root is
 // #review-panel.
 templ ReviewPanel(p ReviewPage) {
-	<section id="review-panel" class="card review" aria-labelledby="review-h">
+	<section id="review-panel" class="review" aria-labelledby="review-h">
 		<div class="review__head">
 			<h2 id="review-h" class="h-card">Needs review</h2>
 			<p class="muted-text">Transactions the { strconv.Itoa(p.OpenYear) } tax figures could not settle on their own. Tag them to fix the numbers.</p>
@@ -34,8 +34,8 @@ templ ReviewPanel(p ReviewPage) {
 		if !p.TagsChecked {
 			<p class="muted-text">Activity couldn't be loaded; tags not checked</p>
 		}
-		for _, g := range p.Groups {
-			@reviewGroup(g)
+		for i, g := range p.Groups {
+			@reviewGroup(g, i)
 		}
 		if len(p.Parked) > 0 {
 			<div class="review__section">
@@ -54,7 +54,7 @@ templ ReviewPanel(p ReviewPage) {
 								<input class="input" type="date" name="date" aria-label="Write-off date" required/>
 								<input class="input" name="proceeds" inputmode="decimal" aria-label="Proceeds in USD" placeholder="Proceeds USD (0)"/>
 								<input class="input" name="note" aria-label="Note" placeholder="Note"/>
-								<button class="btn" type="submit">Write off</button>
+								<button class="btn btn--secondary btn--sm" type="submit">Write off</button>
 							</form>
 						</li>
 					}
@@ -83,7 +83,7 @@ templ ReviewPanel(p ReviewPage) {
 								<input type="hidden" name="asset" value={ w.Asset }/>
 								<input type="hidden" name="at" value={ w.At }/>
 								<input type="hidden" name="amount" value={ w.AmountKey }/>
-								<button class="btn btn--ghost" type="submit" aria-label={ "Delete the " + w.Symbol + " write-off of " + w.Date }>Delete</button>
+								<button class="btn btn--ghost btn--sm" type="submit" aria-label={ "Delete the " + w.Symbol + " write-off of " + w.Date }>Delete</button>
 							</form>
 						</li>
 					}
@@ -98,7 +98,7 @@ templ ReviewPanel(p ReviewPage) {
 						<li class="review__row">
 							<code>{ t.TxID }</code>
 							<span class="badge">{ string(t.Tag) }</span>
-							<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/tag/"+url.PathEscape(t.TxID)+"/delete") }>Remove</button>
+							<button type="button" class="btn btn--ghost btn--sm" data-on:click={ reviewPostClick("/reports/tax/tag/"+url.PathEscape(t.TxID)+"/delete") }>Remove</button>
 						</li>
 					}
 				</ul>
@@ -107,7 +107,13 @@ templ ReviewPanel(p ReviewPage) {
 	</section>
 }
 
-templ reviewGroup(g ReviewGroup) {
+// reviewGroup is one kind of issue for one asset. A taggable group has a bulk bar: a tag for
+// the rows ticked, or for all of the group's transactions (shown or not).
+templ reviewGroup(g ReviewGroup, i int) {
+	{{ bulk := "" }}
+	if g.Kind != ReviewTagged && len(g.Items) > 0 && len(g.Items[0].TagOptions) > 0 {
+		{{ bulk = "review-bulk-" + strconv.Itoa(i) }}
+	}
 	<details class="review__group" open?={ g.Kind != ReviewTagged }>
 		<summary>
 			<span class="review__title">{ g.Title }</span>
@@ -116,21 +122,26 @@ templ reviewGroup(g ReviewGroup) {
 			}
 			<span class="badge">{ strconv.Itoa(g.Count) }</span>
 		</summary>
-		if g.Kind != ReviewTagged && len(g.Items) > 0 && len(g.Items[0].TagOptions) > 0 {
-			<form class="review__form" method="post" action="/reports/tax/tag-bulk" data-on:submit={ reviewBulkSubmit(g.Count, g.Symbol) }>
+		if bulk != "" {
+			<form id={ bulk } class="review__bulk" method="post" action="/reports/tax/tag-bulk">
 				<input type="hidden" name="kind" value={ string(g.Kind) }/>
 				<input type="hidden" name="asset" value={ g.Asset }/>
-				<select class="input" name="tag" aria-label={ "Tag all " + g.Symbol }>
+				<label class="review__all">
+					<input type="checkbox" data-on:change={ reviewSelectAll(bulk) }/>
+					Select all
+				</label>
+				<select class="input" name="tag" aria-label={ "Tag for the " + g.Symbol + " transactions" }>
 					for _, o := range g.Items[0].TagOptions {
 						<option value={ o }>{ o }</option>
 					}
 				</select>
-				<button class="btn" type="submit">{ "Tag all " + strconv.Itoa(g.Count) }</button>
+				<button type="button" class="btn btn--secondary btn--sm" name="only" value="selected" data-on:click={ reviewBulkSelected }>Tag selected</button>
+				<button type="button" class="btn btn--primary btn--sm" data-on:click={ reviewBulkSubmit(g.Count, g.Symbol) }>{ "Tag all " + strconv.Itoa(g.Count) }</button>
 			</form>
 		}
 		<ul class="review__list">
 			for _, it := range g.Items {
-				@reviewItem(it)
+				@reviewItem(it, bulk)
 			}
 		</ul>
 		if g.Count > len(g.Items) {
@@ -139,11 +150,19 @@ templ reviewGroup(g ReviewGroup) {
 	</details>
 }
 
-templ reviewItem(it ReviewItem) {
-	<li class="review__row" data-tx={ it.TxID }>
-		<span class="muted-text">{ it.Time }</span>
-		<span>{ it.WalletLabel }</span>
-		<span class="num">
+// reviewItem is one transaction to review, in fixed columns: its tick box for the group's
+// bulk bar (bulk is the bar's form id; "" for none), when, wallet, amount, value, explorer
+// link, then its tag and price controls.
+templ reviewItem(it ReviewItem, bulk string) {
+	<li class="review__row review__tx" data-tx={ it.TxID }>
+		if bulk != "" {
+			<input class="review__pick" type="checkbox" name="tx" value={ it.TxID } form={ bulk } aria-label={ "Select " + it.Symbol + " on " + it.Time }/>
+		} else {
+			<span></span>
+		}
+		<span class="review__when muted-text">{ it.Time }</span>
+		<span class="review__wallet">{ it.WalletLabel }</span>
+		<span class="review__amt num">
 			if it.Direction == "in" {
 				@FigText("+"+it.Amount+" "+it.Symbol, "•••• "+it.Symbol)
 			} else if it.Direction == "out" {
@@ -152,40 +171,45 @@ templ reviewItem(it ReviewItem) {
 				@FigText(it.Amount+" "+it.Symbol, "•••• "+it.Symbol)
 			}
 		</span>
-		if it.USD != nil {
-			<span class="muted-text">
+		<span class="review__usd muted-text num">
+			if it.USD != nil {
 				@FigFiat(*it.USD)
-			</span>
-		}
-		if it.Tag != "" {
-			<span class="badge">{ it.Tag }</span>
-		}
-		if it.Note != "" {
-			<span class="muted-text">{ it.Note }</span>
-		}
-		if u := SafeExplorerURL(it.Explorer); u != "" {
-			<a href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">Explorer</a>
-		}
-		if len(it.TagOptions) > 0 {
-			<form class="review__form" method="post" action="/reports/tax/tag" data-on:submit={ reviewFormSubmit } data-on:change={ reviewFormSubmit }>
-				<input type="hidden" name="tx" value={ it.TxID }/>
-				<input type="hidden" name="asset" value={ it.Asset }/>
-				<select class="input" name="tag" aria-label={ "Tag for " + it.Symbol + " on " + it.Time }>
-					<option value="">No tag</option>
-					for _, o := range it.TagOptions {
-						<option value={ o } selected?={ o == it.Tag }>{ o }</option>
-					}
-				</select>
-				<input class="input" name="note" aria-label="Note" placeholder="Note" value={ it.Note }/>
-			</form>
-		}
-		if it.PriceKey != "" {
-			<form class="review__form" method="post" action="/reports/tax/price" data-on:submit={ reviewFormSubmit }>
-				<input type="hidden" name="key" value={ it.PriceKey }/>
-				<input class="input" name="usd" inputmode="decimal" aria-label="Price in USD" placeholder="USD price"/>
-				<button class="btn" type="submit">Set price</button>
-			</form>
-		}
+			}
+		</span>
+		<span class="review__link">
+			if u := SafeExplorerURL(it.Explorer); u != "" {
+				<a href={ templ.SafeURL(u) } target="_blank" rel="noopener noreferrer">Explorer</a>
+			}
+		</span>
+		<div class="review__controls">
+			if len(it.TagOptions) > 0 {
+				<form class="review__form" method="post" action="/reports/tax/tag" data-on:submit={ reviewFormSubmit } data-on:change={ reviewFormSubmit }>
+					<input type="hidden" name="tx" value={ it.TxID }/>
+					<input type="hidden" name="asset" value={ it.Asset }/>
+					<select class="input" name="tag" aria-label={ "Tag for " + it.Symbol + " on " + it.Time }>
+						<option value="">No tag</option>
+						for _, o := range it.TagOptions {
+							<option value={ o } selected?={ o == it.Tag }>{ o }</option>
+						}
+					</select>
+					<input class="input review__note" name="note" aria-label="Note" placeholder="Note" value={ it.Note }/>
+				</form>
+			} else {
+				if it.Tag != "" {
+					<span class="badge">{ it.Tag }</span>
+				}
+				if it.Note != "" {
+					<span class="muted-text">{ it.Note }</span>
+				}
+			}
+			if it.PriceKey != "" {
+				<form class="review__form" method="post" action="/reports/tax/price" data-on:submit={ reviewFormSubmit }>
+					<input type="hidden" name="key" value={ it.PriceKey }/>
+					<input class="input review__price" name="usd" inputmode="decimal" aria-label="Price in USD" placeholder="USD price"/>
+					<button class="btn btn--secondary btn--sm" type="submit">Set price</button>
+				</form>
+			}
+		</div>
 	</li>
 }
 
@@ -197,20 +221,20 @@ templ CloseCardView(c CloseCard) {
 			<form class="review__form" method="post" action={ "/reports/tax/" + c.Confirm } data-on:submit={ reviewFormSubmit }>
 				<input type="hidden" name="year" value={ strconv.Itoa(c.Year) }/>
 				<input type="hidden" name="confirm" value="1"/>
-				<button class="btn" type="submit">Confirm</button>
-				<button type="button" class="btn btn--ghost" data-on:click={ reviewPostClick("/reports/tax/close-cancel") }>Cancel</button>
+				<button class="btn btn--primary btn--sm" type="submit">Confirm</button>
+				<button type="button" class="btn btn--ghost btn--sm" data-on:click={ reviewPostClick("/reports/tax/close-cancel") }>Cancel</button>
 			</form>
 		} else {
 			if c.CloseYear > 0 {
 				<form class="review__form" method="post" action="/reports/tax/close" data-on:submit={ reviewFormSubmit }>
 					<input type="hidden" name="year" value={ strconv.Itoa(c.CloseYear) }/>
-					<button class="btn" type="submit">{ "Close " + strconv.Itoa(c.CloseYear) }</button>
+					<button class="btn btn--secondary btn--sm" type="submit">{ "Close " + strconv.Itoa(c.CloseYear) }</button>
 				</form>
 			}
 			if c.ReopenYear > 0 {
 				<form class="review__form" method="post" action="/reports/tax/reopen" data-on:submit={ reviewFormSubmit }>
 					<input type="hidden" name="year" value={ strconv.Itoa(c.ReopenYear) }/>
-					<button class="btn btn--ghost" type="submit">{ "Reopen " + strconv.Itoa(c.ReopenYear) }</button>
+					<button class="btn btn--secondary btn--sm" type="submit">{ "Reopen " + strconv.Itoa(c.ReopenYear) }</button>
 				</form>
 			}
 		}

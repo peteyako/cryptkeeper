@@ -342,6 +342,15 @@ func reviewBulkSubmit(count int, symbol string) string {
 	return "confirm(" + JSString(msg) + ") && @post('/reports/tax/tag-bulk', {contentType: 'form'})"
 }
 
+// reviewBulkSelected tags the group's ticked rows: their boxes belong to the bulk form, and
+// the button's only=selected says to tag just those.
+const reviewBulkSelected = `@post('/reports/tax/tag-bulk', {contentType: 'form'})`
+
+// reviewSelectAll ticks or clears every row box of the bulk form with id form.
+func reviewSelectAll(form string) string {
+	return "document.querySelectorAll('input[form=" + form + "]').forEach(c => c.checked = el.checked)"
+}
+
 // ---- alerts -----------------------------------------------------------------------------
 
 // alertTestClick sends a test notification.

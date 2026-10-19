@@ -163,12 +163,24 @@ func (s *Server) taxTag(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// taxTagBulk tags every transaction in the (kind, asset) group, not just the ones shown.
+// taxTagBulk tags every transaction in the (kind, asset) group, not just the ones shown; with
+// only=selected, just the group's transactions whose tx boxes are ticked.
 func (s *Server) taxTagBulk(w http.ResponseWriter, r *http.Request) {
 	if !s.readForm(w, r) {
 		return
 	}
 	kind, asset, tag := tax.IssueKind(r.PostFormValue("kind")), r.PostFormValue("asset"), tax.Tag(strings.TrimSpace(r.PostFormValue("tag")))
+	var picked map[string]bool
+	if r.PostFormValue("only") == "selected" {
+		picked = map[string]bool{}
+		for _, id := range r.PostForm["tx"] {
+			picked[id] = true
+		}
+		if len(picked) == 0 {
+			s.patchReview(w, r, "Tick the transactions to tag first, or use Tag all.")
+			return
+		}
+	}
 	res, ok := s.taxResult(r.Context())
 	txs, ok2 := s.activityByID(r)
 	if !ok || !ok2 {
@@ -183,7 +195,7 @@ func (s *Server) taxTagBulk(w http.ResponseWriter, r *http.Request) {
 	refused, firstMsg := 0, ""
 	seen := map[string]bool{}
 	for _, is := range res.Issues {
-		if is.Kind != kind || is.Asset != asset || seen[is.TxID] {
+		if is.Kind != kind || is.Asset != asset || seen[is.TxID] || (picked != nil && !picked[is.TxID]) {
 			continue
 		}
 		tx, found := txs[is.TxID]

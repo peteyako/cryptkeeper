@@ -4764,22 +4764,31 @@ body.amounts-hidden .fig-m {
   display: contents;
 }
 
-/* Needs review (Reports) */
+/* Needs review (Reports): a tab of the Tax card, so no card of its own. */
 .review {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
-.review__group {
+.review__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review__group,
+.review__section {
   border-top: 1px solid var(--border);
-  padding-top: 8px;
+  padding-top: 12px;
 }
 
 .review__group > summary {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 32px;
   cursor: pointer;
 }
 
@@ -4787,31 +4796,179 @@ body.amounts-hidden .fig-m {
   font-weight: 600;
 }
 
-.review__section {
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
+/* Controls in the panel are compact; a phone keeps them full size. */
+.review .input {
+  width: auto;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+@media (pointer: coarse) {
+  .review .input {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* The bulk bar: select all, a tag, then tag the ticked rows or the whole group. */
+.review__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.review__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .review__list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .review__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
+  gap: 6px 12px;
+  padding: 6px 0;
 }
 
-.review__head {
+/* A transaction row: tick, when, wallet, amount, value and link, then its controls on a
+   second line; a wide panel has room for one line. Each row is its own grid, so no column
+   may size to its content, or rows would not line up. */
+.review__list {
+  container-type: inline-size;
+}
+
+.review__tx {
+  display: grid;
+  grid-template-columns: 18px 8.5rem minmax(3rem, 1fr) 13rem 4.5rem 4rem;
+  border-top: 1px solid var(--border);
+}
+
+.review__tx > * {
+  min-width: 0;
+}
+
+.review__wallet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review__amt,
+.review__usd {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.review__controls,
+.review__form {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.review__controls {
+  grid-column: 2 / -1;
+}
+
+.review .review__form select.input {
+  width: 8.5rem;
+}
+
+.review .review__note {
+  width: 10rem;
+}
+
+.review .review__price {
+  width: 7rem;
+}
+
+.review__pick,
+.review__all input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+@container (min-width: 1000px) {
+  .review__tx {
+    grid-template-columns: 18px 8.5rem minmax(3rem, 1fr) 13rem 4.5rem 4rem 19.5rem;
+  }
+
+  .review__controls {
+    grid-column: auto;
+    justify-content: flex-end;
+  }
+}
+
+/* A phone: tick on the left; when and amount, wallet and value, then the link and the
+   controls across. */
+@container (max-width: 559.98px) {
+  .review__tx {
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "pick when amt"
+      "pick wallet usd"
+      "pick link link"
+      "pick controls controls";
+    align-items: start;
+  }
+
+  .review__tx > :first-child {
+    grid-area: pick;
+    margin-top: 2px;
+  }
+
+  .review__when {
+    grid-area: when;
+  }
+
+  .review__wallet {
+    grid-area: wallet;
+  }
+
+  .review__amt {
+    grid-area: amt;
+  }
+
+  .review__usd {
+    grid-area: usd;
+  }
+
+  .review__link {
+    grid-area: link;
+  }
+
+  .review__link:empty {
+    display: none;
+  }
+
+  .review__controls {
+    grid-area: controls;
+  }
+
+  .review .review__note {
+    flex: 1 1 8rem;
+  }
 }
 
 /* ---- reports: tax section -------------------------------------------------------------- */

@@ -531,3 +531,30 @@ func TestRemoveStalePriceOverride(t *testing.T) {
 		t.Errorf("setting on unknown tx: %s", out)
 	}
 }
+
+// TestTagBulkSelected: "Tag selected" tags only the group's ticked transactions; with none
+// ticked it says so and saves nothing. The panel's rows carry the tick boxes.
+func TestTagBulkSelected(t *testing.T) {
+	e := newEnv(t, "")
+	at := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	e.upsertTxs(
+		reviewRecv("a", "hot", "SOL", 1, at), reviewRecv("b", "hot", "SOL", 2, at.Add(time.Hour)),
+		reviewRecv("c", "hot", "SOL", 3, at.Add(2*time.Hour)),
+	)
+	panel := e.reviewPost("/reports/tax/tag-bulk", url.Values{"kind": {string(tax.IssueUnmatchedReceive)}, "asset": {"SOL"}, "tag": {"income"}, "only": {"selected"}})
+	if !strings.Contains(panel, "Tick the transactions to tag first") || len(e.taxSet.Get().Tags) != 0 {
+		t.Fatalf("nothing ticked: tags %v\n%.600s", e.taxSet.Get().Tags, panel)
+	}
+	e.reviewPost("/reports/tax/tag-bulk", url.Values{
+		"kind": {string(tax.IssueUnmatchedReceive)}, "asset": {"SOL"}, "tag": {"income"}, "only": {"selected"},
+		"tx": {"hot:a", "hot:c", "other:z"},
+	})
+	tags := e.taxSet.Get().Tags
+	if len(tags) != 2 || tags["hot:a"].Tag != tax.TagIncome || tags["hot:c"].Tag != tax.TagIncome {
+		t.Fatalf("tags %v, want hot:a and hot:c only", tags)
+	}
+	_, page := e.do("GET", "/reports/tax?tab=review", nil, nil)
+	if !strings.Contains(page, `class="review__pick" type="checkbox" name="tx" value="hot:b" form="review-bulk-`) || !strings.Contains(page, "Tag selected") {
+		t.Errorf("the review rows have no tick boxes:\n%s", within(page, "review__bulk", 1500))
+	}
+}
