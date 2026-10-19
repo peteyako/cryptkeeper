@@ -13,6 +13,11 @@ tasks:
     cmds:
       - go tool templ generate
 
+  map:
+    desc: Rebuild the system map's indexes and the AGENTS.md twins of CLAUDE.md (docs/map)
+    cmds:
+      - sh docs/map/_meta/build.sh
+
   run:
     desc: Run CryptKeeper locally (http://localhost:8787)
     deps: [generate]
