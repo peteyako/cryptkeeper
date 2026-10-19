@@ -187,7 +187,12 @@ templ chartFigure(points []portfolio.Point, aria, emptyNote string, private bool
 	{{ line, area := SVGPath(points, 800, 220) }}
 	{{ axes := ChartAxesOf(points, 800, 220, format) }}
 	{{ hover := ChartHoverJSON(points, 800, 220, format) }}
-	<div class="chart-wrap" data-chart?={ hover != "" } data-chart={ hover }>
+	<div
+		class="chart-wrap"
+		if hover != "" {
+			data-chart={ hover }
+		}
+	>
 		<div class="chart__y">
 			for i, l := range axes.Y {
 				<span class={ "chart__ylab", "chart__ylab--" + strconv.Itoa(i) }>

@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -8,6 +9,37 @@ import (
 
 	"cryptkeeper/internal/portfolio"
 )
+
+// TestChartCarriesItsPointsOnce: the chart's wrapper carries the readout's points in a single
+// data-chart attribute. A browser keeps the first of two same-named attributes, so a second,
+// empty data-chart in front of the real one leaves chart.js with no points and no readout.
+// With nothing to draw there is no data-chart at all.
+func TestChartCarriesItsPointsOnce(t *testing.T) {
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	render := func(points []portfolio.Point) string {
+		var b strings.Builder
+		if err := chartFigure(points, "Value", "nothing yet", false, Fiat).Render(context.Background(), &b); err != nil {
+			t.Fatal(err)
+		}
+		html := b.String()
+		start := strings.Index(html, `<div class="chart-wrap"`)
+		if start < 0 {
+			t.Fatalf("no chart wrapper in:\n%s", html)
+		}
+		return html[start : start+strings.Index(html[start:], ">")+1]
+	}
+
+	tag := render([]portfolio.Point{{T: day, V: 100}, {T: day.AddDate(0, 0, 1), V: 120}})
+	if n := strings.Count(tag, "data-chart"); n != 1 {
+		t.Errorf("data-chart appears %d times in %s, want once", n, tag)
+	}
+	if !strings.Contains(tag, `data-chart="[{`) {
+		t.Errorf("data-chart doesn't carry the points: %s", tag)
+	}
+	if tag := render(nil); strings.Contains(tag, "data-chart") {
+		t.Errorf("a chart with nothing to draw has data-chart: %s", tag)
+	}
+}
 
 func TestAxisLabels(t *testing.T) {
 	for _, tc := range []struct {
