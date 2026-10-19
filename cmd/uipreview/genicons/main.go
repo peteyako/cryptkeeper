@@ -1,4 +1,4 @@
-// Command genicons renders the CryptKeep app icon (the accent rounded square with the wallet
+// Command genicons renders the CryptKeeper app icon (the accent rounded square with the wallet
 // glyph from the design boards) to PNG files. Run it once and commit the output:
 //
 //	go run ./cmd/uipreview/genicons -out web/static/icons

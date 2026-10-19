@@ -46,15 +46,15 @@ func Koinly(now time.Time) templates.KoinlyPage {
 		},
 		Recon: []templates.KoinlyReconRow{
 			{KoinlyAsset: "BTC (Bitcoin)", AssetKey: "BTC", Symbol: "BTC", KoinlyQty: 0.35, KoinlyCost: 13250,
-				CryptKeepQty: 0.30006114, Dated: 0.05, Various: 0.25006114, Untracked: 0.04993886},
+				CryptKeeperQty: 0.30006114, Dated: 0.05, Various: 0.25006114, Untracked: 0.04993886},
 			{KoinlyAsset: "SOL (Solana)", AssetKey: "SOL", Symbol: "SOL", KoinlyQty: 41.5, KoinlyCost: 5100,
-				CryptKeepQty: 42.75, Dated: 12, Various: 29.5, MissingBasis: 1.25, ExtraBasis: 212.5},
+				CryptKeeperQty: 42.75, Dated: 12, Various: 29.5, MissingBasis: 1.25, ExtraBasis: 212.5},
 		},
 		Problems: []string{
 			"activity history for Kraken doesn't reach " + strconv.Itoa(year+1) + "-01-01; its quantity may be off",
 			"JUP (Jupiter): skipped; Koinly's $610.00 cost won't carry over",
-			"BTC: Koinly 0.35 vs CryptKeep 0.30006114",
-			"SOL: Koinly 41.5 vs CryptKeep 42.75",
+			"BTC: Koinly 0.35 vs CryptKeeper 0.30006114",
+			"SOL: Koinly 41.5 vs CryptKeeper 42.75",
 		},
 	}
 	return templates.KoinlyPage{Shell: Shell("Import from Koinly", "reports", "all", ""), Wizard: w}

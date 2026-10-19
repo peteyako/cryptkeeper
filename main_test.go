@@ -55,20 +55,38 @@ func TestRenameLegacyDB(t *testing.T) {
 	if err := renameLegacyDB(dir); err != nil {
 		t.Fatal(err)
 	}
-	if read(dir, "cryptkeep.db") != "vault.db" || read(dir, "cryptkeep.db-wal") != "vault.db-wal" {
-		t.Fatal("legacy database and WAL not moved to cryptkeep.db")
+	if read(dir, "cryptkeeper.db") != "vault.db" || read(dir, "cryptkeeper.db-wal") != "vault.db-wal" {
+		t.Fatal("legacy database and WAL not moved to cryptkeeper.db")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "vault.db")); !os.IsNotExist(err) {
 		t.Fatalf("vault.db still present: %v", err)
 	}
 
-	// Once cryptkeep.db exists, a vault.db is left alone and never clobbers it.
+	// Once cryptkeeper.db exists, a vault.db is left alone and never clobbers it.
 	write(dir, "vault.db")
 	if err := renameLegacyDB(dir); err != nil {
 		t.Fatal(err)
 	}
-	if read(dir, "cryptkeep.db") != "vault.db" || read(dir, "vault.db") != "vault.db" {
-		t.Fatal("existing cryptkeep.db was replaced")
+	if read(dir, "cryptkeeper.db") != "vault.db" || read(dir, "vault.db") != "vault.db" {
+		t.Fatal("existing cryptkeeper.db was replaced")
+	}
+
+	// The CryptKeep-era name moves the same way, and wins over an older vault.db.
+	dir = t.TempDir()
+	write(dir, "cryptkeep.db")
+	write(dir, "cryptkeep.db-shm")
+	write(dir, "vault.db")
+	if err := renameLegacyDB(dir); err != nil {
+		t.Fatal(err)
+	}
+	if read(dir, "cryptkeeper.db") != "cryptkeep.db" || read(dir, "cryptkeeper.db-shm") != "cryptkeep.db-shm" {
+		t.Fatal("cryptkeep.db and its shared memory not moved to cryptkeeper.db")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cryptkeep.db")); !os.IsNotExist(err) {
+		t.Fatalf("cryptkeep.db still present: %v", err)
+	}
+	if read(dir, "vault.db") != "vault.db" {
+		t.Fatal("vault.db touched although cryptkeep.db was the newer database")
 	}
 
 	// A fresh data directory has nothing to move.
@@ -78,7 +96,7 @@ func TestRenameLegacyDB(t *testing.T) {
 }
 
 func TestExportCommandsEncryptWithKey(t *testing.T) {
-	t.Setenv("CRYPTKEEP_SECRET_KEY", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
+	t.Setenv("CRYPTKEEPER_SECRET_KEY", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{5}, 32)))
 	missing := filepath.Join(t.TempDir(), "missing")
 	install := func(dir string) []string { return []string{"-data", dir, "-config", missing, "-env", missing} }
 	read := func(path string) string {
@@ -100,7 +118,7 @@ func TestExportCommandsEncryptWithKey(t *testing.T) {
 		if err := cmd(append([]string{"export", "-o", out}, install(src)...)); err != nil {
 			t.Fatalf("%s export: %v", name, err)
 		}
-		if f := read(out); !strings.Contains(f, "cryptkeep: encrypted") || strings.Contains(f, "Kids") {
+		if f := read(out); !strings.Contains(f, "cryptkeeper: encrypted") || strings.Contains(f, "Kids") {
 			t.Fatalf("%s export is not encrypted:\n%s", name, f)
 		}
 		files[name] = out

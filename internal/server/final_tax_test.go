@@ -114,7 +114,7 @@ func TestFtZoneChangeAfterClose(t *testing.T) {
 		t.Skip(err)
 	}
 	e := newEnv(t, "", nowAt(at(2027, 2, 1, 12, 0)), func(d *Deps) { d.TaxLoc = ny })
-	if err := e.taxYears.Save(tax.Year{Year: 2025, Source: "cryptkeep", Timezone: "UTC", ClosedAt: at(2026, 1, 5, 0, 0),
+	if err := e.taxYears.Save(tax.Year{Year: 2025, Source: "cryptkeeper", Timezone: "UTC", ClosedAt: at(2026, 1, 5, 0, 0),
 		ClosingLots: []tax.Lot{solLot("hot", 5, 500)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestFtKoinlyYearHidesTransactionsLink(t *testing.T) {
 		t.Errorf("Koinly year downloads:\n%s", within(k, "tax__downloads", 1500))
 	}
 	if c := render(2026); !strings.Contains(c, "/reports/tax/2026/transactions.csv") {
-		t.Error("CryptKeep year lost its transactions link")
+		t.Error("CryptKeeper year lost its transactions link")
 	}
 }
 
@@ -368,14 +368,14 @@ func TestFtZipSurvivesIRSFailure(t *testing.T) {
 		t.Fatalf("status %d: %.200s", resp.StatusCode, body)
 	}
 	files, order := zipNames(t, body)
-	if _, ok := files["cryptkeep_2026_irs_reports_form_8949_schedule_d.pdf"]; ok {
+	if _, ok := files["cryptkeeper_2026_irs_reports_form_8949_schedule_d.pdf"]; ok {
 		t.Error("the failed PDF is in the zip")
 	}
-	note := files["cryptkeep_2026_NOTE.txt"]
+	note := files["cryptkeeper_2026_NOTE.txt"]
 	if !strings.Contains(note, "IRS forms") || !strings.Contains(note, "invented form failure") {
 		t.Errorf("NOTE.txt = %q", note)
 	}
-	if len(order) != 9 || files["cryptkeep_2026_capital_gains_report.csv"] == "" {
+	if len(order) != 9 || files["cryptkeeper_2026_capital_gains_report.csv"] == "" {
 		t.Errorf("entries %v", order)
 	}
 }
@@ -407,7 +407,7 @@ func TestFtOpeningFromCSVWalletFollowsTheExchange(t *testing.T) {
 	if _, err := e.reg.Upsert(sources.Def{ID: "kr", Type: sources.TypeKraken, Label: "Kraken"}); err != nil {
 		t.Fatal(err)
 	}
-	y := tax.Year{Year: 2025, Source: "cryptkeep", ClosedAt: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC),
+	y := tax.Year{Year: 2025, Source: "cryptkeeper", ClosedAt: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC),
 		ClosingLots:   []tax.Lot{{Wallet: "kraken-csv", Asset: "SOL", Amount: 2, CostUSD: 40, Acquired: time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC)}},
 		ClosingParked: []tax.Parked{{Wallet: "kraken-csv", Asset: "SOL", Amount: 1}}}
 	if err := e.taxYears.Save(y); err != nil {

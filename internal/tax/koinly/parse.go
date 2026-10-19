@@ -1,5 +1,5 @@
 // Package koinly parses Koinly's CSV exports (holdings, transactions, capital gains,
-// income) so a year's closing state can seed CryptKeep's tax lots.
+// income) so a year's closing state can seed CryptKeeper's tax lots.
 package koinly
 
 import (

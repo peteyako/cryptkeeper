@@ -54,7 +54,7 @@ func (s *Server) taxBundleFor(w http.ResponseWriter, r *http.Request) (*taxBundl
 	if errors.Is(err, errNoTaxData) {
 		loc := s.taxLoc()
 		rep, err = report.YearReport{
-			Year: year, Source: "cryptkeep", Loc: loc,
+			Year: year, Source: "cryptkeeper", Loc: loc,
 			AsOf: time.Date(year, 12, 31, 23, 59, 59, 0, loc),
 		}, nil
 	}
@@ -69,7 +69,7 @@ func (s *Server) taxBundleFor(w http.ResponseWriter, r *http.Request) (*taxBundl
 
 func (b *taxBundle) koinly() bool { return b.rep.Source == "koinly" }
 
-// transactions writes the Koinly-format transaction history (CryptKeep years only) of the
+// transactions writes the Koinly-format transaction history (CryptKeeper years only) of the
 // activity the engine replays: taxActivity (no CSV duplicate of a synced trade, CSV rows in
 // their exchange's wallet) without what it ignores as spam.
 func (b *taxBundle) transactions(w io.Writer) error {
@@ -183,7 +183,7 @@ func (s *Server) taxIRSForms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="cryptkeep_%d_irs_reports_form_8949_schedule_d.pdf"`, b.year))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="cryptkeeper_%d_irs_reports_form_8949_schedule_d.pdf"`, b.year))
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(buf.Bytes())
 }
@@ -214,7 +214,7 @@ func (s *Server) taxReport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// taxZip bundles every report of the year, named like Koinly's files with a cryptkeep_<year>_
+// taxZip bundles every report of the year, named like Koinly's files with a cryptkeeper_<year>_
 // prefix. The IRS forms are optional: when they can't be filled the zip goes out without
 // them, with a NOTE.txt saying why.
 func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +246,7 @@ func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
 		if e.skip {
 			continue
 		}
-		name := fmt.Sprintf("cryptkeep_%d_%s", b.year, e.name)
+		name := fmt.Sprintf("cryptkeeper_%d_%s", b.year, e.name)
 		write := e.write
 		if e.optional != "" {
 			// Filled aside first, so a failure leaves no partial file in the zip.
@@ -269,7 +269,7 @@ func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(notes) > 0 {
-		f, err := zw.Create(fmt.Sprintf("cryptkeep_%d_NOTE.txt", b.year))
+		f, err := zw.Create(fmt.Sprintf("cryptkeeper_%d_NOTE.txt", b.year))
 		if err == nil {
 			_, err = io.WriteString(f, strings.Join(notes, "")+
 				"\nEvery other file is complete. Download the file again from the Tax section later, or copy the figures from the Form 8949 and Schedule D pages of complete_tax_report.html.\n")
@@ -284,7 +284,7 @@ func (s *Server) taxZip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="cryptkeep-tax-%d-%s.zip"`, b.year, s.Now().Format("2006-01-02")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="cryptkeeper-tax-%d-%s.zip"`, b.year, s.Now().Format("2006-01-02")))
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(buf.Bytes())
 }
@@ -298,7 +298,7 @@ func (s *Server) taxMethod(rep report.YearReport) string {
 	base := "Cost basis method: FIFO, tracked per wallet (Rev. Proc. 2024-28)."
 	if s.TaxYears != nil {
 		first := 0
-		// The latest Koinly-closed year before this one: where the CryptKeep run continues from.
+		// The latest Koinly-closed year before this one: where the CryptKeeper run continues from.
 		for _, yr := range s.TaxYears.Years() {
 			if ty, ok := s.TaxYears.Get(yr); ok && ty.Source == "koinly" && yr < rep.Year && yr > first {
 				first = yr
@@ -310,7 +310,7 @@ func (s *Server) taxMethod(rep report.YearReport) string {
 				base, first+1, k, k)
 		}
 	}
-	return base + " Opening basis computed by CryptKeep from the wallets' full history."
+	return base + " Opening basis computed by CryptKeeper from the wallets' full history."
 }
 
 func (s *Server) taxReportView(b *taxBundle) templates.TaxReportView {
@@ -373,7 +373,7 @@ func longBox(short string) string {
 }
 
 // reportWallets lists the wallets of the report with their type and Form 8949 box. A
-// CryptKeep year lists the registered wallets (plus the untracked one when rows use it); a
+// CryptKeeper year lists the registered wallets (plus the untracked one when rows use it); a
 // Koinly year lists the wallets of its rows with the boxes they landed in.
 func (s *Server) reportWallets(rep report.YearReport, label func(string) string) []templates.ReportWallet {
 	if rep.Source == "koinly" {

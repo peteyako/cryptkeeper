@@ -131,7 +131,7 @@ type stockEnv struct {
 
 func newStockEnv(t *testing.T) *stockEnv {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestYahooCapturedAnswers(t *testing.T) {
 	mux.HandleFunc("GET /y1/v8/finance/chart/VTI", func(w http.ResponseWriter, r *http.Request) { w.Write(chart) })
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

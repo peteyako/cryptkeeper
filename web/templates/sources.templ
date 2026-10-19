@@ -185,13 +185,13 @@ func formLede(p SourceFormPage) string {
 	case "kraken":
 		return "Create an API key in your Kraken settings and paste it below."
 	case "bitcoin":
-		return "Export the extended public key (xpub / zpub) from your device app, or paste an output descriptor or address. CryptKeep derives every address from it."
+		return "Export the extended public key (xpub / zpub) from your device app, or paste an output descriptor or address. CryptKeeper derives every address from it."
 	case "solana":
-		return "Paste a public address. CryptKeep reads SOL, tokens and DeFi positions from it."
+		return "Paste a public address. CryptKeeper reads SOL, tokens and DeFi positions from it."
 	case "manual":
-		return "List coins you hold anywhere else. CryptKeep prices them like everything else."
+		return "List coins you hold anywhere else. CryptKeeper prices them like everything else."
 	case "brokerage":
-		return "List the stocks, ETFs and funds in one account by ticker. CryptKeep looks up their prices; it never connects to your broker."
+		return "List the stocks, ETFs and funds in one account by ticker. CryptKeeper looks up their prices; it never connects to your broker."
 	}
 	return ""
 }
@@ -289,7 +289,7 @@ templ sourceForm(p SourceFormPage) {
 
 templ coinbaseFields(p SourceFormPage) {
 	@Notice("info", "shield") {
-		Grant <strong>view</strong> permissions only. CryptKeep never needs trade or transfer access.
+		Grant <strong>view</strong> permissions only. CryptKeeper never needs trade or transfer access.
 	}
 	{{ label := p.field("label", "Label") }}
 	{{ label.Required = true }}
@@ -330,7 +330,7 @@ templ bitcoinFields(p SourceFormPage) {
 	@descriptionField(p)
 	@selectField("kind", "Wallet type", p.kindValue("hardware"), []selectOpt{{"hardware", "Hardware wallet"}, {"hot", "Hot wallet"}}, p.Errors["kind"])
 	{{ key := p.field("key", "Extended public key, output descriptor, or address") }}
-	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. CryptKeep scans the addresses it derives. From Ledger, paste the whole JSON under Edit account → Advanced, or its xpub and pick the script type below." }}
+	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. CryptKeeper scans the addresses it derives. From Ledger, paste the whole JSON under Edit account → Advanced, or its xpub and pick the script type below." }}
 	if key.Value == "" {
 		{{ key.Value = p.Values["descriptor"] }}
 	}

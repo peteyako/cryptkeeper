@@ -68,7 +68,7 @@ func TestSnapshotRestore(t *testing.T) {
 }
 
 // TestRestoreRefusesOtherFiles: a file that isn't SQLite, or an SQLite database that isn't
-// CryptKeep's, is refused without touching anything.
+// CryptKeeper's, is refused without touching anything.
 func TestRestoreRefusesOtherFiles(t *testing.T) {
 	ctx := context.Background()
 	to := openTest(t, "to.db")
@@ -86,7 +86,7 @@ func TestRestoreRefusesOtherFiles(t *testing.T) {
 	odb.Close()
 	foreign, _ := readFile(other + ".copy")
 	if _, err := to.Restore(ctx, foreign, true); err == nil {
-		t.Error("a non-CryptKeep database was restored")
+		t.Error("a non-CryptKeeper database was restored")
 	}
 	if got := kv(t, to); got["keep"] != "1" {
 		t.Errorf("a refused restore changed the database: %v", got)

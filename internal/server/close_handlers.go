@@ -175,7 +175,7 @@ func (s *Server) taxClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = s.TaxYears.Save(tax.Year{
-		Year: y, Source: "cryptkeep", ClosedAt: s.Now().UTC(), Timezone: loc.String(),
+		Year: y, Source: "cryptkeeper", ClosedAt: s.Now().UTC(), Timezone: loc.String(),
 		Summary:   tax.Summarize(res.Disposals, res.Income),
 		Disposals: res.Disposals, Income: res.Income, GiftsLost: res.GiftsLost,
 		ClosingLots: res.Lots, ClosingParked: res.Parked, OpenIssues: issues,
@@ -248,7 +248,7 @@ func (s *Server) taxReopen(w http.ResponseWriter, r *http.Request) {
 	if r.PostFormValue("confirm") != "1" {
 		msg := fmt.Sprintf("Reopen %d? Its figures will be recomputed from your activity and can change.", y)
 		if last.Source == "koinly" {
-			msg = fmt.Sprintf("Reopen %d? It was imported from Koinly; its figures will be recomputed by CryptKeep and can change.", y)
+			msg = fmt.Sprintf("Reopen %d? It was imported from Koinly; its figures will be recomputed by CryptKeeper and can change.", y)
 		}
 		s.patchCloseCard(w, r, templates.CloseCard{Confirm: "reopen", Year: y, Msg: msg})
 		return

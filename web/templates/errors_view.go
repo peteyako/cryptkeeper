@@ -9,7 +9,7 @@ import (
 
 // ErrorView is a source error in plain language.
 type ErrorView struct {
-	Text string // what went wrong, and when CryptKeep tries again
+	Text string // what went wrong, and when CryptKeeper tries again
 	Fix  string // what the user can do about it; "" when waiting is all there is
 	Raw  string // the original error for the Details toggle; "" when Text already says it all
 }
@@ -31,7 +31,7 @@ const (
 var httpStatusRe = regexp.MustCompile(`\bHTTP (\d{3})\b`)
 
 // classifyErr sorts a raw error by what the user would do about it. Errors arrive as text
-// (they are stored), so this matches the wording of the Go and source errors CryptKeep makes.
+// (they are stored), so this matches the wording of the Go and source errors CryptKeeper makes.
 func classifyErr(raw string) (errKind, int) {
 	l := strings.ToLower(raw)
 	status := 0
@@ -80,19 +80,19 @@ func serviceName(sourceType string) string {
 	return "the source"
 }
 
-// retryText says when CryptKeep tries again: "CryptKeep tries again every 15 min."
+// retryText says when CryptKeeper tries again: "CryptKeeper tries again every 15 min."
 func retryText(every time.Duration) string {
 	if every <= 0 {
-		return "CryptKeep tries again on the next sync."
+		return "CryptKeeper tries again on the next sync."
 	}
 	if every < time.Hour || every%time.Hour != 0 {
-		return "CryptKeep tries again every " + strconv.Itoa(int(every.Round(time.Minute)/time.Minute)) + " min."
+		return "CryptKeeper tries again every " + strconv.Itoa(int(every.Round(time.Minute)/time.Minute)) + " min."
 	}
 	h := int(every / time.Hour)
 	if h == 1 {
-		return "CryptKeep tries again every hour."
+		return "CryptKeeper tries again every hour."
 	}
-	return "CryptKeep tries again every " + strconv.Itoa(h) + " hours."
+	return "CryptKeeper tries again every " + strconv.Itoa(h) + " hours."
 }
 
 // slowFix is the advice for a slow or rate-limited source: a public endpoint is shared, and
@@ -112,7 +112,7 @@ func slowFix(sourceType string, public bool) string {
 
 // ExplainError turns a source's raw error into plain language. sourceType is the source's
 // type (solana, bitcoin, coinbase, kraken), public is set when it reads from a shared public
-// endpoint (the public Solana RPC, mempool.space), and every is how often CryptKeep retries
+// endpoint (the public Solana RPC, mempool.space), and every is how often CryptKeeper retries
 // (0 when unknown). An empty raw error gives a zero ErrorView.
 func ExplainError(raw, sourceType string, public bool, every time.Duration) ErrorView {
 	raw = strings.TrimSpace(raw)
@@ -133,7 +133,7 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 		v.Text = "Timed out: " + svc + " was too slow to answer. Anything fetched before that is kept. " + retry
 		v.Fix = slowFix(sourceType, public)
 	case errRateLimit:
-		v.Text = "Rate limited: " + svc + " asked CryptKeep to slow down. " + retry
+		v.Text = "Rate limited: " + svc + " asked CryptKeeper to slow down. " + retry
 		v.Fix = slowFix(sourceType, public)
 	case errAuth:
 		v.Text = upperFirst(svc) + " rejected the API key."
@@ -151,7 +151,7 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 	case errServer:
 		v.Text = upperFirst(svc) + " had a problem on its side (HTTP " + strconv.Itoa(status) + "). " + retry
 	case errInternal:
-		v.Text = "CryptKeep hit an internal error with this source. " + retry
+		v.Text = "CryptKeeper hit an internal error with this source. " + retry
 	default:
 		v.Text = "The last attempt failed. " + retry
 	}

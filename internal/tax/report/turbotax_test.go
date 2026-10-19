@@ -44,7 +44,7 @@ func TestTXFRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := b.String()
-	if !strings.HasPrefix(s, "V042\nACryptKeep\nD10/16/2026\n^\n") {
+	if !strings.HasPrefix(s, "V042\nACryptKeeper\nD10/16/2026\n^\n") {
 		t.Errorf("header %q", s)
 	}
 	rec := "TD\nN714\nC1\nL1\nP0.5 BTC\nDVARIOUS\nD03/02/2026\n$1000.00\n$1500.00\n^\n"

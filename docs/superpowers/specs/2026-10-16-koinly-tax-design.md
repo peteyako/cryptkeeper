@@ -2,23 +2,23 @@
 
 ## Context
 
-The user pays for Koinly to do their US crypto taxes. They want CryptKeep to take over: Koinly did 2025 (exports are in `~/Downloads/koinly_2025_*`), and CryptKeep does 2026 onward from its own activity feeds. That needs two things:
+The user pays for Koinly to do their US crypto taxes. They want CryptKeeper to take over: Koinly did 2025 (exports are in `~/Downloads/koinly_2025_*`), and CryptKeeper does 2026 onward from its own activity feeds. That needs two things:
 
-1. **A one-time import** of Koinly's closing position, reconciled against what CryptKeep sees, as the 2026-01-01 opening cost basis.
+1. **A one-time import** of Koinly's closing position, reconciled against what CryptKeeper sees, as the 2026-01-01 opening cost basis.
 2. **Koinly-equivalent tax output** from then on: what the user hands to TurboTax and their CPA (capital gains with short/long-term, Form 8949 / Schedule D, income report, year-end holdings, complete tax report).
 
 Today `internal/costbasis` is one global **average-cost** engine (`avgcost.go:74`). That isn't an accepted US method for crypto. It also has no per-disposal records and no holding periods, so it can't produce any of these reports.
 
 ## Decisions the user made
 
-- **Replace Koinly**, not mirror it. CryptKeep becomes the tax record from **2026-01-01** (the cutover).
+- **Replace Koinly**, not mirror it. CryptKeeper becomes the tax record from **2026-01-01** (the cutover).
 - **US filer, FIFO, tracked per wallet**, matching what Koinly did for 2025 under Rev. Proc. 2024-28.
 - **Opening basis = what all the wallets hold at the start of the year**: Koinly's year-end holdings (quantity and cost per asset) as of 2025-12-31 23:59.
 - **Acquisition dates are back-filled** from the 2025 transaction history. FIFO keeps the newest units, so the most recent 2025 acquisitions keep their real dates and cost, and the rest becomes one "acquired before 2025" lot, which is long-term for any 2026 sale.
 - **FIFO lots replace average cost everywhere**: dashboard P/L column, wallet tiles, Reports.
 - **Filing outputs needed:** TurboTax import, Form 8949 / Schedule D, income report, and a complete package for the CPA.
-- **Running CryptKeep already syncs every active wallet** with full history since the cutover.
-- **Koinly may hold wallets CryptKeep doesn't sync** (for example EVM chains or old addresses). These are treated as dormant: their lots matter, but no new activity happens there.
+- **Running CryptKeeper already syncs every active wallet** with full history since the cutover.
+- **Koinly may hold wallets CryptKeeper doesn't sync** (for example EVM chains or old addresses). These are treated as dormant: their lots matter, but no new activity happens there.
 - **The user stakes SOL natively and uses locked JUP and Jupiter perps.**
   - Native staking rewards are income.
   - Moving tokens into one of their own positions (JUP lock, perps collateral, LP) is **non-taxable**: the lots stay in that wallet with their dates and cost.
@@ -132,10 +132,10 @@ The import is a wizard on the Reports page (upload → map → reconcile → acc
    - Parsers go in `internal/tax/koinly`.
    - They tolerate the 2-line preamble and thousands separators, and reuse `costbasis/csv.go` helpers (`parseMoney`, `parseTime`, `headerIndex`, `newCSVInput`).
    - The upload uses the existing multipart pattern (`reports_handlers.go:228`, 8 MB limit).
-2. **Map wallets.** Each Koinly wallet name maps to a CryptKeep source ID or to `untracked`.
+2. **Map wallets.** Each Koinly wallet name maps to a CryptKeeper source ID or to `untracked`.
    - The mapping is auto-suggested by matching `TxSrc` / `TxDest` addresses against `sources.Def.Address` / `Key`, and by matching labels.
    - The user confirms it.
-3. **Map assets.** Each Koinly `SYM (Name)` maps to a CryptKeep asset key.
+3. **Map assets.** Each Koinly `SYM (Name)` maps to a CryptKeeper asset key.
    - The match is auto-suggested by symbol and name against the holdings and `token_meta` of mapped wallets. Ambiguous pairs (e.g. two different tokens that both use the symbol `JUP`) are left to the user.
    - Zero-cost, zero-value spam and NFTs are skipped by default.
 4. **Opening quantity per wallet (roll-back).** For each mapped wallet and asset: current holding minus the net signed 2026 activity (legs and fees, non-failed).
@@ -144,9 +144,9 @@ The import is a wizard on the Reports page (upload → map → reconcile → acc
    - 2026 staking rewards must already be fetched, or SOL comes out overstated.
    - Before using a wallet, the import confirms its activity backfill covers the cutover. If it doesn't, the import says so.
 5. **Reconcile, per asset:**
-   - Show Koinly quantity and cost, CryptKeep's rolled-back quantity summed across mapped wallets, and the difference.
+   - Show Koinly quantity and cost, CryptKeeper's rolled-back quantity summed across mapped wallets, and the difference.
    - Koinly holds more: the excess goes to `untracked`, which is the dormant wallets.
-   - CryptKeep holds more: the extra units become cost-0 lots flagged "missing basis".
+   - CryptKeeper holds more: the extra units become cost-0 lots flagged "missing basis".
      - **Expect SOL here.** Koinly's 2025 income report is empty, so 2025 staking rewards were never recorded.
      - For those units, the reconcile screen lets the user enter a basis (for example, fair value as income), with cost 0 as the default.
    - Every difference beyond dust is listed for the user to accept.
@@ -174,7 +174,7 @@ The import is a wizard on the Reports page (upload → map → reconcile → acc
   - Versioned, strict decode, atomic writes with backups. It follows `costbasis/manual.go`'s `ManualStore` pattern (mtime reload, `yamlfile.WriteAtomic`).
   - Contents: `timezone`, `walletMap`, `assetMap`, `manualLots[]`, `tags{txID: {tag, note}}`, `prices{txID/leg: usd}`, `walletBox` overrides.
 - **`data/tax/<year>.yaml` (closed years, frozen):**
-  - Contents: `closedAt`, `source` (`koinly` | `cryptkeep`), `summary`, `disposals[]`, `income[]`, `closingLots[]`.
+  - Contents: `closedAt`, `source` (`koinly` | `cryptkeeper`), `summary`, `disposals[]`, `income[]`, `closingLots[]`.
   - "Close <year>" on the Tax view writes this file from the engine's result, after a confirmation that lists any open review issues.
   - Only the latest closed year can be reopened, which deletes its file.
 - **Backup:** both go into `backup.File` as new fields (`Tax`, `TaxYears`) with merge rules (`internal/backup/backup.go`).
@@ -299,7 +299,7 @@ The UI follows the Vault design system (`docs/design/`) with existing components
 ## Calls I made (please check)
 
 - **Untracked wallet:** Koinly's dormant wallets fold into one tax-only `untracked` wallet. It isn't shown in dashboard holdings, and selling from it is out of scope.
-- **Reconciliation direction:** where Koinly and CryptKeep disagree on quantity, CryptKeep's on-chain quantity is the truth for synced wallets. Koinly's excess goes to `untracked`; CryptKeep's excess becomes cost-0 lots.
+- **Reconciliation direction:** where Koinly and CryptKeeper disagree on quantity, CryptKeeper's on-chain quantity is the truth for synced wallets. Koinly's excess goes to `untracked`; CryptKeeper's excess becomes cost-0 lots.
 - **Transfer-ins in the imported year:** these are dated at the transfer during back-fill, which means short-term if uncertain, and they are flagged.
 - **Manual basis entries:** `costbasis.yaml` manual lots become wallet-scoped manual acquisitions. Asset-level overrides are retired.
 - **Printable reports:** 8949, Schedule D and the CPA package are print-to-PDF HTML pages, not generated PDFs.

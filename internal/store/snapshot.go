@@ -22,12 +22,12 @@ var notRestored = []string{"schema_migrations", "sqlite_sequence"}
 // Snapshot is a consistent copy of the whole database, as the bytes of an SQLite file
 // (VACUUM INTO a temporary file), taken while the app keeps running.
 func (d *DB) Snapshot(ctx context.Context) ([]byte, error) {
-	dir, err := os.MkdirTemp("", "cryptkeep-snapshot-")
+	dir, err := os.MkdirTemp("", "cryptkeeper-snapshot-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, "cryptkeep.db")
+	path := filepath.Join(dir, "cryptkeeper.db")
 	if _, err := d.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
 		return nil, fmt.Errorf("copy the database: %w", err)
 	}
@@ -44,7 +44,7 @@ func (d *DB) Restore(ctx context.Context, snapshot []byte, replace bool) (int, e
 	if !bytes.HasPrefix(snapshot, sqliteMagic) {
 		return 0, errors.New("the database in the backup isn't an SQLite database")
 	}
-	dir, err := os.MkdirTemp("", "cryptkeep-restore-")
+	dir, err := os.MkdirTemp("", "cryptkeeper-restore-")
 	if err != nil {
 		return 0, err
 	}
@@ -53,8 +53,8 @@ func (d *DB) Restore(ctx context.Context, snapshot []byte, replace bool) (int, e
 	if err := os.WriteFile(path, snapshot, 0o600); err != nil {
 		return 0, err
 	}
-	if !isCryptKeep(ctx, path) {
-		return 0, errors.New("the database in the backup isn't a CryptKeep database")
+	if !isCryptKeeper(ctx, path) {
+		return 0, errors.New("the database in the backup isn't a CryptKeeper database")
 	}
 	src, err := Open(path) // migrates it to this build's schema
 	if err != nil {
@@ -103,9 +103,9 @@ func (d *DB) Restore(ctx context.Context, snapshot []byte, replace bool) (int, e
 	return len(tables), nil
 }
 
-// isCryptKeep reports whether the SQLite file at path is a CryptKeep database, as uploaded
+// isCryptKeeper reports whether the SQLite file at path is a CryptKeeper database, as uploaded
 // (before Open would migrate any database into one): it has applied the base migration.
-func isCryptKeep(ctx context.Context, path string) bool {
+func isCryptKeeper(ctx context.Context, path string) bool {
 	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
 	if err != nil {
 		return false

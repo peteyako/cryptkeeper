@@ -28,7 +28,7 @@ func TestWalletBoxValidated(t *testing.T) {
 // validYear is a closed year that passes validation; tests break one field at a time.
 func validYear() Year {
 	y := Year{
-		Year: 2025, Source: "cryptkeep",
+		Year: 2025, Source: "cryptkeeper",
 		Disposals:   []Disposal{{Sold: at(2025, 5, 1, 0), Acquired: at(2025, 1, 1, 0), Asset: "SOL", Amount: 1, CostUSD: 10, ProceedsUSD: 20, GainUSD: 10, Wallet: "w", Term: ShortTerm}},
 		Income:      []Income{{Date: at(2025, 6, 1, 0), Asset: "SOL", Amount: 1, ValueUSD: 5, Type: "reward", Wallet: "w"}},
 		ClosingLots: []Lot{{Wallet: "w", Asset: "SOL", Amount: 2, CostUSD: 30, Acquired: at(2025, 1, 1, 0)}},

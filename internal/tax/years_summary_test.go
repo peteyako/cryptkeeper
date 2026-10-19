@@ -12,7 +12,7 @@ func summaryYear() Year {
 		{Sold: time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC), Asset: "BBB", ProceedsUSD: 80, CostUSD: 90, GainUSD: -10, Term: LongTerm},
 	}
 	in := []Income{{Date: time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC), Asset: "CCC", ValueUSD: 15.5, Type: "reward"}}
-	return Year{Year: 2024, Source: "cryptkeep", Summary: Summarize(d, in), Disposals: d, Income: in}
+	return Year{Year: 2024, Source: "cryptkeeper", Summary: Summarize(d, in), Disposals: d, Income: in}
 }
 
 func TestYearValidateSummaryAgreesWithRows(t *testing.T) {

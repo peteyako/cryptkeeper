@@ -14,14 +14,15 @@ const (
 )
 
 type envelope struct {
-	CryptKeep string `yaml:"cryptkeep"`
-	Version   int    `yaml:"version"`
-	Data      string `yaml:"data"`
+	CryptKeeper string `yaml:"cryptkeeper"`
+	CryptKeep   string `yaml:"cryptkeep"` // the tag files exported before the CryptKeeper rename carry
+	Version     int    `yaml:"version"`
+	Data        string `yaml:"data"`
 }
 
 // SealFile encrypts a whole export into a small YAML file that OpenFile recognizes:
 //
-//	cryptkeep: encrypted
+//	cryptkeeper: encrypted
 //	version: 1
 //	data: "enc:v1:…"
 func (b *Box) SealFile(plain []byte) ([]byte, error) {
@@ -29,8 +30,8 @@ func (b *Box) SealFile(plain []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fmt.Appendf(nil, "# CryptKeep export, encrypted with CRYPTKEEP_SECRET_KEY. Import it into a CryptKeep\n"+
-		"# that has the same key.\ncryptkeep: %s\nversion: %d\ndata: %q\n", fileTag, fileVersion, data), nil
+	return fmt.Appendf(nil, "# CryptKeeper export, encrypted with CRYPTKEEPER_SECRET_KEY. Import it into a CryptKeeper\n"+
+		"# that has the same key.\ncryptkeeper: %s\nversion: %d\ndata: %q\n", fileTag, fileVersion, data), nil
 }
 
 // OpenFile returns the export inside a SealFile envelope. Anything else, including a file
@@ -38,7 +39,7 @@ func (b *Box) SealFile(plain []byte) ([]byte, error) {
 // own parser reports what is wrong. A nil Box opens only plain files.
 func (b *Box) OpenFile(raw []byte) ([]byte, error) {
 	var env envelope
-	if yaml.Unmarshal(raw, &env) != nil || env.CryptKeep != fileTag {
+	if yaml.Unmarshal(raw, &env) != nil || (env.CryptKeeper != fileTag && env.CryptKeep != fileTag) {
 		return raw, nil
 	}
 	if env.Version != fileVersion {
@@ -48,11 +49,11 @@ func (b *Box) OpenFile(raw []byte) ([]byte, error) {
 		return nil, errors.New("encrypted file has no encrypted data")
 	}
 	if b == nil {
-		return nil, errors.New("the file is encrypted: set CRYPTKEEP_SECRET_KEY to the key it was exported with")
+		return nil, errors.New("the file is encrypted: set CRYPTKEEPER_SECRET_KEY to the key it was exported with")
 	}
 	plain, err := b.Open(env.Data)
 	if err != nil {
-		return nil, errors.New("the file is encrypted with a different key: set CRYPTKEEP_SECRET_KEY to the key it was exported with")
+		return nil, errors.New("the file is encrypted with a different key: set CRYPTKEEPER_SECRET_KEY to the key it was exported with")
 	}
 	return []byte(plain), nil
 }

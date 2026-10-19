@@ -229,7 +229,7 @@ func (s *Server) backupStores() backup.Stores {
 }
 
 // backupExport downloads everything the user configured; ?secrets=1 keeps sealed secrets,
-// and ?db=1 adds the database. With CRYPTKEEP_SECRET_KEY set the whole file is encrypted,
+// and ?db=1 adds the database. With CRYPTKEEPER_SECRET_KEY set the whole file is encrypted,
 // secrets always included.
 func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
 	encrypt := s.Cfg.EncryptExports()
@@ -246,7 +246,7 @@ func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	name := "cryptkeep-backup"
+	name := "cryptkeeper-backup"
 	if withDB {
 		name += "-with-database"
 	}
@@ -263,7 +263,7 @@ func (s *Server) backupExport(w http.ResponseWriter, r *http.Request) {
 	w.Write(raw)
 }
 
-// sealExport encrypts a YAML export when the user set CRYPTKEEP_SECRET_KEY, and marks the
+// sealExport encrypts a YAML export when the user set CRYPTKEEPER_SECRET_KEY, and marks the
 // download name as encrypted. Otherwise it returns raw and name unchanged.
 func (s *Server) sealExport(raw []byte, name string) ([]byte, string, error) {
 	if !s.Cfg.EncryptExports() {

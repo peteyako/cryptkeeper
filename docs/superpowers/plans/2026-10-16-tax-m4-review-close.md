@@ -10,7 +10,7 @@
 - Engine extensions in `internal/tax`: an exclusive end time `Input.To`, `WriteOff` entries, the `position-gain` tag, and parked balances exposed on `Result`.
 - `tax.yaml` gains `writeOffs`.
 - Server handlers under `/reports/tax/*` write tags, prices and write-offs through `SettingsStore.Update` and invalidate the tax cache.
-- Closing runs `Compute` with `To` = the next 1 January and saves a `tax.Year` with `Source: "cryptkeep"`.
+- Closing runs `Compute` with `To` = the next 1 January and saves a `tax.Year` with `Source: "cryptkeeper"`.
 
 **Tech Stack:** Go 1.26, templ + Datastar SSE.
 
@@ -162,7 +162,7 @@ func TestTagInClosedYearRefused(t *testing.T)    // tx dated in the closed year 
 - **Routes:**
   - `POST /reports/tax/close`: field `year`, plus `confirm=1` on the second step. The first step replies with a confirmation card: "Close <Y>? <N> review items are still open. Closed years can't be edited.", with Confirm and Cancel.
   - `POST /reports/tax/reopen`: field `year`, with the same two-step confirmation.
-- **Close** computes `tax.Compute` with `To` = Jan 1 `Y+1` (tax timezone), then saves `tax.Year{Year: Y, Source: "cryptkeep", ClosedAt: now, Summary: tax.Summarize(...), Disposals, Income, GiftsLost, ClosingLots: result.Lots, ClosingParked: result.Parked, OpenIssues: len(issues in Y)}`. Disposals and income are filtered to year `Y` (all are in `Y`, given `From`/`To`).
+- **Close** computes `tax.Compute` with `To` = Jan 1 `Y+1` (tax timezone), then saves `tax.Year{Year: Y, Source: "cryptkeeper", ClosedAt: now, Summary: tax.Summarize(...), Disposals, Income, GiftsLost, ClosingLots: result.Lots, ClosingParked: result.Parked, OpenIssues: len(issues in Y)}`. Disposals and income are filtered to year `Y` (all are in `Y`, given `From`/`To`).
 - **Refusals:** `"<Y> hasn't ended yet"`, `"close <open year> first"` (when `Y` isn't the open year), and `"only <latest> can be reopened"`.
 
 - [ ] **Step 1: Write failing tests**

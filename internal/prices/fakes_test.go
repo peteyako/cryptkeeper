@@ -363,7 +363,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

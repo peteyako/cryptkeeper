@@ -76,15 +76,16 @@ func bodySignals(s Shell) string {
 		", pf: " + JSString(normPF(s.PF)) + ", q: '', showHidden: false, showPnl: false, cashOpen: false}"
 }
 
-// bodyInit restores the persisted privacy and theme choice. Every storage access is
-// guarded: localStorage can be missing or throw (private windows, blocked site data).
-const bodyInit = `try { const s = window.localStorage; if (s) { $hide = s.getItem('cryptkeep.hide') === '1'; $theme = s.getItem('cryptkeep.theme') || 'system' } } catch (e) {}`
+// bodyInit restores the persisted privacy and theme choice, falling back to the keys the
+// app used as CryptKeep. Every storage access is guarded: localStorage can be missing or
+// throw (private windows, blocked site data).
+const bodyInit = `try { const s = window.localStorage; if (s) { $hide = (s.getItem('cryptkeeper.hide') || s.getItem('cryptkeep.hide')) === '1'; $theme = s.getItem('cryptkeeper.theme') || s.getItem('cryptkeep.theme') || 'system' } } catch (e) {}`
 
 // bodyEffect persists the choice and applies the theme to <html data-theme>. Both
 // signals are read up front so the effect always subscribes to both, even when storage
 // is unavailable. It must come after data-init in the attribute order, or the defaults
 // would be written over the stored values before they are restored.
-const bodyEffect = `const h = $hide, t = $theme; try { const s = window.localStorage; if (s) { s.setItem('cryptkeep.hide', h ? '1' : '0'); s.setItem('cryptkeep.theme', t) } } catch (e) {} ; t === 'system' ? delete document.documentElement.dataset.theme : (document.documentElement.dataset.theme = t)`
+const bodyEffect = `const h = $hide, t = $theme; try { const s = window.localStorage; if (s) { s.setItem('cryptkeeper.hide', h ? '1' : '0'); s.setItem('cryptkeeper.theme', t) } } catch (e) {} ; t === 'system' ? delete document.documentElement.dataset.theme : (document.documentElement.dataset.theme = t)`
 
 // liveInit opens the persistent SSE stream. requestCancellation 'cleanup' aborts it when
 // the #live element is removed — i.e. when navigating away from the overview — so a
@@ -321,7 +322,7 @@ const koinlyRematchClick = `confirm('Match every wallet and asset automatically?
 // koinlyAcceptClick asks first, then closes the year from the draft.
 func koinlyAcceptClick(year int) string {
 	msg := "Close " + strconv.Itoa(year) + " with these opening lots? Koinly's figures for " + strconv.Itoa(year) +
-		" are saved as a closed year, and CryptKeep's cost basis starts from them."
+		" are saved as a closed year, and CryptKeeper's cost basis starts from them."
 	return "confirm(" + JSString(msg) + ") && @post('/reports/koinly/accept')"
 }
 

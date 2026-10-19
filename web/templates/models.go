@@ -129,7 +129,7 @@ type SettingsPage struct {
 	Now time.Time
 	// BackupImport is the outcome of the last restore (Settings → Backup & restore).
 	BackupImport ImportOutcome
-	// EncryptedExports: CRYPTKEEP_SECRET_KEY is set, so exports are encrypted as a whole.
+	// EncryptedExports: CRYPTKEEPER_SECRET_KEY is set, so exports are encrypted as a whole.
 	EncryptedExports bool
 	// PriceKey is the saved CoinGecko key, masked ("••••abcd"); empty when none is saved.
 	PriceKey string
@@ -181,7 +181,7 @@ type PortfoliosPage struct {
 	// Import is the result shown under the import form. Optional: a handler can also
 	// patch ImportResultView on its own.
 	Import ImportOutcome
-	// EncryptedExports: CRYPTKEEP_SECRET_KEY is set, so exports are encrypted as a whole.
+	// EncryptedExports: CRYPTKEEPER_SECRET_KEY is set, so exports are encrypted as a whole.
 	EncryptedExports bool
 }
 
@@ -451,12 +451,12 @@ type KoinlyMapRow struct {
 }
 
 // KoinlyReconRow is one mapped asset's reconciliation: Koinly's year-end quantity and cost
-// against CryptKeep's quantity at the cutover, and where the units went.
+// against CryptKeeper's quantity at the cutover, and where the units went.
 type KoinlyReconRow struct {
-	KoinlyAsset, AssetKey, Symbol       string
-	KoinlyQty, KoinlyCost, CryptKeepQty float64
+	KoinlyAsset, AssetKey, Symbol         string
+	KoinlyQty, KoinlyCost, CryptKeeperQty float64
 	// Dated: units dated from the year's acquisitions; Various: units from before the
-	// year; Untracked: Koinly's excess, in no synced wallet; MissingBasis: CryptKeep's
+	// year; Untracked: Koinly's excess, in no synced wallet; MissingBasis: CryptKeeper's
 	// excess, with no Koinly cost.
 	Dated, Various, Untracked, MissingBasis float64
 	ExtraBasis                              float64 // the user's total USD basis for MissingBasis units

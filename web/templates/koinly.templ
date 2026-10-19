@@ -123,7 +123,7 @@ templ koinlyWalletStep(w KoinlyWizard) {
 	<section class="card koinly-step" aria-labelledby="koinly-w-h">
 		@koinlyStepHead(2, "koinly-w-h", "Match wallets and assets")
 		<div class="koinly-step__intro">
-			<p class="muted-text">Each wallet Koinly names goes to the CryptKeep wallet it is, or to Untracked for wallets CryptKeep doesn't sync, such as closed exchange accounts. CryptKeep matches them by the addresses in Koinly's transactions and wallet names, then by your wallets' labels.</p>
+			<p class="muted-text">Each wallet Koinly names goes to the CryptKeeper wallet it is, or to Untracked for wallets CryptKeeper doesn't sync, such as closed exchange accounts. CryptKeeper matches them by the addresses in Koinly's transactions and wallet names, then by your wallets' labels.</p>
 			<button
 				type="button"
 				class="btn btn--secondary btn--sm"
@@ -141,7 +141,7 @@ templ koinlyWalletStep(w KoinlyWizard) {
 					<thead>
 						<tr>
 							<th scope="col">Koinly wallet</th>
-							<th scope="col">CryptKeep wallet</th>
+							<th scope="col">CryptKeeper wallet</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -174,7 +174,7 @@ templ koinlyWalletStep(w KoinlyWizard) {
 templ koinlyAssetStep(w KoinlyWizard) {
 	<section class="card koinly-step" aria-labelledby="koinly-a-h">
 		<h2 id="koinly-a-h" class="h-card">Assets</h2>
-		<p class="muted-text">Each asset of Koinly's holdings report goes to the asset CryptKeep knows it as. Skip spam and worthless NFTs.</p>
+		<p class="muted-text">Each asset of Koinly's holdings report goes to the asset CryptKeeper knows it as. Skip spam and worthless NFTs.</p>
 		if len(w.Assets) == 0 {
 			<p class="empty-note">Koinly's assets appear here once you upload the end of year holdings report.</p>
 		} else {
@@ -185,7 +185,7 @@ templ koinlyAssetStep(w KoinlyWizard) {
 							<th scope="col">Koinly asset</th>
 							<th class="num" scope="col">Quantity</th>
 							<th class="num" scope="col">Cost</th>
-							<th scope="col">CryptKeep asset</th>
+							<th scope="col">CryptKeeper asset</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -230,7 +230,7 @@ templ koinlyAssetStep(w KoinlyWizard) {
 templ koinlyReconStep(w KoinlyWizard) {
 	<section id="koinly-recon" class="card koinly-step" aria-labelledby="koinly-r-h">
 		@koinlyStepHead(3, "koinly-r-h", "Reconcile and accept")
-		<p class="muted-text">{ "For each asset, Koinly's year-end quantity and cost against what CryptKeep's wallets held when " + strconv.Itoa(w.Year) + " ended: today's balances minus the activity since. Koinly's extra units go to Untracked. CryptKeep's extra units have no cost unless you enter what you paid for them (for staking rewards, their value when received)." }</p>
+		<p class="muted-text">{ "For each asset, Koinly's year-end quantity and cost against what CryptKeeper's wallets held when " + strconv.Itoa(w.Year) + " ended: today's balances minus the activity since. Koinly's extra units go to Untracked. CryptKeeper's extra units have no cost unless you enter what you paid for them (for staking rewards, their value when received)." }</p>
 		if len(w.Recon) == 0 {
 			<p class="empty-note">Nothing to reconcile yet: map at least one asset of the holdings report.</p>
 		} else {
@@ -241,11 +241,11 @@ templ koinlyReconStep(w KoinlyWizard) {
 							<th scope="col">Asset</th>
 							<th class="num" scope="col">Koinly</th>
 							<th class="num" scope="col">Cost</th>
-							<th class="num" scope="col">CryptKeep</th>
+							<th class="num" scope="col">CryptKeeper</th>
 							<th class="num" scope="col">{ "Dated in " + strconv.Itoa(w.Year) }</th>
 							<th class="num" scope="col">{ "Before " + strconv.Itoa(w.Year) }</th>
 							<th class="num" scope="col">Untracked</th>
-							<th class="num" scope="col">CryptKeep extra</th>
+							<th class="num" scope="col">CryptKeeper extra</th>
 							<th class="num" scope="col">Your cost (USD)</th>
 						</tr>
 					</thead>
@@ -263,7 +263,7 @@ templ koinlyReconStep(w KoinlyWizard) {
 									@FigFiat(r.KoinlyCost)
 								</td>
 								<td class="num">
-									@FigCoin(r.CryptKeepQty, r.Symbol)
+									@FigCoin(r.CryptKeeperQty, r.Symbol)
 								</td>
 								<td class="num">
 									@FigCoin(r.Dated, "")

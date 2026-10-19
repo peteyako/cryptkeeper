@@ -241,7 +241,7 @@ func TestBackupMergeKeepsExistingYear(t *testing.T) {
 	if err := src.TaxYears.Save(taxYear(2025, "koinly")); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.TaxYears.Save(taxYear(2026, "cryptkeep")); err != nil {
+	if err := src.TaxYears.Save(taxYear(2026, "cryptkeeper")); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := Export(src, false)
@@ -249,14 +249,14 @@ func TestBackupMergeKeepsExistingYear(t *testing.T) {
 		t.Fatal(err)
 	}
 	dst, _ := newStores(t)
-	if err := dst.TaxYears.Save(taxYear(2025, "cryptkeep")); err != nil {
+	if err := dst.TaxYears.Save(taxYear(2025, "cryptkeeper")); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Import(dst, raw, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if y, _ := dst.TaxYears.Get(2025); y.Source != "cryptkeep" {
+	if y, _ := dst.TaxYears.Get(2025); y.Source != "cryptkeeper" {
 		t.Fatalf("local 2025 replaced: source %q", y.Source)
 	}
 	if !slices.Equal(dst.TaxYears.Years(), []int{2025, 2026}) {
@@ -331,7 +331,7 @@ func TestBackupReplaceTaxYears(t *testing.T) {
 	raw, _ := Export(src, false)
 	dst, dir := newStores(t)
 	for _, y := range []int{2023, 2024} {
-		if err := dst.TaxYears.Save(taxYear(y, "cryptkeep")); err != nil {
+		if err := dst.TaxYears.Save(taxYear(y, "cryptkeeper")); err != nil {
 			t.Fatal(err)
 		}
 	}

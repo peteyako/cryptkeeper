@@ -1,7 +1,7 @@
 services:
-  cryptkeep:
+  cryptkeeper:
     build: .
-    image: cryptkeep
+    image: cryptkeeper
     restart: unless-stopped
     ports:
       - "8787:8787"

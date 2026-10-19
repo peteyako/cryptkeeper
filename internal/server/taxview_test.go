@@ -242,7 +242,7 @@ func TestCloseRefreshesTaxSection(t *testing.T) {
 		t.Errorf("close must refresh the section: %s", out)
 	}
 	_, body := e.do("GET", "/reports/tax?year=2026", nil, nil)
-	if !strings.Contains(body, "Closed · computed by CryptKeep") {
+	if !strings.Contains(body, "Closed · computed by CryptKeeper") {
 		t.Error("2026 now closed")
 	}
 }
@@ -282,7 +282,7 @@ func TestTaxDownloadRoutes(t *testing.T) {
 		t.Errorf("filename %q", cd)
 	}
 	resp, body := e.do("GET", "/reports/tax/2026/turbotax.txf", nil, nil)
-	if resp.StatusCode != 200 || !strings.HasPrefix(body, "V042\nACryptKeep\nD10/16/2026\n^") {
+	if resp.StatusCode != 200 || !strings.HasPrefix(body, "V042\nACryptKeeper\nD10/16/2026\n^") {
 		t.Errorf("txf: %d %q", resp.StatusCode, body)
 	}
 	// Koinly years have no transactions export; their other files come from stored rows.
@@ -370,7 +370,7 @@ func TestTaxReportSections(t *testing.T) {
 	if !strings.Contains(body, want) {
 		t.Errorf("method statement missing: %s", within(body, "Cost basis method", 400))
 	}
-	if !strings.Contains(body, "Prepared by CryptKeep from the user") {
+	if !strings.Contains(body, "Prepared by CryptKeeper from the user") {
 		t.Error("closing line")
 	}
 }
@@ -422,19 +422,19 @@ func TestAllZipContents(t *testing.T) {
 	if len(order) != 9 {
 		t.Errorf("want exactly 9 entries, got %v", order)
 	}
-	if pdf := files["cryptkeep_2026_irs_reports_form_8949_schedule_d.pdf"]; !strings.HasPrefix(pdf, "%PDF") {
+	if pdf := files["cryptkeeper_2026_irs_reports_form_8949_schedule_d.pdf"]; !strings.HasPrefix(pdf, "%PDF") {
 		t.Errorf("pdf entry: %d bytes", len(pdf))
 	}
 	for _, n := range []string{"capital_gains_report.csv", "income_report.csv", "other_gains_report.csv",
 		"end_of_year_holdings_report.csv", "transaction_history.csv", "turbotax_online.csv", "turbotax.txf", "irs_reports_form_8949_schedule_d.pdf", "complete_tax_report.html"} {
-		if _, ok := files["cryptkeep_2026_"+n]; !ok {
+		if _, ok := files["cryptkeeper_2026_"+n]; !ok {
 			t.Errorf("missing %s", n)
 		}
 	}
-	if !strings.HasPrefix(files["cryptkeep_2026_capital_gains_report.csv"], "Capital gains report 2026") {
-		t.Errorf("gains entry: %q", files["cryptkeep_2026_capital_gains_report.csv"])
+	if !strings.HasPrefix(files["cryptkeeper_2026_capital_gains_report.csv"], "Capital gains report 2026") {
+		t.Errorf("gains entry: %q", files["cryptkeeper_2026_capital_gains_report.csv"])
 	}
-	html := files["cryptkeep_2026_complete_tax_report.html"]
+	html := files["cryptkeeper_2026_complete_tax_report.html"]
 	if !strings.Contains(html, "<style>") || strings.Contains(html, "/static/") || strings.Contains(html, "<link") {
 		t.Error("report html must be self-contained")
 	}
@@ -445,10 +445,10 @@ func TestAllZipKoinlyYear(t *testing.T) {
 	e.koinlyYear(1)
 	_, body := e.do("GET", "/reports/tax/2025/all.zip", nil, nil)
 	files, _ := zipNames(t, body)
-	if _, ok := files["cryptkeep_2025_transaction_history.csv"]; ok {
+	if _, ok := files["cryptkeeper_2025_transaction_history.csv"]; ok {
 		t.Error("Koinly years have no transaction history")
 	}
-	if _, ok := files["cryptkeep_2025_capital_gains_report.csv"]; !ok {
+	if _, ok := files["cryptkeeper_2025_capital_gains_report.csv"]; !ok {
 		t.Error("gains missing")
 	}
 }
@@ -479,7 +479,7 @@ func TestIRSFormsRoute(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "application/pdf" {
 		t.Errorf("content type %q", ct)
 	}
-	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, `filename="cryptkeep_2026_irs_reports_form_8949_schedule_d.pdf"`) {
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, `filename="cryptkeeper_2026_irs_reports_form_8949_schedule_d.pdf"`) {
 		t.Errorf("disposition %q", cd)
 	}
 	if resp, _ := e.do("GET", "/reports/tax/1999/irs-forms.pdf", nil, nil); resp.StatusCode != 404 {

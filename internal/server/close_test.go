@@ -54,7 +54,7 @@ func TestCloseYearWritesYear(t *testing.T) {
 	)
 	e.reviewPost("/reports/tax/close", url.Values{"year": {"2026"}, "confirm": {"1"}})
 	y, ok := e.taxYears.Get(2026)
-	if !ok || y.Source != "cryptkeep" || y.ClosedAt.IsZero() {
+	if !ok || y.Source != "cryptkeeper" || y.ClosedAt.IsZero() {
 		t.Fatalf("year: %+v ok=%v", y, ok)
 	}
 	if len(y.Disposals) != 1 || !y.Disposals[0].Sold.Before(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)) {

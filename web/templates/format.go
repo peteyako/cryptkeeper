@@ -1,4 +1,4 @@
-// Package templates renders the CryptKeep web UI (templ components) and holds the number
+// Package templates renders the CryptKeeper web UI (templ components) and holds the number
 // formatting rules shared by every page.
 //
 // Number rules (from the Vault Foundations board):

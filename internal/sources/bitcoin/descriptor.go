@@ -200,7 +200,7 @@ func splitCall(s string) (name, args string, ok bool) {
 }
 
 func unsupported(name string) error {
-	return fmt.Errorf("unsupported descriptor %s(): CryptKeep supports pkh, wpkh, sh(wpkh), tr(KEY), "+
+	return fmt.Errorf("unsupported descriptor %s(): CryptKeeper supports pkh, wpkh, sh(wpkh), tr(KEY), "+
 		"wsh/sh(wsh)/sh of multi or sortedmulti, and addr", name)
 }
 

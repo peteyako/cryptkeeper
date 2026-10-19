@@ -120,9 +120,9 @@ func alertFormTitle(p AlertFormPage) string {
 
 func alertFormLede(p AlertFormPage) string {
 	if p.isEdit() {
-		return "Change what this alert watches for. CryptKeep only ever reads your balances, so alerts tell you; they never move funds."
+		return "Change what this alert watches for. CryptKeeper only ever reads your balances, so alerts tell you; they never move funds."
 	}
-	return "Pick what to watch for and CryptKeep sends you a notification when it happens."
+	return "Pick what to watch for and CryptKeeper sends you a notification when it happens."
 }
 
 func alertSaveLabel(p AlertFormPage) string {

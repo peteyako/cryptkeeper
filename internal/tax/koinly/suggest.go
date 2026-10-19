@@ -9,13 +9,13 @@ import (
 	"crypto-portfolio/internal/tax"
 )
 
-// Wallet is a CryptKeep source as the suggester sees it.
+// Wallet is a CryptKeeper source as the suggester sees it.
 type Wallet struct {
 	ID, Label, Type string
 	Addresses       []string
 }
 
-// AssetInfo is an asset CryptKeep knows (snapshot rows + activity legs).
+// AssetInfo is an asset CryptKeeper knows (snapshot rows + activity legs).
 type AssetInfo struct{ Key, Symbol, Name string }
 
 // WalletNames returns every Koinly wallet name seen, sorted.
@@ -37,11 +37,11 @@ func WalletNames(txns []Txn, gains []tax.Disposal) []string {
 	return out
 }
 
-// Match is the CryptKeep wallet a Koinly wallet was matched to (a source ID or
+// Match is the CryptKeeper wallet a Koinly wallet was matched to (a source ID or
 // tax.Untracked) and why, in words for the import page.
 type Match struct{ ID, Why string }
 
-// MatchWallets matches each Koinly wallet name to a CryptKeep wallet, on the strongest
+// MatchWallets matches each Koinly wallet name to a CryptKeeper wallet, on the strongest
 // evidence it finds:
 //
 //  1. its transactions' own addresses (TxDest of what it received, TxSrc of what it sent)
@@ -171,7 +171,7 @@ func containsWord(name, label string) bool {
 	return err == nil && re.MatchString(name)
 }
 
-// SuggestAssets maps each holding's Asset string to a CryptKeep asset key ("" = skip).
+// SuggestAssets maps each holding's Asset string to a CryptKeeper asset key ("" = skip).
 // ambiguous lists the candidate keys for holdings it could not decide.
 func SuggestAssets(holdings []Holding, known []AssetInfo) (m map[string]string, ambiguous map[string][]string) {
 	m = map[string]string{}

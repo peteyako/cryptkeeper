@@ -257,7 +257,7 @@ func FromOpenRange(year int, res tax.Result, r Resolver, loc *time.Location, now
 	}
 	rows := r.rows(disp, false)
 	return YearReport{
-		Year: year, Source: "cryptkeep", AsOf: asOf, Loc: loc,
+		Year: year, Source: "cryptkeeper", AsOf: asOf, Loc: loc,
 		Rows: rows, Income: inc, GiftsLost: r.rows(gl, false),
 		Holdings: r.holdings(res.Lots, asOf), Summary: tax.Summarize(disp, inc),
 		Issues: slices.Clone(res.Issues),

@@ -26,8 +26,8 @@ import (
 )
 
 // The Koinly import wizard (/reports/koinly): upload Koinly's year-end reports, map its
-// wallets and assets to CryptKeep's, reconcile Koinly's closing quantities against what
-// CryptKeep's wallets held at the cutover, and save the year as closed. The upload is kept
+// wallets and assets to CryptKeeper's, reconcile Koinly's closing quantities against what
+// CryptKeeper's wallets held at the cutover, and save the year as closed. The upload is kept
 // as a draft in the kv table until it is accepted or discarded.
 
 const (
@@ -49,13 +49,13 @@ type koinlyDraft struct {
 	Files map[string]string
 	// WalletMap: Koinly wallet name → source ID | tax.Untracked. AssetMap: Koinly
 	// "SYM (Name)" → asset key | "" (skip). ExtraBasis: asset key → the user's total USD
-	// basis for CryptKeep's units beyond Koinly's. SkipOK: Koinly assets the user chose to
+	// basis for CryptKeeper's units beyond Koinly's. SkipOK: Koinly assets the user chose to
 	// skip although their symbol matched several assets ("skip anyway").
 	WalletMap  map[string]string
 	AssetMap   map[string]string
 	ExtraBasis map[string]float64
 	SkipOK     map[string]bool
-	// WalletWhy says why a Koinly wallet is mapped as it is, for the ones CryptKeep matched;
+	// WalletWhy says why a Koinly wallet is mapped as it is, for the ones CryptKeeper matched;
 	// choosing another wallet drops it.
 	WalletWhy map[string]string
 }
@@ -79,7 +79,7 @@ func (s *Server) loadDraft(ctx context.Context) (koinlyDraft, bool, error) {
 	return d, ok, err
 }
 
-// koinlyState is what CryptKeep knows that the wizard reconciles against.
+// koinlyState is what CryptKeeper knows that the wizard reconciles against.
 type koinlyState struct {
 	snap     portfolio.Snapshot
 	ready    bool      // a snapshot exists
@@ -311,7 +311,7 @@ func titleYear(raw []byte) int {
 }
 
 // suggestMappings keeps only the names the draft's reports contain and maps each new one:
-// to what tax.yaml mapped it to on an earlier import, or else to what CryptKeep matches it
+// to what tax.yaml mapped it to on an earlier import, or else to what CryptKeeper matches it
 // to. With rematch every name is new: earlier choices and imports are set aside.
 func (s *Server) suggestMappings(ctx context.Context, d *koinlyDraft, rematch bool) {
 	var saved tax.Settings
@@ -423,7 +423,7 @@ func (s *Server) koinlyRematch(w http.ResponseWriter, r *http.Request) {
 	s.patchKoinly(w, r, templates.ImportOutcome{}, outcome)
 }
 
-// knownAssets is every asset CryptKeep has seen, from the snapshot's rows and the activity
+// knownAssets is every asset CryptKeeper has seen, from the snapshot's rows and the activity
 // legs, without spam, sorted by symbol. A snapshot row's name wins over an activity leg.
 func (s *Server) knownAssets(st koinlyState) []koinly.AssetInfo {
 	spam := spamSet(s.Cfg.Solana.HideMints)
@@ -674,7 +674,7 @@ func (s *Server) koinlyClose(ctx context.Context) string {
 // koinlyReview is a draft's reconciliation and whether it can be accepted, shared by the
 // wizard and Accept so they always agree.
 type koinlyReview struct {
-	known     []koinly.AssetInfo  // the assets CryptKeep knows (the asset options)
+	known     []koinly.AssetInfo  // the assets CryptKeeper knows (the asset options)
 	ambiguous map[string][]string // Koinly asset → the known keys its symbol matches
 	op        koinly.Opening
 	// problems: the wallet warnings, the closed year being replaced, the skipped assets
@@ -756,7 +756,7 @@ func (s *Server) koinlyBlocked(d koinlyDraft, st koinlyState, rev koinlyReview) 
 	case err != nil:
 		return "data/tax.yaml has an error; fix it first: " + err.Error()
 	case !st.ready:
-		return "CryptKeep is still loading your balances; try again in a minute."
+		return "CryptKeeper is still loading your balances; try again in a minute."
 	case st.txErr != nil:
 		return "Couldn't read the activity history: " + st.txErr.Error()
 	}
@@ -777,7 +777,7 @@ func (s *Server) koinlyBlocked(d koinlyDraft, st koinlyState, rev koinlyReview) 
 // costTolUSD is the dollar amount below which a cost is float residue.
 const costTolUSD = 0.005
 
-// koinlyOpening reconciles the draft against CryptKeep's wallets at the cutover: today's
+// koinlyOpening reconciles the draft against CryptKeeper's wallets at the cutover: today's
 // holdings (stake accounts and positions included) rolled back over the activity since,
 // with tagged position moves keeping their units. warnings say which wallets' quantities
 // may be off.
@@ -808,7 +808,7 @@ func (s *Server) koinlyOpening(d koinlyDraft, st koinlyState) (op koinly.Opening
 		}
 	}
 	if !st.ready {
-		warnings = append(warnings, "CryptKeep hasn't loaded your balances yet, so every unit shows as untracked")
+		warnings = append(warnings, "CryptKeeper hasn't loaded your balances yet, so every unit shows as untracked")
 	}
 	warnings = append(warnings, koinlyHistoryWarnings(s.Registry.Entries(), st.backfill, st.txs, cutover)...)
 	op = koinly.BuildOpening(koinly.OpeningInput{
@@ -881,7 +881,7 @@ func (s *Server) koinlyWizard(ctx context.Context) templates.KoinlyWizard {
 		for _, r := range op.Rows {
 			w.Recon = append(w.Recon, templates.KoinlyReconRow{
 				KoinlyAsset: r.KoinlyAsset, AssetKey: r.AssetKey, Symbol: symbols[r.AssetKey],
-				KoinlyQty: r.KoinlyQty, KoinlyCost: r.KoinlyCost, CryptKeepQty: r.CryptKeepQty,
+				KoinlyQty: r.KoinlyQty, KoinlyCost: r.KoinlyCost, CryptKeeperQty: r.CryptKeeperQty,
 				Dated: r.Dated, Various: r.Various, Untracked: r.Untracked, MissingBasis: r.MissingBasis,
 				ExtraBasis: d.ExtraBasis[r.AssetKey],
 			})
@@ -922,7 +922,7 @@ func (s *Server) walletRows(d koinlyDraft) ([]templates.KoinlyMapRow, []template
 }
 
 // assetRows is one row per Koinly holding (by its "SYM (Name)"), and the options: Skip,
-// then every known asset, then any mapped key CryptKeep doesn't hold now. An ambiguous
+// then every known asset, then any mapped key CryptKeeper doesn't hold now. An ambiguous
 // holding with a cost left on Skip gets the "Skip anyway" box.
 func assetRows(d koinlyDraft, rev koinlyReview) ([]templates.KoinlyMapRow, []templates.KoinlyOption) {
 	opts := []templates.KoinlyOption{{Value: "", Label: "Skip"}}

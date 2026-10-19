@@ -1,4 +1,4 @@
-// Command crypto-portfolio is CryptKeep: a self-hosted, read-only crypto portfolio monitor.
+// Command crypto-portfolio is CryptKeeper: a self-hosted, read-only crypto portfolio monitor.
 //
 //	crypto-portfolio serve [-config config.yaml] [-data ./data] [-env .env] [-addr :8787]
 //	crypto-portfolio portfolios export [-o file.yaml] [-id ID]
@@ -100,27 +100,37 @@ type app struct {
 	taxYears    *tax.YearStore     // data/tax/<year>.yaml
 }
 
-// dbName is the SQLite database in the data directory. Before the app was renamed from
-// Vault to CryptKeep it was legacyDBName.
-const (
-	dbName       = "cryptkeep.db"
-	legacyDBName = "vault.db"
-)
+// dbName is the SQLite database in the data directory. legacyDBNames are its names from
+// before the app was CryptKeeper, newest first: it was CryptKeep, and before that Vault.
+const dbName = "cryptkeeper.db"
 
-// renameLegacyDB moves a database still under the Vault-era name, with its WAL and shared
-// memory files, to dbName so an existing install keeps its history. The main file moves
-// last: if a rename fails partway, the next start finds it under the old name and retries.
-// Once dbName exists nothing is touched.
+var legacyDBNames = []string{"cryptkeep.db", "vault.db"}
+
+// renameLegacyDB moves a database still under an earlier name, with its WAL and shared
+// memory files, to dbName so an existing install keeps its history. The newest earlier
+// name found wins and any older one is left alone. The main file moves last: if a rename
+// fails partway, the next start finds it under the old name and retries. Once dbName
+// exists nothing is touched.
 func renameLegacyDB(dataDir string) error {
 	dst := filepath.Join(dataDir, dbName)
 	if _, err := os.Stat(dst); !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	src := filepath.Join(dataDir, legacyDBName)
-	for _, suffix := range []string{"-wal", "-shm", ""} {
-		if err := os.Rename(src+suffix, dst+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("moving %s to %s: %w", legacyDBName+suffix, dbName+suffix, err)
+	for _, legacy := range legacyDBNames {
+		src := filepath.Join(dataDir, legacy)
+		_, err := os.Stat(src)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
 		}
+		if err != nil {
+			return err
+		}
+		for _, suffix := range []string{"-wal", "-shm", ""} {
+			if err := os.Rename(src+suffix, dst+suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("moving %s to %s: %w", legacy+suffix, dbName+suffix, err)
+			}
+		}
+		return nil
 	}
 	return nil
 }
@@ -513,7 +523,7 @@ func serve(args []string) error {
 	srv := &http.Server{Addr: *addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	errCh := make(chan error, 1)
 	go func() {
-		a.log.Info("CryptKeep listening", "addr", *addr, "sources", len(a.registry.Defs()), "auth", a.cfg.Password != "", "data", a.dataDir)
+		a.log.Info("CryptKeeper listening", "addr", *addr, "sources", len(a.registry.Defs()), "auth", a.cfg.Password != "", "data", a.dataDir)
 		errCh <- srv.ListenAndServe()
 	}()
 	select {
@@ -539,7 +549,7 @@ func sourcesCmd(args []string) error {
 	switch sub {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
-		withSecrets := fs.Bool("secrets", false, "include sealed secrets (only re-importable with the same key; always on when CRYPTKEEP_SECRET_KEY is set)")
+		withSecrets := fs.Bool("secrets", false, "include sealed secrets (only re-importable with the same key; always on when CRYPTKEEPER_SECRET_KEY is set)")
 		a, _, err := setup(fs, rest)
 		if err != nil {
 			return err
@@ -672,7 +682,7 @@ func backupCmd(args []string) error {
 	switch sub {
 	case "export":
 		out := fs.String("o", "", "output file (default stdout)")
-		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key; always on when CRYPTKEEP_SECRET_KEY is set)")
+		withSecrets := fs.Bool("secrets", false, "include sealed exchange secrets (only restorable with the same key; always on when CRYPTKEEPER_SECRET_KEY is set)")
 		withDB := fs.Bool("db", false, "include the database: activity, price and chart history, saved scans")
 		a, _, err := setup(fs, rest)
 		if err != nil {
@@ -721,7 +731,7 @@ func backupCmd(args []string) error {
 	return fmt.Errorf("unknown backup command %q", sub)
 }
 
-// sealExport encrypts a YAML export as a whole when CRYPTKEEP_SECRET_KEY is set.
+// sealExport encrypts a YAML export as a whole when CRYPTKEEPER_SECRET_KEY is set.
 func (a *app) sealExport(raw []byte) ([]byte, error) {
 	if !a.cfg.EncryptExports() {
 		return raw, nil

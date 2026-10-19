@@ -63,7 +63,7 @@ type env struct {
 func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := store.Open(filepath.Join(dir, "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(dir, "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestActivitySyncStream(t *testing.T) {
 	// plain language with the advice for the public Solana RPC.
 	waitFor("datastar-patch-elements", `id="activity-sync"`, "Phantom", "Not synced yet")
 	go e.syncer.SyncOnce(context.Background())
-	waitFor(`id="activity-sync"`, "Timed out: the Solana RPC was too slow to answer.", "CryptKeep tries again every 15 min.",
+	waitFor(`id="activity-sync"`, "Timed out: the Solana RPC was too slow to answer.", "CryptKeeper tries again every 15 min.",
 		"solana.rpcUrl", "<code>context deadline exceeded</code>")
 }
 
@@ -695,7 +695,7 @@ func TestBackupExportRestore(t *testing.T) {
 	// The reported scenario: delete the portfolio and its source, then restore the backup.
 	e.ps.Delete("test")
 	e.do("POST", "/sources/kids/delete", nil, ds(nil))
-	body, hdr := multipartFile(t, "file", "cryptkeep-backup.yaml", []byte(sealed), map[string]string{"mode": "merge"})
+	body, hdr := multipartFile(t, "file", "cryptkeeper-backup.yaml", []byte(sealed), map[string]string{"mode": "merge"})
 	_, out := e.do("POST", "/backup/import", body, hdr)
 	if !strings.Contains(out, "backup-import-result") || !strings.Contains(out, "portfolios 1 added") {
 		t.Fatalf("restore: %.500s", out)
@@ -767,7 +767,7 @@ func TestDatastarNavigationPatchesRegionsOnly(t *testing.T) {
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
 		t.Fatalf("content type %q", resp.Header.Get("Content-Type"))
 	}
-	for _, want := range []string{"datastar-patch-elements", `id="page-title"`, `id="sidebar"`, `id="main"`, `id="bottomnav"`, "Activity · CryptKeep"} {
+	for _, want := range []string{"datastar-patch-elements", `id="page-title"`, `id="sidebar"`, `id="main"`, `id="bottomnav"`, "Activity · CryptKeeper"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("nav patch missing %q", want)
 		}

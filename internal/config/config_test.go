@@ -10,29 +10,34 @@ import (
 
 func TestLoadSecretKeyEnv(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "config.yaml")
-	for _, tc := range []struct{ current, legacy, want string }{
-		{"new", "", "new"},
-		{"", "old", "old"}, // VAULT_SECRET_KEY, the name before the CryptKeep rename
-		{"new", "old", "new"},
+	// The key's earlier names, from before the app was CryptKeeper, still work.
+	for _, tc := range []struct{ current, cryptKeep, vault, want string }{
+		{"new", "", "", "new"},
+		{"", "mid", "", "mid"},
+		{"", "", "old", "old"},
+		{"new", "mid", "old", "new"},
+		{"", "mid", "old", "mid"},
 	} {
-		t.Setenv("CRYPTKEEP_SECRET_KEY", tc.current)
-		t.Setenv("VAULT_SECRET_KEY", tc.legacy)
+		t.Setenv("CRYPTKEEPER_SECRET_KEY", tc.current)
+		t.Setenv("CRYPTKEEP_SECRET_KEY", tc.cryptKeep)
+		t.Setenv("VAULT_SECRET_KEY", tc.vault)
 		cfg, err := Load(missing)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if cfg.SecretKey != tc.want {
-			t.Errorf("CRYPTKEEP_SECRET_KEY=%q VAULT_SECRET_KEY=%q: SecretKey = %q, want %q", tc.current, tc.legacy, cfg.SecretKey, tc.want)
+			t.Errorf("CRYPTKEEPER_SECRET_KEY=%q CRYPTKEEP_SECRET_KEY=%q VAULT_SECRET_KEY=%q: SecretKey = %q, want %q",
+				tc.current, tc.cryptKeep, tc.vault, cfg.SecretKey, tc.want)
 		}
 	}
 }
 
 func TestEncryptExportsWhenKeyIsSet(t *testing.T) {
 	if (Config{}).EncryptExports() {
-		t.Fatal("no CRYPTKEEP_SECRET_KEY: exports stay plain")
+		t.Fatal("no CRYPTKEEPER_SECRET_KEY: exports stay plain")
 	}
 	if !(Config{SecretKey: "a2V5"}).EncryptExports() {
-		t.Fatal("CRYPTKEEP_SECRET_KEY set: exports are encrypted")
+		t.Fatal("CRYPTKEEPER_SECRET_KEY set: exports are encrypted")
 	}
 }
 

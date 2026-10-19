@@ -24,7 +24,7 @@ const costTol = 0.005
 var acquisitionTypes = map[string]bool{"crypto_deposit": true, "exchange": true, "transfer": true, "buy": true}
 
 // OpeningInput is everything BuildOpening reconciles: Koinly's closing state for Year,
-// the user's mappings, and what CryptKeep's wallets held at the cutover.
+// the user's mappings, and what CryptKeeper's wallets held at the cutover.
 type OpeningInput struct {
 	Year     int            // the imported year (2025)
 	Loc      *time.Location // tax timezone; nil means time.Local
@@ -36,19 +36,19 @@ type OpeningInput struct {
 	AssetMap  map[string]string             // Koinly "SYM (Name)" → asset key | ""
 	Balances  map[string]map[string]float64 // RollBack result: source ID → asset key → qty at cutover
 	// ExtraBasis is asset key → the total USD basis the user entered for all of that
-	// asset's CryptKeep-excess units, not a per-unit price. With a positive basis those
+	// asset's CryptKeeper-excess units, not a per-unit price. With a positive basis those
 	// lots carry it as a real cost; with none (0) they are flagged tax.FlagMissingBasis.
 	ExtraBasis map[string]float64
 	Parked     []tax.Parked // RollBackParked result
 }
 
-// ReconRow is one mapped asset's reconciliation between Koinly and CryptKeep.
+// ReconRow is one mapped asset's reconciliation between Koinly and CryptKeeper.
 type ReconRow struct {
-	KoinlyAsset, AssetKey               string
-	KoinlyQty, KoinlyCost, CryptKeepQty float64
-	Untracked, MissingBasis             float64 // units sent to tax.Untracked / units with no Koinly basis
-	Dated, Various                      float64 // units in dated lots / in "before Year" lots
-	Lots                                []tax.Lot
+	KoinlyAsset, AssetKey                 string
+	KoinlyQty, KoinlyCost, CryptKeeperQty float64
+	Untracked, MissingBasis               float64 // units sent to tax.Untracked / units with no Koinly basis
+	Dated, Various                        float64 // units in dated lots / in "before Year" lots
+	Lots                                  []tax.Lot
 }
 
 // Opening is the reconciled opening position for the year after Year.
@@ -61,9 +61,9 @@ type Opening struct {
 
 // BuildOpening turns Koinly's year-end holdings into dated FIFO opening lots per wallet.
 // Per mapped asset, each wallet's quantity at the cutover is dated from its newest
-// acquisitions in the transaction history; what Koinly holds beyond CryptKeep goes to
+// acquisitions in the transaction history; what Koinly holds beyond CryptKeeper goes to
 // tax.Untracked, dated from its own wallets' rows and then from any rows (or parts of
-// rows) the other wallets left unused; what CryptKeep holds beyond Koinly becomes
+// rows) the other wallets left unused; what CryptKeeper holds beyond Koinly becomes
 // missing-basis lots; the rest is one "before Year" lot per wallet carrying Koinly's
 // remaining cost (with none, a positive remainder is spread over the dated lots, so the
 // total still matches Koinly).
@@ -206,14 +206,14 @@ func reconcile(in OpeningInput, k string, hs []Holding, sym map[string]string) (
 		switch v := in.Balances[w][k]; {
 		case v > dust:
 			held[w] = v
-			row.CryptKeepQty += v
+			row.CryptKeeperQty += v
 		case v < -dust:
 			note("%s rolls back to %s; treated as 0", w, qty(v))
 		}
 	}
-	ck := row.CryptKeepQty
+	ck := row.CryptKeeperQty
 	if math.Abs(q-ck) > math.Max(dust, 1e-6*q) {
-		note("Koinly %s vs CryptKeep %s", qty(q), qty(ck))
+		note("Koinly %s vs CryptKeeper %s", qty(q), qty(ck))
 	}
 	if q > ck+tol {
 		row.Untracked = q - ck
@@ -259,7 +259,7 @@ func reconcile(in OpeningInput, k string, hs []Holding, sym map[string]string) (
 	}
 	nDated := len(lots)
 
-	// 4. What is left undated in each wallet: CryptKeep's excess over Koinly first
+	// 4. What is left undated in each wallet: CryptKeeper's excess over Koinly first
 	// becomes missing-basis lots (or lots at the user's ExtraBasis), pro-rata over the
 	// real wallets' remainders.
 	rest := map[string]float64{}
@@ -274,7 +274,7 @@ func reconcile(in OpeningInput, k string, hs []Holding, sym map[string]string) (
 	if excess := ck - q; excess > tol {
 		// Remainders within tol are float residue: they take no share (no sliver lots).
 		if realRest < excess-tol*float64(len(held)+1) {
-			note("only %s of CryptKeep's %s extra units are undated; the rest keep dated lots", qty(realRest), qty(excess))
+			note("only %s of CryptKeeper's %s extra units are undated; the rest keep dated lots", qty(realRest), qty(excess))
 			excess = realRest
 		}
 		extra := math.Max(0, in.ExtraBasis[k])

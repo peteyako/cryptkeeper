@@ -26,7 +26,7 @@ var taxDownloads = []struct{ Label, Path string }{
 }
 
 // taxDownloadsFor is the downloads a year offers: a Koinly year has no transaction history
-// (CryptKeep never replayed it), so its link is left out.
+// (CryptKeeper never replayed it), so its link is left out.
 func taxDownloadsFor(r report.YearReport) []struct{ Label, Path string } {
 	if r.Source != "koinly" {
 		return taxDownloads
@@ -91,9 +91,9 @@ func taxSourceText(r report.YearReport) string {
 	case r.Source == "koinly":
 		return "Closed · imported from Koinly"
 	case r.Closed:
-		return "Closed · computed by CryptKeep"
+		return "Closed · computed by CryptKeeper"
 	}
-	return "Open · computed by CryptKeep"
+	return "Open · computed by CryptKeeper"
 }
 
 func (p TaxPage) pageRows() []report.Row {

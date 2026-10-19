@@ -111,7 +111,7 @@ func byWalletAssetAcquired(a, b tax.Lot) int {
 	return cmp.Or(strings.Compare(a.Wallet, b.Wallet), strings.Compare(a.Asset, b.Asset), a.Acquired.Compare(b.Acquired))
 }
 
-// checkInvariants verifies, for every row: Σ lot amount == max(Koinly, CryptKeep);
+// checkInvariants verifies, for every row: Σ lot amount == max(Koinly, CryptKeeper);
 // Σ lot cost == Koinly cost (+ extra basis when there are missing-basis units) unless a
 // cost problem is reported; positive amounts and non-negative costs; the row's
 // breakdown adds up; a quantity difference is listed as a problem exactly when it
@@ -134,7 +134,7 @@ func checkInvariants(t *testing.T, in OpeningInput, op Opening) {
 			}
 		}
 		amount, cost := sums(r.Lots)
-		near(t, r.AssetKey+" Σ amount", amount, math.Max(r.KoinlyQty, r.CryptKeepQty))
+		near(t, r.AssetKey+" Σ amount", amount, math.Max(r.KoinlyQty, r.CryptKeeperQty))
 		near(t, r.AssetKey+" dated+various+missing", r.Dated+r.Various+r.MissingBasis, amount)
 		near(t, r.AssetKey+" untracked", r.Untracked, untracked)
 		want := r.KoinlyCost
@@ -144,7 +144,7 @@ func checkInvariants(t *testing.T, in OpeningInput, op Opening) {
 		if !hasCostProblem(op, r.AssetKey) {
 			near(t, r.AssetKey+" Σ cost", cost, want)
 		}
-		differs := math.Abs(r.KoinlyQty-r.CryptKeepQty) > math.Max(1e-12, 1e-6*r.KoinlyQty)
+		differs := math.Abs(r.KoinlyQty-r.CryptKeeperQty) > math.Max(1e-12, 1e-6*r.KoinlyQty)
 		listed := false
 		for _, p := range op.Problems {
 			listed = listed || strings.HasPrefix(p, r.AssetKey+": Koinly ")
@@ -190,7 +190,7 @@ func TestOpeningBackfillNewestFirst(t *testing.T) {
 	near(t, "Σ amount", amount, 10)
 	near(t, "Σ cost", cost, 1500)
 	r := rowFor(t, op, "SOL")
-	if r.KoinlyAsset != "SOL (Solana)" || r.KoinlyQty != 10 || r.KoinlyCost != 1500 || r.CryptKeepQty != 10 {
+	if r.KoinlyAsset != "SOL (Solana)" || r.KoinlyQty != 10 || r.KoinlyCost != 1500 || r.CryptKeeperQty != 10 {
 		t.Errorf("row %+v", r)
 	}
 	near(t, "dated", r.Dated, 7)
@@ -258,7 +258,7 @@ func TestOpeningLeftoverSpreadByAmountWhenDatedCostZero(t *testing.T) {
 }
 
 func TestOpeningLeftoverNotSpreadOverMissingBasis(t *testing.T) {
-	// Koinly's 2 units are both dated; CryptKeep's extra unit has no Koinly basis and
+	// Koinly's 2 units are both dated; CryptKeeper's extra unit has no Koinly basis and
 	// must stay at its ExtraBasis ($30), so the $100 leftover goes to the dated lot only.
 	// The user entered that basis, so the lot is not flagged missing-basis.
 	in := solInput(t, 2, 300, map[string]map[string]float64{"sol": {"SOL": 3}},
@@ -298,10 +298,10 @@ func TestOpeningUntrackedExcess(t *testing.T) {
 	}
 	wantLot(t, op.Lots[0], tax.Untracked, "ETH", 1.5, 2400, before2025(t), true, "")
 	r := rowFor(t, op, "ETH")
-	if r.CryptKeepQty != 0 || r.Untracked != 1.5 || r.Various != 1.5 {
+	if r.CryptKeeperQty != 0 || r.Untracked != 1.5 || r.Various != 1.5 {
 		t.Errorf("row %+v", r)
 	}
-	if !hasProblem(op, "ETH: Koinly 1.5 vs CryptKeep 0") {
+	if !hasProblem(op, "ETH: Koinly 1.5 vs CryptKeeper 0") {
 		t.Errorf("problems %q", op.Problems)
 	}
 }
@@ -325,10 +325,10 @@ func TestOpeningAllUntracked(t *testing.T) {
 	}
 	wantLot(t, op.Lots[0], tax.Untracked, "USDC", 40, 40, before2025(t), true, "")
 	wantLot(t, op.Lots[1], tax.Untracked, "USDC", 60, 60, day(11, 1), false, "")
-	if r := rowFor(t, op, "USDC"); r.CryptKeepQty != 0 || r.Untracked != 100 || r.Dated != 60 {
+	if r := rowFor(t, op, "USDC"); r.CryptKeeperQty != 0 || r.Untracked != 100 || r.Dated != 60 {
 		t.Errorf("row %+v", r)
 	}
-	for _, want := range []string{"USDC: kraken rolls back to -2; treated as 0", "USDC: Koinly 100 vs CryptKeep 0"} {
+	for _, want := range []string{"USDC: kraken rolls back to -2; treated as 0", "USDC: Koinly 100 vs CryptKeeper 0"} {
 		if !hasProblem(op, want) {
 			t.Errorf("missing problem %q in %q", want, op.Problems)
 		}
@@ -369,10 +369,10 @@ func TestOpeningMissingBasisExcess(t *testing.T) {
 	wantLot(t, op.Lots[3], "sol2", "SOL", m2, 0, cutover2026(t), false, tax.FlagMissingBasis)
 	r := rowFor(t, op, "SOL")
 	near(t, "missing basis", r.MissingBasis, 1.5)
-	near(t, "ck", r.CryptKeepQty, 101.5)
+	near(t, "ck", r.CryptKeeperQty, 101.5)
 	_, cost := sums(op.Lots)
 	near(t, "Σ cost", cost, 20000)
-	if !hasProblem(op, "SOL: Koinly 100 vs CryptKeep 101.5") {
+	if !hasProblem(op, "SOL: Koinly 100 vs CryptKeeper 101.5") {
 		t.Errorf("problems %q", op.Problems)
 	}
 }
@@ -391,7 +391,7 @@ func TestOpeningMissingBasisExtraBasis(t *testing.T) {
 	near(t, "Σ cost", cost, 20150)
 }
 
-// TestOpeningExtraBasisClearsMissingFlag: a basis the user entered for CryptKeep's extra
+// TestOpeningExtraBasisClearsMissingFlag: a basis the user entered for CryptKeeper's extra
 // units is a real basis, so those lots are not flagged missing-basis; with no entry (0)
 // they keep the flag.
 func TestOpeningExtraBasisClearsMissingFlag(t *testing.T) {
@@ -433,7 +433,7 @@ func TestOpeningMissingBasisAfterBackfill(t *testing.T) {
 }
 
 func TestOpeningDatedCappedAtKoinlyQty(t *testing.T) {
-	// CryptKeep holds 8, Koinly 5: dating stops at 5 units, taking the newest rows across
+	// CryptKeeper holds 8, Koinly 5: dating stops at 5 units, taking the newest rows across
 	// wallets first (sol2's November row before sol1's October row).
 	in := solInput(t, 5, 475, map[string]map[string]float64{"sol1": {"SOL": 4}, "sol2": {"SOL": 4}},
 		deposit("Wallet B", "SOL", 4, 400, day(11, 1), "FakeHash7"),
@@ -451,7 +451,7 @@ func TestOpeningDatedCappedAtKoinlyQty(t *testing.T) {
 	if r := rowFor(t, op, "SOL"); r.Dated != 5 || r.Various != 0 || r.MissingBasis != 3 {
 		t.Errorf("row %+v", r)
 	}
-	if !hasProblem(op, "SOL: Koinly 5 vs CryptKeep 8") || hasCostProblem(op, "SOL") {
+	if !hasProblem(op, "SOL: Koinly 5 vs CryptKeeper 8") || hasCostProblem(op, "SOL") {
 		t.Errorf("problems %q", op.Problems)
 	}
 }
@@ -492,7 +492,7 @@ func TestOpeningTransferFlag(t *testing.T) {
 }
 
 func TestOpeningSameWalletTransferSkipped(t *testing.T) {
-	// Transfers between Koinly wallets that map to the same CryptKeep wallet (including a
+	// Transfers between Koinly wallets that map to the same CryptKeeper wallet (including a
 	// wallet name to itself, which Koinly exports can contain) bring no units into it.
 	in := solInput(t, 5, 500, map[string]map[string]float64{"sol": {"SOL": 5}},
 		deposit(solW, "SOL", 5, 500, day(3, 1), "FakeHash4"),
@@ -615,7 +615,7 @@ func TestOpeningDuplicateHoldingsGrouped(t *testing.T) {
 		t.Fatalf("rows %+v", op.Rows)
 	}
 	r := op.Rows[0]
-	if r.KoinlyAsset != "SPAM#7 (Spam Collection)" || r.KoinlyQty != 2 || r.KoinlyCost != 5 || r.CryptKeepQty != 2 {
+	if r.KoinlyAsset != "SPAM#7 (Spam Collection)" || r.KoinlyQty != 2 || r.KoinlyCost != 5 || r.CryptKeeperQty != 2 {
 		t.Errorf("row %+v", r)
 	}
 	if len(op.Problems) != 0 {
@@ -718,7 +718,7 @@ func TestOpeningBuyRowDates(t *testing.T) {
 }
 
 func TestOpeningUntrackedFromZeroQtyWallet(t *testing.T) {
-	// Koinly holds 2 ETH; the mapped ledger holds none in CryptKeep, so both are
+	// Koinly holds 2 ETH; the mapped ledger holds none in CryptKeeper, so both are
 	// untracked. The ledger's November buy most likely bought them: it dates 1.5.
 	in := OpeningInput{
 		Year: 2025, Loc: loadNY(t),

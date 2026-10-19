@@ -173,7 +173,7 @@ func chartLabel(label string) string {
 
 // chartSVG is the server-rendered portfolio value chart. Its values are private figures.
 templ chartSVG(points []portfolio.Point, label string) {
-	@chartFigure(points, chartLabel(label), "History fills in as CryptKeep records your balances.", true, Fiat)
+	@chartFigure(points, chartLabel(label), "History fills in as CryptKeeper records your balances.", true, Fiat)
 }
 
 // chartFigure is the chart with its accessible name, the value labels on its gridlines,

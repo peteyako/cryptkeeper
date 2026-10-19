@@ -72,5 +72,5 @@ var exportLinks = []exportLink{
 	{"Holdings", "Every asset you hold, with price and value.", "/export/holdings.csv", "Download holdings CSV"},
 	{"History", "Portfolio value over time, for all of your history.", "/export/history.csv?range=All", "Download history CSV"},
 	{"Profit and loss", "Cost basis and unrealized P/L for each asset.", "/export/pnl.csv", "Download profit and loss CSV"},
-	{"Activity", "Every transaction CryptKeep has synced.", "/export/activity.csv", "Download activity CSV"},
+	{"Activity", "Every transaction CryptKeeper has synced.", "/export/activity.csv", "Download activity CSV"},
 }

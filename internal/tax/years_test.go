@@ -135,7 +135,7 @@ func TestOpenYearStart(t *testing.T) {
 func TestYearCarriedPeers(t *testing.T) {
 	s, dir := newYearStore(t)
 	want := []string{"a:send", "b:recv"}
-	if err := s.Save(Year{Year: 2026, Source: "cryptkeep", CarriedPeers: slices.Clone(want)}); err != nil {
+	if err := s.Save(Year{Year: 2026, Source: "cryptkeeper", CarriedPeers: slices.Clone(want)}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := s.Get(2026)
@@ -154,7 +154,7 @@ func TestYearCarriedPeers(t *testing.T) {
 		"unsorted": {"b:recv", "a:send"},
 		"repeated": {"a:send", "a:send"},
 	} {
-		err := s.Save(Year{Year: 2027, Source: "cryptkeep", CarriedPeers: ids})
+		err := s.Save(Year{Year: 2027, Source: "cryptkeeper", CarriedPeers: ids})
 		if err == nil || !strings.Contains(err.Error(), "carriedPeers") {
 			t.Errorf("%s: err = %v, want a carriedPeers error", name, err)
 		}

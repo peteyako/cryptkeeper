@@ -86,7 +86,7 @@ func newHarness(t *testing.T, rules ...string) *harness {
 		body += "  - " + r + "\n"
 	}
 	fx.write(t, body)
-	db, err := store.Open(filepath.Join(fx.dir, "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(fx.dir, "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func (h *harness) newEngine() *Engine {
 		Rules:    h.rules,
 		DB:       h.db,
 		Notifier: h.n,
-		BaseURL:  "http://cryptkeep.test:8787",
+		BaseURL:  "http://cryptkeeper.test:8787",
 		Portfolio: func(id string, _ portfolio.Snapshot) (float64, bool) {
 			v, ok := h.pf[id]
 			return v, ok
@@ -257,7 +257,7 @@ func TestBalanceDropFiresOncePerDrop(t *testing.T) {
 	if n.RuleID != "cold-drop" || n.Priority != 5 || !hasTag(n, "rotating_light") {
 		t.Fatalf("notification: %+v", n)
 	}
-	if n.Click != "http://cryptkeep.test:8787/w/cold" {
+	if n.Click != "http://cryptkeeper.test:8787/w/cold" {
 		t.Fatalf("click %q", n.Click)
 	}
 	if !n.Time.Equal(t0) {
@@ -451,7 +451,7 @@ func TestPriceAboveCrossingHysteresisAndCooldown(t *testing.T) {
 
 	none(t, p(99000)) // below: armed
 	n := one(t, p(100500))
-	if n.RuleID != "btc-100k" || n.Priority != 3 || n.Click != "http://cryptkeep.test:8787/" {
+	if n.RuleID != "btc-100k" || n.Priority != 3 || n.Click != "http://cryptkeeper.test:8787/" {
 		t.Fatalf("notification: %+v", n)
 	}
 	mustContain(t, n.Body, "BTC", "above", "$100,000", "$100,500")
@@ -552,7 +552,7 @@ func TestPortfolioMoveDownAndUp(t *testing.T) {
 		t.Fatalf("notification: %+v", n)
 	}
 	mustContain(t, n.Body, "Long-term", "−11%", "24h", "$10,000", "$8,900")
-	mustContain(t, n.Click, "http://cryptkeep.test:8787/p/lt")
+	mustContain(t, n.Click, "http://cryptkeeper.test:8787/p/lt")
 	if len(h.histCalls) != 1 || h.histCalls[0].id != "lt" || !h.histCalls[0].at.Equal(t0.Add(-24*time.Hour)) {
 		t.Fatalf("history queried as %+v", h.histCalls)
 	}
@@ -627,7 +627,7 @@ func TestSourceDownFiresAfterThresholdOncePerOutage(t *testing.T) {
 		t.Fatalf("notification: %+v", n)
 	}
 	mustContain(t, n.Body, "Cold storage", "stale", "61 min")
-	if n.Click != "http://cryptkeep.test:8787/w/cold" {
+	if n.Click != "http://cryptkeeper.test:8787/w/cold" {
 		t.Fatalf("click %q", n.Click)
 	}
 
@@ -751,7 +751,7 @@ func TestLargeActivityContentAndLinks(t *testing.T) {
 	h := newHarness(t, `{id: big-send, type: large_activity, minUsd: 1000}`)
 	n := one(t, h.activity([]core.Tx{send("a", "cold", usd(-1500))}, kinds))
 	mustContain(t, n.Body, "Sent", "0.5 BTC", "$1,500", "Cold storage")
-	if n.Click != "http://cryptkeep.test:8787/activity" {
+	if n.Click != "http://cryptkeeper.test:8787/activity" {
 		t.Fatalf("click %q", n.Click)
 	}
 }
@@ -886,7 +886,7 @@ func TestNoBaseURLMeansNoClick(t *testing.T) {
 			t.Fatalf("click %q without a base URL", n.Click)
 		}
 	}
-	h.eng.BaseURL = "http://cryptkeep.test:8787/" // a trailing slash must not double up
+	h.eng.BaseURL = "http://cryptkeeper.test:8787/" // a trailing slash must not double up
 	h.clk.Advance(7 * time.Hour)
 	h.snapP(map[string]float64{"BTC": 5}, cold(1))
 	h.snapP(map[string]float64{"BTC": 5}, cold(1))
@@ -895,7 +895,7 @@ func TestNoBaseURLMeansNoClick(t *testing.T) {
 		t.Fatalf("want the drop and the price alert, got %+v", got)
 	}
 	for _, n := range got {
-		if !strings.HasPrefix(n.Click, "http://cryptkeep.test:8787/") || strings.Contains(n.Click, "8787//") {
+		if !strings.HasPrefix(n.Click, "http://cryptkeeper.test:8787/") || strings.Contains(n.Click, "8787//") {
 			t.Fatalf("click %q", n.Click)
 		}
 	}
@@ -1012,7 +1012,7 @@ func TestTestNotification(t *testing.T) {
 	}
 	got := h.fresh()
 	n := one(t, got)
-	if n.Body == "" || n.Title == "" || n.Click != "http://cryptkeep.test:8787/alerts" {
+	if n.Body == "" || n.Title == "" || n.Click != "http://cryptkeeper.test:8787/alerts" {
 		t.Fatalf("%+v", n)
 	}
 	h.n.setErr(errors.New("nope"))

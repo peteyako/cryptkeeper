@@ -46,7 +46,7 @@ const (
 	maxLimit     = 500
 )
 
-// Store persists activity entries and per-source sync state in the CryptKeep database.
+// Store persists activity entries and per-source sync state in the CryptKeeper database.
 type Store struct{ DB *store.DB }
 
 // Filter selects entries for List. Zero values mean "no restriction".

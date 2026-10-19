@@ -1,5 +1,5 @@
 // Package brokerage is a Source for a brokerage account typed in by hand: stocks, ETFs and
-// funds by ticker, and cash. CryptKeep never connects to the broker; prices come from the
+// funds by ticker, and cash. CryptKeeper never connects to the broker; prices come from the
 // price service ("stock:<TICKER>" keys) and names from a ticker lookup.
 package brokerage
 
@@ -112,7 +112,7 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("Yahoo Finance doesn't know %s. Check the ticker.", t))
 			warned[t] = true
 		case sec.Currency != "USD":
-			res.Warnings = append(res.Warnings, fmt.Sprintf("%s trades in %s. CryptKeep only prices US-dollar listings.", t, sec.Currency))
+			res.Warnings = append(res.Warnings, fmt.Sprintf("%s trades in %s. CryptKeeper only prices US-dollar listings.", t, sec.Currency))
 			warned[t] = true
 		}
 	}

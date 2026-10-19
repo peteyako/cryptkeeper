@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const userAgent = "cryptkeep/1.0"
+const userAgent = "cryptkeeper/1.0"
 
 // Client wraps http.Client with retry behaviour.
 type Client struct {

@@ -15,7 +15,7 @@ func TestSealFileRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(sealed)
-	if !strings.Contains(s, "cryptkeep: encrypted\n") || !strings.Contains(s, "data: \"enc:v1:") {
+	if !strings.Contains(s, "cryptkeeper: encrypted\n") || !strings.Contains(s, "data: \"enc:v1:") {
 		t.Fatalf("not an encrypted envelope:\n%s", s)
 	}
 	for _, leak := range []string{"zpub6rSecretXpub", "cold", "sources:"} {
@@ -26,6 +26,21 @@ func TestSealFileRoundTrip(t *testing.T) {
 	got, err := b.OpenFile(sealed)
 	if err != nil || string(got) != plainExport {
 		t.Fatalf("OpenFile = %q, %v", got, err)
+	}
+}
+
+// TestOpenFileReadsCryptKeepExports: files exported before the CryptKeeper rename carry
+// the old tag and still import.
+func TestOpenFileReadsCryptKeepExports(t *testing.T) {
+	b, _ := NewBox(bytes.Repeat([]byte{7}, 32))
+	sealed, _ := b.SealFile([]byte(plainExport))
+	old := bytes.Replace(sealed, []byte("\ncryptkeeper: encrypted\n"), []byte("\ncryptkeep: encrypted\n"), 1)
+	if bytes.Equal(old, sealed) {
+		t.Fatalf("no cryptkeeper tag to swap:\n%s", sealed)
+	}
+	got, err := b.OpenFile(old)
+	if err != nil || string(got) != plainExport {
+		t.Fatalf("OpenFile(CryptKeep export) = %q, %v", got, err)
 	}
 }
 
@@ -47,13 +62,13 @@ func TestOpenFileRejectsWrongOrMissingKey(t *testing.T) {
 		t.Fatalf("wrong key: err = %v", err)
 	}
 	var none *Box
-	if _, err := none.OpenFile(sealed); err == nil || !strings.Contains(err.Error(), "CRYPTKEEP_SECRET_KEY") {
+	if _, err := none.OpenFile(sealed); err == nil || !strings.Contains(err.Error(), "CRYPTKEEPER_SECRET_KEY") {
 		t.Fatalf("no key: err = %v", err)
 	}
 	if got, err := none.OpenFile([]byte(plainExport)); err != nil || string(got) != plainExport {
 		t.Fatalf("a plain file needs no key: %q, %v", got, err)
 	}
-	if _, err := b.OpenFile([]byte("cryptkeep: encrypted\nversion: 2\ndata: \"enc:v1:AAAA\"\n")); err == nil || !strings.Contains(err.Error(), "version 2") {
+	if _, err := b.OpenFile([]byte("cryptkeeper: encrypted\nversion: 2\ndata: \"enc:v1:AAAA\"\n")); err == nil || !strings.Contains(err.Error(), "version 2") {
 		t.Fatalf("future version: err = %v", err)
 	}
 }

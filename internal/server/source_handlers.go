@@ -200,7 +200,7 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 	}
 	for _, field := range []string{"key", "address", "jupiterVault"} {
 		if sources.LooksLikeSeed(strings.ToLower(strings.TrimSpace(r.PostFormValue(field)))) {
-			errs[""] = "That looks like a seed phrase or private key. CryptKeep only needs public keys — never enter a seed phrase here."
+			errs[""] = "That looks like a seed phrase or private key. CryptKeeper only needs public keys — never enter a seed phrase here."
 		}
 	}
 	return d, errs

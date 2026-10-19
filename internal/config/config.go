@@ -29,7 +29,7 @@ type Config struct {
 	SeedSources []map[string]any `yaml:"seedSources"`
 
 	// From the environment, never from the file.
-	SecretKey string `yaml:"-"` // CRYPTKEEP_SECRET_KEY
+	SecretKey string `yaml:"-"` // CRYPTKEEPER_SECRET_KEY
 	Password  string `yaml:"-"` // PORTFOLIO_PASSWORD
 	User      string `yaml:"-"` // PORTFOLIO_USER
 	NtfyToken string `yaml:"-"` // NTFY_TOKEN
@@ -185,9 +185,12 @@ func Load(path string) (Config, error) {
 	if cfg.Activity.BackfillDays <= 0 {
 		cfg.Activity.BackfillDays = d.Activity.BackfillDays
 	}
-	cfg.SecretKey = os.Getenv("CRYPTKEEP_SECRET_KEY")
-	if cfg.SecretKey == "" {
-		cfg.SecretKey = os.Getenv("VAULT_SECRET_KEY") // its name before the CryptKeep rename
+	// The key's earlier names, newest first: the app was CryptKeep, and before that Vault.
+	for _, name := range []string{"CRYPTKEEPER_SECRET_KEY", "CRYPTKEEP_SECRET_KEY", "VAULT_SECRET_KEY"} {
+		if v := os.Getenv(name); v != "" {
+			cfg.SecretKey = v
+			break
+		}
 	}
 	cfg.Password = os.Getenv("PORTFOLIO_PASSWORD")
 	cfg.User = os.Getenv("PORTFOLIO_USER")
@@ -208,7 +211,7 @@ func (c Config) ActivityInterval() time.Duration {
 func (c Config) StaleMax() time.Duration { return time.Duration(c.StaleMaxHours) * time.Hour }
 
 // EncryptExports reports whether YAML exports are encrypted as a whole: only when the user
-// set CRYPTKEEP_SECRET_KEY. The generated data/secret.key lives next to the data, so a
+// set CRYPTKEEPER_SECRET_KEY. The generated data/secret.key lives next to the data, so a
 // backup encrypted with it would be lost with the disk it is meant to survive.
 func (c Config) EncryptExports() bool { return c.SecretKey != "" }
 

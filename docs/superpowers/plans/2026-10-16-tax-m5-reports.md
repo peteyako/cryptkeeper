@@ -53,7 +53,7 @@
   - One row per disposal row.
   - Gifts/lost removals are excluded.
 - **TXF** (v042):
-  - The header is `V042`, `ACryptKeep`, `D<MM/DD/YYYY today>`, `^`.
+  - The header is `V042`, `ACryptKeeper`, `D<MM/DD/YYYY today>`, `^`.
   - Each record is `TD`, `N<code>`, `C1`, `L1`, `P<amount> <symbol>`, `D<acquired or VARIOUS>`, `D<sold>`, `$<cost>`, `$<proceeds>`, `^`.
   - Codes: short `712` / long `714` when the box is I/L (no 1099-DA); short `711` / long `713` when the box is H/K; short `321` / long `323` when the box is G/J.
 - **8949 boxes:** Part I (short) is G/H/I; Part II (long) is J/K/L. A wallet's short box comes from:
@@ -68,7 +68,7 @@
   - Gains and losses print with losses in parentheses, e.g. `(0.09)`.
   - Koinly put every 2024 disposal in Box C/F (no 1099). For 2025 and later, the digital-asset boxes I/L replace C/F per the IRS 2025 instructions.
   - Schedule D shows line totals only: line 3 short, line 10 long.
-- The print pages use their own minimal templ layout (no app shell) with `@media print` CSS, plus a "Print / Save as PDF" button (hidden in print). The CPA report ends with: "Prepared by CryptKeep from the user's own records. Not tax advice."
+- The print pages use their own minimal templ layout (no app shell) with `@media print` CSS, plus a "Print / Save as PDF" button (hidden in print). The CPA report ends with: "Prepared by CryptKeeper from the user's own records. Not tax advice."
 - Do NOT `git add`, `git commit`, `git stash` or switch branches.
 - Gate: `task generate && task vet && task test`.
 
@@ -174,7 +174,7 @@ func TestTaxViewTabs(t *testing.T)            // POST /reports/tax/year year=202
 - Produces: `func WriteGains(w io.Writer, r YearReport) error`, `WriteIncome`, `WriteHoldings`, and `func WriteTransactions(w io.Writer, year int, txs []core.Tx, res tax.Result, rs Resolver, loc *time.Location) error`.
   - For the transactions export, cost basis and gain per tx are the sums of that tx's disposal rows (by `TxID`).
   - Received Cost Basis = the leg's USD value.
-  - For a closed CryptKeep year, transactions come from activity in that year. For a Koinly year, the endpoint returns 404 with "Koinly years: use Koinly's own transaction export".
+  - For a closed CryptKeeper year, transactions come from activity in that year. For a Koinly year, the endpoint returns 404 with "Koinly years: use Koinly's own transaction export".
 
 - [ ] **Step 1: Write failing tests**
 
@@ -242,7 +242,7 @@ func TestKoinlyYearBoxes(t *testing.T)      // Koinly year rows with wallet "Kra
   9. open review issues (count per kind, open year only)
   10. disclaimer
 - The method statement:
-  - For a CryptKeep year: "Cost basis method: FIFO, tracked per wallet (Rev. Proc. 2024-28). Opening basis on <cutover> imported from Koinly's <Y−1> year-end holdings; acquisition dates of <Y−1> purchases back-filled from Koinly's transaction history; older units are reported as VARIOUS (long-term)."
+  - For a CryptKeeper year: "Cost basis method: FIFO, tracked per wallet (Rev. Proc. 2024-28). Opening basis on <cutover> imported from Koinly's <Y−1> year-end holdings; acquisition dates of <Y−1> purchases back-filled from Koinly's transaction history; older units are reported as VARIOUS (long-term)."
   - For a Koinly year: "Figures for <Y> are Koinly's, imported verbatim."
 
 - [ ] **Step 1: Write failing tests**
@@ -313,7 +313,7 @@ func TestFormRevisionFallback(t *testing.T)   // year 2026, empty FormsDir, down
   - Title `Other gains report <Y>`, a blank line, then the header `Date,Asset,Amount,Value (USD),Type,Wallet Name`.
   - Rows are the disposal rows created by the `position-gain` tag, with Type `Position gain`.
   - Header only when there are none.
-- `all.zip` contains, named like Koinly's but prefixed `cryptkeep_<Y>_`:
+- `all.zip` contains, named like Koinly's but prefixed `cryptkeeper_<Y>_`:
   - `capital_gains_report.csv`
   - `income_report.csv`
   - `other_gains_report.csv`

@@ -1,4 +1,4 @@
-# CryptKeep
+# CryptKeeper
 
 A self-hosted, **read-only** crypto portfolio monitor. One page for everything you hold:
 Coinbase, Kraken, Bitcoin cold storage (xpub, descriptors, multisig) and Solana wallets
@@ -8,9 +8,9 @@ numbers first.
 
 - Single Go binary, no database server: state lives in `data/` (YAML you can edit plus a SQLite file).
 - Server-rendered with [templ](https://templ.guide) and [Datastar](https://data-star.dev): live updates over SSE, almost no JavaScript.
-- Read-only by design. CryptKeep only ever holds **public** keys, addresses and **view-only** API keys. It cannot move funds.
+- Read-only by design. CryptKeeper only ever holds **public** keys, addresses and **view-only** API keys. It cannot move funds.
 
-> Never paste a seed phrase or private key into CryptKeep. It will refuse obvious mistakes, but the rule is yours to keep.
+> Never paste a seed phrase or private key into CryptKeeper. It will refuse obvious mistakes, but the rule is yours to keep.
 
 ## Quick start
 
@@ -41,7 +41,7 @@ Use **Test connection** before saving.
 
 ### Coinbase
 1. Go to the [Coinbase Developer Platform](https://portal.cdp.coinbase.com/) → API keys → Create API key.
-2. Choose the **ECDSA** signature algorithm (Coinbase's v2 accounts API, which CryptKeep uses for vaults and staked balances, documents ECDSA keys only).
+2. Choose the **ECDSA** signature algorithm (Coinbase's v2 accounts API, which CryptKeeper uses for vaults and staked balances, documents ECDSA keys only).
 3. Permissions: **View** only. No trade, no transfer.
 4. Paste the key name (`organizations/…/apiKeys/…`) and the private key (PEM).
 
@@ -63,7 +63,7 @@ Paste any of:
 Where to find them:
 - **Sparrow**: Settings → Script Policy shows the descriptor; *Export* → *Output Descriptor*.
 - **Ledger Wallet** (formerly Ledger Live): Account → wrench icon (Edit account) → Advanced. Paste
-  the whole JSON shown there: CryptKeep takes the `xpub` and the script type from it. Pasting
+  the whole JSON shown there: CryptKeeper takes the `xpub` and the script type from it. Pasting
   just the `xpub` works too; then set the script type (`freshAddressPath` `84'/…` Native SegWit,
   `49'/…` Nested SegWit, `86'/…` Taproot, `44'/…` Legacy). An xpub left on auto-detect whose
   Legacy addresses have no history gets a hint naming the script type that does.
@@ -71,13 +71,13 @@ Where to find them:
 - **Unchained / Caravan**: download the wallet configuration JSON.
 - **Nunchuk**: Wallet → ⋯ → Export wallet → descriptor / BSMS file.
 
-CryptKeep derives receive and change addresses with a gap limit of 20 (configurable).
+CryptKeeper derives receive and change addresses with a gap limit of 20 (configurable).
 
 **Privacy:** balances are looked up on `mempool.space` by default, which lets that server see
 your addresses together. Point `bitcoin.esploraUrl` at your own mempool/electrs node to avoid it.
 
 Public Esplora servers allow a few hundred requests an hour per IP (blockstream.info: 700). So
-CryptKeep reads every address of a wallet every 6 hours, and in between only the addresses that
+CryptKeeper reads every address of a wallet every 6 hours, and in between only the addresses that
 can change: those holding a balance and the next 5 unused ones on each chain. A payment to an
 old, emptied address shows at the next full scan. When there's no new block, a refresh reads
 only the block height. Requests to a public server are spaced at least a second apart across
@@ -86,7 +86,7 @@ Requests" is left alone by every wallet for its Retry-After, at least 5 minutes:
 servers block an IP that keeps going. A scan through a slow server runs on in the background
 until it's done, and is kept across restarts.
 
-While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (and the other way
+While mempool.space isn't answering, CryptKeeper asks `blockstream.info` instead (and the other way
 round), and the wallet says so. List your own fallbacks, asked in order, under
 `bitcoin.esploraFallbackUrls`; a server that stops answering is asked last for 10 minutes. A
 private node gets no fallback unless you list one; `esploraFallbackUrl: "off"` turns fallbacks off.
@@ -101,13 +101,13 @@ bitcoin:
 
 **Blockstream API key.** For far higher limits, create a key at
 [dashboard.blockstream.info](https://dashboard.blockstream.info) → Manage Keys and enter its client
-ID and secret under **Settings → Bitcoin API key** (stored encrypted; CryptKeep checks it with
+ID and secret under **Settings → Bitcoin API key** (stored encrypted; CryptKeeper checks it with
 Blockstream before saving), or set `BLOCKSTREAM_CLIENT_ID` and `BLOCKSTREAM_CLIENT_SECRET`. Wallets
 on mempool.space or blockstream.info then go through `enterprise.blockstream.info`, with the public
 servers standing by if it fails. A wallet on your own node never uses the key.
 
 ### Solana
-Paste the wallet's public address. CryptKeep reads SOL, every SPL token (classic and Token-2022),
+Paste the wallet's public address. CryptKeeper reads SOL, every SPL token (classic and Token-2022),
 native stake accounts, and counts NFTs without valuing them.
 
 Tokens that aren't on Jupiter's verified list, have no price, or are worth less than `minUsd`
@@ -115,7 +115,7 @@ are collapsed into "N hidden tokens" and left out of totals: scam airdrops often
 price. If you really hold an unverified token, add its mint to `solana.allowMints`.
 
 The public RPC is heavily rate-limited (100 requests per 10 s per IP, 40 of any one method), so
-CryptKeep paces all wallets' requests to it together, and the first history sync of several
+CryptKeeper paces all wallets' requests to it together, and the first history sync of several
 wallets takes a few passes. A free [Helius](https://www.helius.dev/) key is much faster and
 isn't paced:
 
@@ -136,14 +136,14 @@ Activity treats the vault as part of the wallet, so a deposit is a move, a fill 
 withdrawal a move. The vault is the owner of the token account your first deposit went to.
 
 ### Manual holdings
-Coins held anywhere CryptKeep can't read, one per line: `BTC 0.25 owed by Sam`. Use
+Coins held anywhere CryptKeeper can't read, one per line: `BTC 0.25 owed by Sam`. Use
 `spl:<mint>` for Solana tokens.
 
 ### Brokerage accounts (stocks, ETFs and funds)
 Add a **Brokerage account** (under *Stocks & funds*) for each account you want to track,
 such as a taxable account or a Roth IRA, and type in what it holds, one ticker per line:
 `VTI 40`, `BND 120 bond fund`. Stocks, ETFs, mutual funds and bond funds all work by
-ticker. CryptKeep never connects to your broker; you update the share counts when they
+ticker. CryptKeeper never connects to your broker; you update the share counts when they
 change.
 
 **Cash** is `CASH 1500` (or `USD 1500`; `$1,500` works too): dollars at $1.00, shown as
@@ -152,7 +152,7 @@ change.
 for those.
 
 - **Prices** come from Yahoo Finance, which needs no key. One request prices every ticker,
-  and when it fails CryptKeep asks Yahoo's second server ticker by ticker. Requests are paced.
+  and when it fails CryptKeeper asks Yahoo's second server ticker by ticker. Requests are paced.
   Only US-dollar listings are priced; a ticker in another currency, or one Yahoo doesn't
   know, shows a warning on the account.
 - **Closed markets:** overnight and on weekends prices are the last close, not marked stale.
@@ -241,25 +241,25 @@ exports stay on the Reports page.
 
 ### Switching over from Koinly
 
-**Reports → Import from Koinly** moves a Koinly tax history into CryptKeep so it can take over:
+**Reports → Import from Koinly** moves a Koinly tax history into CryptKeeper so it can take over:
 
 1. In Koinly, export these reports for the year before you switch (CSV): **End of year holdings
    report**, **Transaction history**, **Capital gains report** and **Income report**. The wizard
    also recognises **Other gains report**.
-2. In CryptKeep go to Reports → Import from Koinly and upload them.
-3. Map each Koinly wallet to a CryptKeep source (or `untracked`), and each Koinly asset to an
-   asset key (or skip it, e.g. spam). CryptKeep matches them for you, saying why under each
+2. In CryptKeeper go to Reports → Import from Koinly and upload them.
+3. Map each Koinly wallet to a CryptKeeper source (or `untracked`), and each Koinly asset to an
+   asset key (or skip it, e.g. spam). CryptKeeper matches them for you, saying why under each
    wallet: by the addresses Koinly's transactions use, by the address in a wallet's name
-   (Koinly names Bitcoin wallets like `Bitcoin (BTC) - bc1q8w...dl`; CryptKeep derives your
+   (Koinly names Bitcoin wallets like `Bitcoin (BTC) - bc1q8w...dl`; CryptKeeper derives your
    xpubs' addresses to find it, no server needed), by your wallet's label, or by exchange.
    **Match automatically** redoes every match from scratch.
-4. Reconcile: CryptKeep compares Koinly's year-end quantities and cost with your wallets and lists
+4. Reconcile: CryptKeeper compares Koinly's year-end quantities and cost with your wallets and lists
    the problems and warnings. Review them and fix what you can (map assets, add a basis for
    coins Koinly didn't know about). Accept is blocked only when the holdings report is missing,
    the year hasn't ended or a later year is already closed, an ambiguous asset is still on Skip
    without "Skip anyway", or nothing would carry over; other problems are listed but don't stop
    you.
-5. Accept. The year is closed and CryptKeep carries its lots forward.
+5. Accept. The year is closed and CryptKeeper carries its lots forward.
 
 ### What is stored
 
@@ -332,7 +332,7 @@ and add it to `config.yaml`:
 
 ```yaml
 ntfy:
-  url: https://ntfy.sh/cryptkeep-<long-random-string>
+  url: https://ntfy.sh/cryptkeeper-<long-random-string>
   redactAmounts: true   # notifications say "BTC balance dropped 12%", never amounts
 ```
 
@@ -344,43 +344,46 @@ self-custody wallet. **Send test notification** checks the setup. Rules live in
 ## Secrets and your data directory
 
 - Exchange secrets are encrypted at rest (AES-256-GCM) in `data/sources.yaml`.
-- The key is `CRYPTKEEP_SECRET_KEY` (see `.env.example`) or, if unset, `data/secret.key`, generated on first run.
+- The key is `CRYPTKEEPER_SECRET_KEY` (see `.env.example`) or, if unset, `data/secret.key`, generated on first run.
   **Back it up**: without it, stored exchange keys can't be decrypted and must be re-entered.
 - Encryption at rest protects a leaked `sources.yaml` or backup. It does not protect against someone who can also read `data/secret.key`.
 - Every change to a YAML file keeps a timestamped copy in `data/backups/` (newest 30).
 - Back up the whole `data/` directory.
+- Upgrading from when the app was CryptKeep (or Vault) needs nothing: `CRYPTKEEP_SECRET_KEY`
+  (or `VAULT_SECRET_KEY`) is still read when `CRYPTKEEPER_SECRET_KEY` isn't set, the database
+  moves to `data/cryptkeeper.db` on the first start, and older encrypted exports still import.
 
 ### Backup & restore
 
 **Settings → Backup & restore** exports everything you set up in one YAML file — sources,
 portfolios, alert rules, manual cost basis, tax settings and closed tax years — and restores it (merge, or replace the
 sections the file contains). Exchange secrets are left out unless you choose "with encrypted
-secrets"; those stay AES-256-GCM sealed and only restore into a CryptKeep with the same key
-(`CRYPTKEEP_SECRET_KEY` or `data/secret.key`). Tick **Include the database** to add the database
+secrets"; those stay AES-256-GCM sealed and only restore into a CryptKeeper with the same key
+(`CRYPTKEEPER_SECRET_KEY` or `data/secret.key`). Tick **Include the database** to add the database
 too: synced activity (CSV imports included), price and chart history, saved wallet scans, the Koinly
-import in progress. It's a consistent copy taken while CryptKeep runs, compressed into the same
+import in progress. It's a consistent copy taken while CryptKeeper runs, compressed into the same
 file. Restoring a backup that has one brings the database back as well: **Merge** adds the rows you
-don't have and keeps yours, **Replace** makes the database the backup's. Without it, CryptKeep
+don't have and keeps yours, **Replace** makes the database the backup's. Without it, CryptKeeper
 fetches balances and activity again. Restore also accepts an older sources or portfolios export.
 
-**Encrypted exports.** When `CRYPTKEEP_SECRET_KEY` is set, every YAML export (the Settings
+**Encrypted exports.** When `CRYPTKEEPER_SECRET_KEY` is set, every YAML export (the Settings
 backup, the portfolios export and the `backup`, `sources` and `portfolios export` commands) is
 encrypted as a whole with that key, exchange secrets included. The file shows only a short
-header (`cryptkeep: encrypted`), and import decrypts it with the same key; a different key is
+header (`cryptkeeper: encrypted`), and import decrypts it with the same key; a different key is
 refused. Keep a copy of the key somewhere other than the server. Without the variable (only
 the generated `data/secret.key`, which would be lost with the disk) exports stay plain YAML.
 CSV exports are never encrypted.
 
 ```sh
-crypto-portfolio backup export -o cryptkeep-backup.yaml [-secrets] [-db]
-crypto-portfolio backup import cryptkeep-backup.yaml [-replace]
+crypto-portfolio backup export -o cryptkeeper-backup.yaml [-secrets] [-db]
+crypto-portfolio backup import cryptkeeper-backup.yaml [-replace]
 ```
 
 An exchange source restored without its secrets shows "needs its API key" until you edit it.
 
 ## Remote access, password, phone app
 
-CryptKeep is meant for your LAN or Tailscale. To reach it from anywhere on your tailnet with HTTPS:
+CryptKeeper is meant for your LAN or Tailscale. To reach it from anywhere on your tailnet with HTTPS:
 
 ```sh
 tailscale serve --bg 8787

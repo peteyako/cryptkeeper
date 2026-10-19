@@ -268,7 +268,7 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 	serverPauses.Unlock()
 	if s.now().Before(until) {
 		return &httpx.StatusError{Status: http.StatusTooManyRequests, URL: base,
-			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeep to slow down"}
+			Body: "paused until " + until.Format(time.Kitchen) + " after the server asked CryptKeeper to slow down"}
 	}
 	var headers map[string]string
 	if token != "" {

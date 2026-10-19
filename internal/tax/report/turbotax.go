@@ -78,7 +78,7 @@ func txfCode(box string) string {
 // WriteTXF writes TXF v042 with one record per disposal row.
 func WriteTXF(w io.Writer, r YearReport, today time.Time) error {
 	var b strings.Builder
-	fmt.Fprintf(&b, "V042\nACryptKeep\nD%s\n^\n", today.Format("01/02/2006"))
+	fmt.Fprintf(&b, "V042\nACryptKeeper\nD%s\n^\n", today.Format("01/02/2006"))
 	for _, row := range r.Rows {
 		fmt.Fprintf(&b, "TD\nN%s\nC1\nL1\nP%s %s\nD%s\nD%s\n$%s\n$%s\n^\n",
 			txfCode(row.Box), amountText(row.Amount), row.Symbol, acquiredDate(row, r.Loc),

@@ -90,7 +90,7 @@ func (e *engine) carriedIn(tx core.Tx, v *valued, amount float64) {
 	e.addLot(l)
 }
 
-// fromUntracked books an own-wallet receive: coins coming back from a wallet CryptKeep does
+// fromUntracked books an own-wallet receive: coins coming back from a wallet CryptKeeper does
 // not track. They are taken FIFO from the asset's Untracked lots, which move into the
 // receiving wallet keeping their dates, cost and flags (like a transfer); only what those
 // cannot cover is a new lot, as for a gift received (see carriedIn).

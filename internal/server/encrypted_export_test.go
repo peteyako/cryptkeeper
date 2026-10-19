@@ -12,7 +12,7 @@ import (
 	"crypto-portfolio/internal/sources/manual"
 )
 
-// withExportKey is an install where the user set CRYPTKEEP_SECRET_KEY (d.Box holds the key).
+// withExportKey is an install where the user set CRYPTKEEPER_SECRET_KEY (d.Box holds the key).
 func withExportKey(d *Deps) { d.Cfg.SecretKey = "c2V0" }
 
 func TestEncryptedBackupRoundTrip(t *testing.T) {
@@ -22,7 +22,7 @@ func TestEncryptedBackupRoundTrip(t *testing.T) {
 	e.ps.Upsert(portfolios.Portfolio{ID: "test", Name: "Test", Wallets: portfolios.Selector{IDs: []string{"kids"}}, Assets: portfolios.AllSelector()})
 
 	resp, file := e.do("GET", "/backup/export", nil, nil)
-	if resp.StatusCode != 200 || !strings.Contains(file, "cryptkeep: encrypted") {
+	if resp.StatusCode != 200 || !strings.Contains(file, "cryptkeeper: encrypted") {
 		t.Fatalf("export: %d\n%s", resp.StatusCode, file)
 	}
 	for _, leak := range []string{"very-secret", "Kids", "sources:", "portfolios:"} {
@@ -30,7 +30,7 @@ func TestEncryptedBackupRoundTrip(t *testing.T) {
 			t.Fatalf("encrypted export leaks %q:\n%s", leak, file)
 		}
 	}
-	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, `filename="cryptkeep-backup-encrypted-`) {
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, `filename="cryptkeeper-backup-encrypted-`) {
 		t.Fatalf("Content-Disposition = %q", cd)
 	}
 
@@ -38,7 +38,7 @@ func TestEncryptedBackupRoundTrip(t *testing.T) {
 	e.ps.Delete("test")
 	e.do("POST", "/sources/kids/delete", nil, ds(nil))
 	e.do("POST", "/sources/kraken/delete", nil, ds(nil))
-	body, hdr := multipartFile(t, "file", "cryptkeep-backup-encrypted.yaml", []byte(file), map[string]string{"mode": "merge"})
+	body, hdr := multipartFile(t, "file", "cryptkeeper-backup-encrypted.yaml", []byte(file), map[string]string{"mode": "merge"})
 	if _, out := e.do("POST", "/backup/import", body, hdr); !strings.Contains(out, "portfolios 1 added") {
 		t.Fatalf("restore: %.500s", out)
 	}
@@ -60,13 +60,13 @@ func TestEncryptedPortfoliosRoundTrip(t *testing.T) {
 	e.rules.Upsert(alerts.Rule{ID: "btc-high", Type: alerts.TypePrice, Asset: "BTC", Above: 100000})
 
 	resp, file := e.do("GET", "/portfolios/export", nil, nil)
-	if !strings.Contains(file, "cryptkeep: encrypted") || strings.Contains(file, "Long-term") || strings.Contains(file, "btc-high") {
+	if !strings.Contains(file, "cryptkeeper: encrypted") || strings.Contains(file, "Long-term") || strings.Contains(file, "btc-high") {
 		t.Fatalf("export all is not encrypted:\n%s", file)
 	}
 	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, `filename="portfolios-encrypted-`) {
 		t.Fatalf("Content-Disposition = %q", cd)
 	}
-	if _, one := e.do("GET", "/portfolios/lt/export", nil, nil); !strings.Contains(one, "cryptkeep: encrypted") {
+	if _, one := e.do("GET", "/portfolios/lt/export", nil, nil); !strings.Contains(one, "cryptkeeper: encrypted") {
 		t.Fatalf("single-portfolio export is not encrypted:\n%s", one)
 	}
 
@@ -103,7 +103,7 @@ func TestExportsStayPlainWithoutKey(t *testing.T) {
 	e := newEnv(t, "")
 	e.ps.Upsert(portfolios.Portfolio{ID: "lt", Name: "Long-term", Wallets: portfolios.AllSelector(), Assets: portfolios.AllSelector()})
 	for _, path := range []string{"/backup/export", "/portfolios/export"} {
-		if _, file := e.do("GET", path, nil, nil); strings.Contains(file, "cryptkeep: encrypted") || !strings.Contains(file, "Long-term") {
+		if _, file := e.do("GET", path, nil, nil); strings.Contains(file, "cryptkeeper: encrypted") || !strings.Contains(file, "Long-term") {
 			t.Fatalf("%s should be plain YAML:\n%s", path, file)
 		}
 	}

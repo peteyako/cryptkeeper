@@ -1,4 +1,4 @@
-# air (https://github.com/air-verse/air) rebuilds and restarts CryptKeep when Go, templ, CSS or JS
+# air (https://github.com/air-verse/air) rebuilds and restarts CryptKeeper when Go, templ, CSS or JS
 # files change. Run it with `task dev` (or `go tool air`).
 #
 #   http://localhost:8787  the app itself
@@ -11,17 +11,17 @@ tmp_dir = "tmp"
   # templ files compile to *_templ.go first; those generated files are excluded from the
   # watch below so generating them doesn't trigger a second rebuild.
   pre_cmd = ["go tool templ generate"]
-  cmd = "go build -o ./tmp/cryptkeep ."
-  entrypoint = ["./tmp/cryptkeep"]
+  cmd = "go build -o ./tmp/cryptkeeper ."
+  entrypoint = ["./tmp/cryptkeeper"]
   # The same binary for older air releases, which ignore entrypoint and would otherwise run
   # ./tmp/main (e.g. a global `air` v1.52 instead of `task dev`). Newer air uses entrypoint.
-  bin = "./tmp/cryptkeep"
+  bin = "./tmp/cryptkeeper"
   args_bin = ["serve", "-config", "config.yaml"]
   include_ext = ["go", "templ", "css", "js", "webmanifest"]
   exclude_dir = ["tmp", "data", "dist", "docs", ".task", ".git", "testdata"]
   exclude_regex = ["_test\\.go$", "_templ\\.go$"]
   delay = 300
-  # CryptKeep shuts down gracefully on SIGINT (closes SSE streams, finishes the request).
+  # CryptKeeper shuts down gracefully on SIGINT (closes SSE streams, finishes the request).
   send_interrupt = true
   kill_delay = "3s"
   stop_on_error = true

@@ -1,6 +1,6 @@
 {
-  "name": "CryptKeep",
-  "short_name": "CryptKeep",
+  "name": "CryptKeeper",
+  "short_name": "CryptKeeper",
   "description": "Self-hosted, read-only crypto portfolio monitor.",
   "id": "/",
   "start_url": "/",

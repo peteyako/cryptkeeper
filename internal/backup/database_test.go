@@ -12,7 +12,7 @@ import (
 
 func withDB(t *testing.T, st Stores, dir string) Stores {
 	t.Helper()
-	db, err := store.Open(filepath.Join(dir, "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(dir, "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func withDB(t *testing.T, st Stores, dir string) Stores {
 }
 
 // TestDatabaseRoundTrip: an export with the database carries it; restoring it into another
-// CryptKeep brings its rows back, merged or replacing, along with the other sections.
+// CryptKeeper brings its rows back, merged or replacing, along with the other sections.
 func TestDatabaseRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	src, dir := newStores(t)

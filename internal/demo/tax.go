@@ -141,7 +141,7 @@ func YearReport(year int) report.YearReport {
 }
 
 func emptyYearReport(year int) report.YearReport {
-	return report.YearReport{Year: year, Source: "cryptkeep", Loc: time.UTC, AsOf: time.Date(year, 12, 31, 23, 59, 59, 0, time.UTC)}
+	return report.YearReport{Year: year, Source: "cryptkeeper", Loc: time.UTC, AsOf: time.Date(year, 12, 31, 23, 59, 59, 0, time.UTC)}
 }
 
 // reviewTitles names each issue kind's group, in display order (as the real server does).

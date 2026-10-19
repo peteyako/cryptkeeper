@@ -130,7 +130,7 @@ func TestHoldingsTitleOpenYear(t *testing.T) {
 	if got := lines(b.String())[0]; got != "Balances as at 10/16/2026 12:30" {
 		t.Errorf("title %q", got)
 	}
-	closed := FromClosed(tax.Year{Year: 2025, Source: "cryptkeep"}, Resolver{}, time.UTC)
+	closed := FromClosed(tax.Year{Year: 2025, Source: "cryptkeeper"}, Resolver{}, time.UTC)
 	b.Reset()
 	_ = WriteHoldings(&b, closed)
 	if got := lines(b.String())[0]; got != "Balances as at 12/31/2025 23:59" {

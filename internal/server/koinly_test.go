@@ -165,7 +165,7 @@ func TestKoinlyMapPersistsDraft(t *testing.T) {
 
 func TestKoinlyAcceptWritesYear(t *testing.T) {
 	e := newEnv(t, "")
-	// CryptKeep sees 0.3 BTC; Koinly 0.5 at $20,000: 0.2 BTC goes to untracked.
+	// CryptKeeper sees 0.3 BTC; Koinly 0.5 at $20,000: 0.2 BTC goes to untracked.
 	e.reg.Upsert(sources.Def{ID: "cold", Type: sources.TypeManual, Label: "Cold", Holdings: []manual.Holding{{Asset: "BTC", Amount: 0.3}}})
 	e.ref.Force(context.Background())
 	e.koinlyUpload(fixture(t, "holdings.csv"), fixture(t, "transactions.csv"), fixture(t, "gains.csv"), fixture(t, "income.csv"))
@@ -175,12 +175,12 @@ func TestKoinlyAcceptWritesYear(t *testing.T) {
 	})
 	_, page := e.do("GET", "/reports/koinly", nil, nil)
 	recon := within(page, `id="koinly-recon"`, 6000)
-	for _, want := range []string{"BTC (Bitcoin)", "$20,000.00", "BTC: Koinly 0.5 vs CryptKeep 0.3", `id="koinly-accept"`} {
+	for _, want := range []string{"BTC (Bitcoin)", "$20,000.00", "BTC: Koinly 0.5 vs CryptKeeper 0.3", `id="koinly-accept"`} {
 		if !strings.Contains(recon, want) {
 			t.Errorf("reconciliation lacks %q", want)
 		}
 	}
-	if strings.Index(recon, "BTC: Koinly 0.5 vs CryptKeep 0.3") > strings.Index(recon, `id="koinly-accept"`) {
+	if strings.Index(recon, "BTC: Koinly 0.5 vs CryptKeeper 0.3") > strings.Index(recon, `id="koinly-accept"`) {
 		t.Error("problems must show above Accept")
 	}
 
@@ -221,7 +221,7 @@ func TestKoinlyAcceptWritesYear(t *testing.T) {
 	}
 }
 
-// TestKoinlyExtraBasis: CryptKeep holds more than Koinly; the user's cost for the extra
+// TestKoinlyExtraBasis: CryptKeeper holds more than Koinly; the user's cost for the extra
 // units is saved with the mapping and becomes a real (unflagged) basis in the closed year.
 func TestKoinlyExtraBasis(t *testing.T) {
 	e := newEnv(t, "")
@@ -230,7 +230,7 @@ func TestKoinlyExtraBasis(t *testing.T) {
 	e.koinlyUpload(fixture(t, "holdings.csv"))
 	e.koinlyPost("/reports/koinly/map", url.Values{"a.BTC (Bitcoin)": {"BTC"}})
 	_, page := e.do("GET", "/reports/koinly", nil, nil)
-	if !strings.Contains(page, `name="x.BTC"`) || !strings.Contains(page, "BTC: Koinly 0.5 vs CryptKeep 0.8") {
+	if !strings.Contains(page, `name="x.BTC"`) || !strings.Contains(page, "BTC: Koinly 0.5 vs CryptKeeper 0.8") {
 		t.Fatalf("the extra basis input or the difference is missing:\n%s", within(page, `id="koinly-recon"`, 6000))
 	}
 	if out := e.koinlyPost("/reports/koinly/map", url.Values{"x.BTC": {"lots"}}); !strings.Contains(out, "Your cost for BTC must be a dollar amount") {

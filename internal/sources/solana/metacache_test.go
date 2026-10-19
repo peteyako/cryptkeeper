@@ -33,7 +33,7 @@ func TestMemoryMetaCache(t *testing.T) {
 
 func openTempDB(t *testing.T) *store.DB {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeep.db"))
+	db, err := store.Open(filepath.Join(t.TempDir(), "cryptkeeper.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,7 +39,7 @@ type Engine struct {
 	DB       *store.DB // alert_state and alert_log live here
 	Notifier Notifier
 	Redact   bool   // keep amounts and values out of notification text
-	BaseURL  string // for Click links, e.g. "http://cryptkeep.tailnet:8787"; "" = no click
+	BaseURL  string // for Click links, e.g. "http://cryptkeeper.tailnet:8787"; "" = no click
 
 	Portfolio PortfolioValuer
 	History   HistoryValuer
@@ -150,8 +150,8 @@ func (e *Engine) Test(ctx context.Context) error {
 	}
 	n := Notification{
 		RuleID:   "test",
-		Title:    "CryptKeep test",
-		Body:     "Test notification from CryptKeep. Alerts are working.",
+		Title:    "CryptKeeper test",
+		Body:     "Test notification from CryptKeeper. Alerts are working.",
 		Priority: 3,
 		Tags:     []string{"white_check_mark"},
 		Click:    e.click("/alerts"),

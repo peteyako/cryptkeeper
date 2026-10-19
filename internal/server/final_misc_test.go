@@ -19,7 +19,7 @@ func fmYear() tax.Year {
 			Asset: asset, Amount: 1, ProceedsUSD: 100, CostUSD: 60, GainUSD: 40, Wallet: "wallet-a", Term: tax.ShortTerm, TxID: "tx-" + asset,
 		})
 	}
-	return tax.Year{Year: 2024, Source: "cryptkeep", ClosedAt: time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), Summary: tax.Summarize(d, nil), Disposals: d}
+	return tax.Year{Year: 2024, Source: "cryptkeeper", ClosedAt: time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), Summary: tax.Summarize(d, nil), Disposals: d}
 }
 
 // fmRestore posts raw as a backup file in the given mode and returns the response body.

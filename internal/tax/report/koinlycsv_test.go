@@ -23,7 +23,7 @@ func lines(s string) []string { return strings.Split(strings.TrimRight(s, "\n"),
 
 func sampleGains(t *testing.T) YearReport {
 	loc := ny(t)
-	y := tax.Year{Year: 2026, Source: "cryptkeep", Disposals: []tax.Disposal{{
+	y := tax.Year{Year: 2026, Source: "cryptkeeper", Disposals: []tax.Disposal{{
 		Sold: time.Date(2026, 3, 2, 15, 4, 0, 0, loc), Acquired: time.Date(2025, 1, 1, 0, 0, 0, 0, loc), Various: true,
 		Asset: "BTC", Amount: 0.5, CostUSD: 1000, ProceedsUSD: 1500, GainUSD: 500, Wallet: "cb", Term: tax.LongTerm,
 	}}}

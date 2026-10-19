@@ -433,7 +433,7 @@ func TestLayoutHead(t *testing.T) {
 	p := byName(t, allPages(t), "overview")
 	has(t, p,
 		`<html lang="en">`,
-		`<title id="page-title">Overview · CryptKeep</title>`,
+		`<title id="page-title">Overview · CryptKeeper</title>`,
 		`name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"`,
 		`name="theme-color" content="`+templates.ThemeColorDark+`" media="(prefers-color-scheme: dark)"`,
 		`name="theme-color" content="`+templates.ThemeColorLight+`" media="(prefers-color-scheme: light)"`,
@@ -459,7 +459,7 @@ func TestLayoutHead(t *testing.T) {
 	has(t, page{"body", un, false},
 		`data-signals="{hide: false, theme: 'system', range: '1W', pf: 'all', q: '', showHidden: false, showPnl: false, cashOpen: false}"`,
 		`data-class="{'amounts-hidden': $hide}"`,
-		`$hide = s.getItem('cryptkeep.hide') === '1'`,
+		`$hide = (s.getItem('cryptkeeper.hide') || s.getItem('cryptkeep.hide')) === '1'`,
 		`document.documentElement.dataset.theme`,
 	)
 
@@ -566,7 +566,7 @@ func TestOverviewContent(t *testing.T) {
 	has(t, lt, "Long-term", "of all holdings")
 
 	e := byName(t, pages, "overview empty")
-	has(t, e, "Nothing to show yet", `href="/sources/new"`, "CryptKeep never needs trade or withdrawal permission.")
+	has(t, e, "Nothing to show yet", `href="/sources/new"`, "CryptKeeper never needs trade or withdrawal permission.")
 	lacks(t, e, `id="value-card"`, "Holdings</h2>")
 
 	nh := byName(t, pages, "overview no history")
@@ -661,7 +661,7 @@ func TestWalletContent(t *testing.T) {
 func TestWalletsAndSettings(t *testing.T) {
 	pages := allPages(t)
 	w := byName(t, pages, "wallets")
-	has(t, w, "5 sources", "Wallets", "Paper wallet at mom&#39;s", `href="/w/mom-safe"`, `class="acct__rail rail--hardware"`, `class="acct__rail rail--exchange"`, `class="acct__rail rail--hot"`, `class="acct__rail rail--manual"`, "CryptKeep is read-only")
+	has(t, w, "5 sources", "Wallets", "Paper wallet at mom&#39;s", `href="/w/mom-safe"`, `class="acct__rail rail--hardware"`, `class="acct__rail rail--exchange"`, `class="acct__rail rail--hot"`, `class="acct__rail rail--manual"`, "CryptKeeper is read-only")
 	we := byName(t, pages, "wallets empty")
 	has(t, we, "Nothing to show yet")
 
@@ -719,7 +719,7 @@ func TestSourceFlow(t *testing.T) {
 
 	cb := byName(t, pages, "form add coinbase")
 	has(t, cb, "Connect Coinbase", "Create an API key in your Coinbase settings and paste it below.",
-		"Grant <strong>view</strong> permissions only. CryptKeep never needs trade or transfer access.",
+		"Grant <strong>view</strong> permissions only. CryptKeeper never needs trade or transfer access.",
 		"API key name", "organizations/…/apiKeys/…", "Private key (PEM or Ed25519)", "<textarea", `autocomplete="off"`, `spellcheck="false"`,
 		`value="Coinbase"`)
 	kr := byName(t, pages, "form add kraken")
@@ -911,7 +911,7 @@ func TestPortfolioManager(t *testing.T) {
 	p := byName(t, pages, "portfolios")
 	un := page{"portfolios (unescaped)", html.UnescapeString(p.html), false}
 	has(t, p,
-		`<title id="page-title">Portfolios · CryptKeep</title>`, `<h1 class="h-title">Portfolios</h1>`,
+		`<title id="page-title">Portfolios · CryptKeeper</title>`, `<h1 class="h-title">Portfolios</h1>`,
 		`href="/portfolios/new"`, "New portfolio", `aria-label="Hide balances"`,
 		"Long-term", "Trading", "Majors", "5 wallets", "2 wallets", "All wallets", "All assets", "BTC, ETH, SOL +2",
 		"2 assets", "3 assets", "None", "76% of net worth", "24% of net worth",
@@ -968,7 +968,7 @@ func TestPortfolioManager(t *testing.T) {
 
 	// Warnings: a hand-edit error and wallets that no longer exist.
 	w := byName(t, pages, "portfolios warnings")
-	has(t, w, `role="alert"`, "notice--warn", "CryptKeep can't read portfolios.yaml.", "line 7: field walet not found in type portfolios.Portfolio",
+	has(t, w, `role="alert"`, "notice--warn", "CryptKeeper can't read portfolios.yaml.", "line 7: field walet not found in type portfolios.Portfolio",
 		"Fix the file, or restore a backup.", "2 wallets in this portfolio no longer exist: ", `<span class="mono">old-ledger, paper-2019</span>`, "Edit the portfolio to clear it.")
 	lacks(t, e, "notice--warn")
 	// With an unreadable file and nothing parsed, the empty state would be misleading.
@@ -1004,7 +1004,7 @@ func TestPortfolioFormPage(t *testing.T) {
 	n := byName(t, pages, "portfolio form new")
 	un := page{"new (unescaped)", html.UnescapeString(n.html), false}
 	has(t, un,
-		`<title id="page-title">New portfolio · CryptKeep</title>`, "New portfolio", "Group some of your holdings under a name.",
+		`<title id="page-title">New portfolio · CryptKeeper</title>`, "New portfolio", "Group some of your holdings under a name.",
 		`<form id="portfolio-form" class="form card pf-form" method="post" action="/portfolios"`,
 		`data-indicator="saving"`, `data-on:submit="@post('/portfolios', {contentType: 'form'})"`,
 		`data-attr:disabled="$saving"`, "Create portfolio", `<a class="btn btn--ghost" href="/portfolios">Cancel</a>`,
@@ -1240,7 +1240,7 @@ func TestActivityPage(t *testing.T) {
 	p := byName(t, pages, "activity")
 	un := unescaped(p)
 	has(t, p,
-		`<title id="page-title">Activity · CryptKeep</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
+		`<title id="page-title">Activity · CryptKeeper</title>`, `<h1 class="h-title">Activity</h1>`, "Synced from your wallets and exchanges",
 		`aria-label="Hide balances"`, `<a class="nav-item nav-item--on" href="/activity" data-on:click=`,
 		`<div class="activity" data-signals="{actSource: &#39;&#39;, actAsset: &#39;&#39;, actKind: &#39;&#39;, actRange: &#39;&#39;, actFrom: &#39;&#39;, actTo: &#39;&#39;}">`,
 		`role="group" aria-label="Filter activity"`, `data-indicator="filtering"`,
@@ -1278,7 +1278,7 @@ func TestActivityPage(t *testing.T) {
 		"Up to date", "Backfilling history…", `class="sync-row__err"`)
 	// A failed sync reads as plain language, with the raw error kept behind Details (which
 	// stays open across the stream's re-renders), and a running sync shows as such.
-	has(t, p, "Rate limited: Kraken asked CryptKeep to slow down. CryptKeep tries again every 15 min.",
+	has(t, p, "Rate limited: Kraken asked CryptKeeper to slow down. CryptKeeper tries again every 15 min.",
 		`<details class="sync-row__raw" data-preserve-attr="open"><summary>Details</summary> <code>kraken: rate limited: EAPI:Rate limit exceeded</code></details>`,
 		`<span class="chip chip--info">`, "Syncing…")
 	// The card keeps itself current over SSE until navigation removes the stream element. On
@@ -1326,7 +1326,7 @@ func TestActivityPage(t *testing.T) {
 	has(t, nm, "No matching activity", "Nothing matches these filters.", `href="/activity"`, "Clear filters")
 	lacks(t, nm, `id="activity-rows"`, "No activity yet")
 	em := byName(t, pages, "activity empty")
-	has(t, em, "No activity yet", "It appears as CryptKeep syncs your sources; history is backfilled gradually.", "Not synced yet", "0 entries")
+	has(t, em, "No activity yet", "It appears as CryptKeeper syncs your sources; history is backfilled gradually.", "Not synced yet", "0 entries")
 	lacks(t, em, `id="activity-rows"`, "Clear filters", "Load older")
 
 	// Failed and pending rows.
@@ -1431,7 +1431,7 @@ func TestReportsPage(t *testing.T) {
 	p := byName(t, pages, "reports")
 	un := unescaped(p)
 	has(t, p,
-		`<title id="page-title">Reports · CryptKeep</title>`, `<h1 class="h-title">Reports</h1>`, "Profit and loss, cost basis and exports",
+		`<title id="page-title">Reports · CryptKeeper</title>`, `<h1 class="h-title">Reports</h1>`, "Profit and loss, cost basis and exports",
 		`<a class="nav-item nav-item--on" href="/reports" data-on:click=`,
 		// Tiles.
 		"Cost basis", "Value", "Unrealized P/L", "Basis known for 92% of value", `class="cover"`, `style="width:91.8%;"`,
@@ -1510,7 +1510,7 @@ func TestKoinlyPage(t *testing.T) {
 	p := byName(t, pages, "koinly")
 	un := unescaped(p)
 	has(t, p,
-		`<title id="page-title">Import from Koinly · CryptKeep</title>`, `<h1 class="h-title">Import from Koinly</h1>`,
+		`<title id="page-title">Import from Koinly · CryptKeeper</title>`, `<h1 class="h-title">Import from Koinly</h1>`,
 		`<a class="nav-item nav-item--on" href="/reports" data-on:click=`, `<a class="back" href="/reports"`,
 		// Step 1: upload, and what is loaded.
 		`<form id="koinly-upload" class="form" method="post" action="/reports/koinly/upload" enctype="multipart/form-data"`,
@@ -1524,9 +1524,9 @@ func TestKoinlyPage(t *testing.T) {
 		`<input class="koinly-map__skip-box" type="checkbox" id="ks-2" name="s.JUP (Jupiter)" value="1" checked>`, `<label class="koinly-map__skip" for="ks-2">`,
 		`<option value="" selected>Skip</option>`, `<option value="BTC" selected>BTC · Bitcoin</option>`,
 		// Step 3: the reconciliation, the problems above Accept, the extra basis input.
-		`id="koinly-recon"`, ">Dated in 2025</th>", ">Before 2025</th>", ">Untracked</th>", ">CryptKeep extra</th>",
+		`id="koinly-recon"`, ">Dated in 2025</th>", ">Before 2025</th>", ">Untracked</th>", ">CryptKeeper extra</th>",
 		`name="x.SOL"`, `value="212.5"`, `<label class="sr-only" for="kx-1">Your cost for the 1.2500 SOL Koinly has no cost for, in US dollars</label>`,
-		"Check these before you accept:", "<li>BTC: Koinly 0.35 vs CryptKeep 0.30006114</li>",
+		"Check these before you accept:", "<li>BTC: Koinly 0.35 vs CryptKeeper 0.30006114</li>",
 		"Accept and close 2025", "Discard import", "Update reconciliation",
 	)
 	has(t, un,
@@ -1608,7 +1608,7 @@ func TestOverviewPnLColumn(t *testing.T) {
 func TestSettingsActivitySync(t *testing.T) {
 	s := byName(t, allPages(t), "settings")
 	has(t, s,
-		`id="activity-sync"`, "Activity sync", "1,204 entries", "Backfilling history…", "Up to date", "Rate limited: Kraken asked CryptKeep to slow down.",
+		`id="activity-sync"`, "Activity sync", "1,204 entries", "Backfilling history…", "Up to date", "Rate limited: Kraken asked CryptKeeper to slow down.",
 		"@get(&#39;/activity/sync&#39;",
 		`id="set-pf-h"`, "Portfolios", `<a class="btn btn--secondary" href="/portfolios">Manage portfolios</a>`,
 		"Appearance", "Privacy", "About this install",
@@ -1645,7 +1645,7 @@ func TestAlertsPage(t *testing.T) {
 	p := byName(t, pages, "alerts")
 	un := unescaped(p)
 	has(t, p,
-		`<title id="page-title">Alerts · CryptKeep</title>`, `<h1 class="h-title">Alerts</h1>`, "Get a notification when something changes",
+		`<title id="page-title">Alerts · CryptKeeper</title>`, `<h1 class="h-title">Alerts</h1>`, "Get a notification when something changes",
 		`<a class="nav-item nav-item--on" href="/alerts" data-on:click=`, `<a class="btn btn--primary btn--add" href="/alerts/new">`,
 		// Rules.
 		`id="alert-rules"`, "5 rules", "Cold storage watch", "Any decrease in Cold storage", "BTC above $70,000", "Big day", "Kraken down", "Large send",
@@ -1679,7 +1679,7 @@ func TestAlertsPage(t *testing.T) {
 	lacks(t, e, `@post(&#39;/alerts/test&#39;)`, `data-indicator="testing"`, `class="rule"`)
 
 	le := byName(t, pages, "alerts load error")
-	has(t, le, "CryptKeep can't read alerts.yaml.", "window &#34;1 day&#34; is not a valid duration", "Fix the file and reload the page.", "notice--warn", `class="rule"`)
+	has(t, le, "CryptKeeper can't read alerts.yaml.", "window &#34;1 day&#34; is not a valid duration", "Fix the file and reload the page.", "notice--warn", `class="rule"`)
 	lacks(t, le, "No alerts yet")
 
 	ok := byName(t, pages, "alerts tested")
@@ -1719,7 +1719,7 @@ func TestAlertForm(t *testing.T) {
 	n := byName(t, pages, "alert form new")
 	un := unescaped(n)
 	has(t, n,
-		`<title id="page-title">New alert · CryptKeep</title>`, `<h1 class="h-title">New alert</h1>`, "Pick what to watch for", `<a class="back" href="/alerts" data-on:click=`,
+		`<title id="page-title">New alert · CryptKeeper</title>`, `<h1 class="h-title">New alert</h1>`, "Pick what to watch for", `<a class="back" href="/alerts" data-on:click=`,
 		`<form id="alert-form" class="form card pf-form" method="post" action="/alerts"`, `data-indicator="saving"`, `data-attr:disabled="$saving"`,
 		`<label class="field__label" for="f-type">Alert type</label>`, `name="type"`, `data-bind="ruleType"`,
 		`<option value="balance_drop" selected>Balance drop (cold-storage security)</option>`, `<option value="price">Price above or below</option>`,
@@ -1747,7 +1747,7 @@ func TestAlertForm(t *testing.T) {
 	price := byName(t, pages, "alert form edit "+demo.AlertBTCAbove)
 	pun := unescaped(price)
 	has(t, pun,
-		`<title id="page-title">Edit alert · CryptKeep</title>`, `action="/alerts/btc-70k"`, `name="editId" value="btc-70k"`, `data-signals="{ruleType: 'price'}"`,
+		`<title id="page-title">Edit alert · CryptKeeper</title>`, `action="/alerts/btc-70k"`, `name="editId" value="btc-70k"`, `data-signals="{ruleType: 'price'}"`,
 		`data-on:submit="@post('/alerts/btc-70k', {contentType: 'form'})"`, `<option value="price" selected>Price above or below</option>`,
 		`value="BTC"`, `value="70000"`, `value="BTC above $70,000"`, `<option value="24h" selected>24 hours</option>`, ">Save alert</button>",
 		`<datalist id="al-assets">`, `<option value="BTC">Bitcoin</option>`,

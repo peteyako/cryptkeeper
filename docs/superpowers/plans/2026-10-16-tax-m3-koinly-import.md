@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:**
-- Import Koinly's 2025 exports and reconcile them against CryptKeep's own balances.
+- Import Koinly's 2025 exports and reconcile them against CryptKeeper's own balances.
 - Write the result as a closed 2025 year whose closing lots are the 2026 opening lots.
 - Switch the dashboard, wallet tiles and Reports P&L from average cost to `tax.Compute`.
 
@@ -40,10 +40,10 @@
 - **Cutover** = 00:00 on 1 January of the year after the imported year, in the tax timezone. For this user it is 2026-01-01.
 - **Tax timezone:** config `tax.timezone` (an IANA name). An empty value means `time.Local`. **Ruling:** it lives only in `config.yaml`, not in `tax.yaml`. The spec lists it in both places; config wins because it is set once per install.
 - **"Before the imported year" lots:** `Various: true`, `Acquired` = 1 January of the imported year 00:00 in the tax timezone, minus 1 second. For 2025 that is 2024-12-31 23:59:59. 8949 prints them as VARIOUS.
-- **Missing-basis opening units** (CryptKeep holds more than Koinly): `Acquired` = cutover, `Flag: tax.FlagMissingBasis`, and cost = the user-entered extra basis, default 0.
+- **Missing-basis opening units** (CryptKeeper holds more than Koinly): `Acquired` = cutover, `Flag: tax.FlagMissingBasis`, and cost = the user-entered extra basis, default 0.
 - **Back-fill transfer-in lots:** `Flag: tax.FlagTransferDate`, dated at the transfer.
 - **Invariants after building, per mapped asset:**
-  - Σ lot amount == max(Koinly qty, CryptKeep qty).
+  - Σ lot amount == max(Koinly qty, CryptKeeper qty).
   - Σ lot cost == Koinly cost + extra basis, unless clamped. A clamp is reported as a problem.
 - **The untracked wallet is `tax.Untracked`.** Wallet-map values are a source ID or `untracked`. An asset-map value of `""` means "skip" (spam, zero-value NFTs).
 - **Spam set** passed to `tax.Compute`: `spl:<mint>` for every `cfg.Solana.HideMints`, plus every asset key in the latest snapshot's `HiddenRows`.
@@ -55,7 +55,7 @@
 ## Review Focus
 
 1. **Two Koinly assets share a symbol** (`JUP (Jupiter)` and `JUP (Some Clone)`). Back-fill of transaction-history rows (symbol only) must use the mapped holding with the larger Koinly cost, and the other must not steal its lots. Test: Task 5 `TestOpeningSymbolCollision`.
-2. **A Koinly wallet maps to a source that has no snapshot row for the asset** (CryptKeep shows 0). All of Koinly's quantity goes to `untracked`, and no negative lot is ever produced. Test: Task 5 `TestOpeningAllUntracked`.
+2. **A Koinly wallet maps to a source that has no snapshot row for the asset** (CryptKeeper shows 0). All of Koinly's quantity goes to `untracked`, and no negative lot is ever produced. Test: Task 5 `TestOpeningAllUntracked`.
 3. **The dated back-fill cost exceeds Koinly's total cost** for an asset. The remainder is clamped to 0 and a problem is reported; the result never has a negative cost. Test: Task 5 `TestOpeningNegativeRemainderClamped`.
 4. **A re-upload after 2026 is already closed.** Accept is refused with a clear message. Test: Task 7 `TestKoinlyAcceptRefusedWhenLaterYearClosed`.
 5. **A hand-edited `tax.yaml` that no longer parses.** The last good content keeps being served and the error is shown on Reports; nothing panics. Test: Task 1 `TestSettingsStoreBadFileKeepsLastGood`.
@@ -98,7 +98,7 @@ type Summary struct {
 type Year struct {
 	Version     int        `yaml:"version"`
 	Year        int        `yaml:"year"`
-	Source      string     `yaml:"source"` // "koinly" | "cryptkeep"
+	Source      string     `yaml:"source"` // "koinly" | "cryptkeeper"
 	ClosedAt    time.Time  `yaml:"closedAt"`
 	Summary     Summary    `yaml:"summary"`
 	Disposals   []Disposal `yaml:"disposals,omitempty"`
@@ -238,8 +238,8 @@ Expected: FAIL.
 - Produces:
 
 ```go
-type Wallet struct { ID, Label, Type string; Addresses []string } // a CryptKeep source as the suggester sees it
-type AssetInfo struct { Key, Symbol, Name string }              // an asset CryptKeep knows (snapshot rows + activity legs)
+type Wallet struct { ID, Label, Type string; Addresses []string } // a CryptKeeper source as the suggester sees it
+type AssetInfo struct { Key, Symbol, Name string }              // an asset CryptKeeper knows (snapshot rows + activity legs)
 func SuggestWallets(txns []Txn, gains []tax.Disposal, wallets []Wallet) map[string]string
 func SuggestAssets(holdings []Holding, known []AssetInfo) (m map[string]string, ambiguous map[string][]string)
 func WalletNames(txns []Txn, gains []tax.Disposal) []string // every Koinly wallet name seen, sorted
@@ -295,12 +295,12 @@ type OpeningInput struct {
 	WalletMap  map[string]string             // Koinly wallet → source ID | tax.Untracked
 	AssetMap   map[string]string             // Koinly "SYM (Name)" → asset key | ""
 	Balances   map[string]map[string]float64 // RollBack result: source ID → asset key → qty at cutover
-	ExtraBasis map[string]float64            // asset key → USD for CryptKeep-excess units
+	ExtraBasis map[string]float64            // asset key → USD for CryptKeeper-excess units
 	Parked     []tax.Parked                  // RollBackParked result
 }
 type ReconRow struct {
 	KoinlyAsset, AssetKey                string
-	KoinlyQty, KoinlyCost, CryptKeepQty  float64
+	KoinlyQty, KoinlyCost, CryptKeeperQty  float64
 	Untracked, MissingBasis              float64 // units sent to tax.Untracked / units with no Koinly basis
 	Dated, Various                       float64 // units in dated 2025 lots / in "before 2025" lots
 	Lots                                 []tax.Lot
@@ -320,7 +320,7 @@ func BuildOpening(in OpeningInput) Opening
    - If `CK > Q`, the excess `E = CK − Q` becomes missing-basis lots, spread over the `R[w]` of real wallets pro-rata. Cost is `ExtraBasis[K] × share`, `Acquired` is the cutover, and the lot carries `FlagMissingBasis`.
    - What is left of each `R[w]` becomes one `Various` lot.
 5. **Cost of the `Various` lots:** `C − Σ dated cost`, spread pro-rata by quantity. If that is negative, use 0 and append the problem `"<K>: dated 2025 cost exceeds Koinly's total cost; older lots set to $0"`.
-6. Also append a problem when `|Q − CK| > max(dust, 1e-6×Q)`: `"<K>: Koinly <Q> vs CryptKeep <CK>"`. This is informational, so the UI can list differences.
+6. Also append a problem when `|Q − CK| > max(dust, 1e-6×Q)`: `"<K>: Koinly <Q> vs CryptKeeper <CK>"`. This is informational, so the UI can list differences.
 7. `Opening.Lots` is all lots sorted by (Wallet, Asset, Acquired). `Rows` is sorted by `KoinlyCost` descending.
 
 - [ ] **Step 1: Write failing tests**
@@ -478,7 +478,7 @@ Expected: FAIL.
 
 ```go
 func TestBackupRoundTripTax(t *testing.T)       // export with Tax+TaxYears(2025) → import into empty stores → equal
-func TestBackupMergeKeepsExistingYear(t *testing.T) // local 2025 (source cryptkeep) + incoming 2025 (koinly) merge → local kept; Result says 0 years imported
+func TestBackupMergeKeepsExistingYear(t *testing.T) // local 2025 (source cryptkeeper) + incoming 2025 (koinly) merge → local kept; Result says 0 years imported
 func TestBackupReplaceTaxYears(t *testing.T)    // replace → local years == incoming
 func TestMigrateCostBasisLots(t *testing.T)     // costbasis.yaml with one lot and no tax.yaml → tax.yaml has 1 manual lot in untracked; second run does nothing
 ```

@@ -1,4 +1,4 @@
-// Command uipreview serves every CryptKeep page from demo fixtures, so the UI can be viewed
+// Command uipreview serves every CryptKeeper page from demo fixtures, so the UI can be viewed
 // (and screenshotted) before any real data exists:
 //
 //	go run ./cmd/uipreview            # then open http://localhost:8790
@@ -65,7 +65,7 @@ func main() {
 	flag.Parse()
 
 	srv := &http.Server{Addr: *addr, Handler: router(), ReadHeaderTimeout: 10 * time.Second}
-	log.Printf("CryptKeep UI preview on http://localhost%s", *addr)
+	log.Printf("CryptKeeper UI preview on http://localhost%s", *addr)
 	log.Fatal(srv.ListenAndServe())
 }
 

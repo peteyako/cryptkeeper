@@ -33,14 +33,14 @@ func TestBackupWithDatabase(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(file, "database: ") {
 		t.Fatalf("export with database: %d", resp.StatusCode)
 	}
-	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, `filename="cryptkeep-backup-with-database-`) {
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, `filename="cryptkeeper-backup-with-database-`) {
 		t.Errorf("Content-Disposition = %q", cd)
 	}
 
 	if err := e.act.DeleteSource(context.Background(), "kids"); err != nil {
 		t.Fatal(err)
 	}
-	body, hdr := multipartFile(t, "file", "cryptkeep-backup-with-database.yaml", []byte(file), map[string]string{"mode": "replace"})
+	body, hdr := multipartFile(t, "file", "cryptkeeper-backup-with-database.yaml", []byte(file), map[string]string{"mode": "replace"})
 	if _, out := e.do("POST", "/backup/import", body, hdr); !strings.Contains(out, "database restored") {
 		t.Fatalf("restore: %.600s", out)
 	}

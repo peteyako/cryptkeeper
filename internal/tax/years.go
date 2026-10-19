@@ -37,7 +37,7 @@ type Summary struct {
 type Year struct {
 	Version  int       `yaml:"version"`
 	Year     int       `yaml:"year"`
-	Source   string    `yaml:"source"` // "koinly" | "cryptkeep"
+	Source   string    `yaml:"source"` // "koinly" | "cryptkeeper" ("cryptkeep" in years closed before the rename)
 	ClosedAt time.Time `yaml:"closedAt"`
 	// Timezone is the tax timezone the year was closed in (a time.LoadLocation name): its
 	// end, and so the next year's start, is midnight of Jan 1 there. Empty (years closed

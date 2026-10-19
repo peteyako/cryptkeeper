@@ -90,7 +90,7 @@ func SourceChipText(w portfolio.WalletView) string {
 	return typeName(w.Type)
 }
 
-// AccessLabel says how CryptKeep sees the source: "Read-only" for exchanges (a view-only API
+// AccessLabel says how CryptKeeper sees the source: "Read-only" for exchanges (a view-only API
 // key), "Watch-only" for wallets, "Hand-entered" for manual holdings.
 func AccessLabel(w portfolio.WalletView) string {
 	switch w.Kind {
@@ -573,7 +573,7 @@ func pfFormLede(p PortfolioFormPage) string {
 	if p.isEdit() {
 		return "Change what this portfolio counts. Your wallets and balances are not affected."
 	}
-	return "Group some of your holdings under a name. Pick wallets, assets, or both, and CryptKeep shows just those."
+	return "Group some of your holdings under a name. Pick wallets, assets, or both, and CryptKeeper shows just those."
 }
 
 func pfSaveLabel(p PortfolioFormPage) string {
