@@ -8,9 +8,11 @@ showTokenLogos: false    # true = show Jupiter logos for SPL tokens instead of t
 
 bitcoin:
   esploraUrl: https://mempool.space/api   # point at your own mempool/electrs node for privacy
-  # Asked while esploraUrl isn't answering. Default: blockstream.info for mempool.space (and the
-  # reverse); none for your own node. "off" disables it.
-  # esploraFallbackUrl: https://blockstream.info/api
+  # Asked in order while esploraUrl isn't answering. Default: blockstream.info for mempool.space
+  # (and the reverse); none for your own node. esploraFallbackUrl: "off" disables fallbacks.
+  # esploraFallbackUrls:
+  #   - https://blockstream.info/api
+  #   - https://mempool.emzy.de/api
   gapLimit: 20
 
 solana:

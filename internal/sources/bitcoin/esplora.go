@@ -34,10 +34,10 @@ const (
 	maxScanPerChain = 10_000 // safety stop against a server that reports every address as used
 	satsPerBTC      = 100_000_000
 
-	// With a fallback server, one primary request gets primaryTimeout, and a primary that
-	// doesn't answer is skipped for primaryRetry before it is tried again.
-	primaryTimeout = 8 * time.Second
-	primaryRetry   = 10 * time.Minute
+	// With fallback servers, every server but the last one asked gets one attempt of
+	// quickTimeout, and a server that doesn't answer is asked last for downFor.
+	quickTimeout = 8 * time.Second
+	downFor      = 10 * time.Minute
 )
 
 // addrState is one scanned address.
@@ -88,14 +88,14 @@ func esploraHost(base string) (string, error) {
 	return u.Host, nil
 }
 
-// failFast is c cut to one attempt of primaryTimeout, so a primary server that doesn't
+// failFast is c cut to one attempt of quickTimeout, so a server that doesn't
 // answer costs seconds before the fallback is asked, not c's full retries.
 func failFast(c *httpx.Client) *httpx.Client {
 	h := http.Client{}
 	if c.HTTP != nil {
 		h = *c.HTTP
 	}
-	h.Timeout = primaryTimeout
+	h.Timeout = quickTimeout
 	return &httpx.Client{HTTP: &h, MaxRetries: 0, BaseDelay: c.BaseDelay}
 }
 
@@ -137,39 +137,67 @@ func (s *Source) getWithKey(ctx context.Context, path string, out any) error {
 	return err
 }
 
-// getPublic reads path from the configured server. With a fallback, a primary that doesn't
-// answer (a network error, a timeout, 429 or 5xx) hands the request to the fallback, which
-// then serves every request for primaryRetry.
+// esploraServer is one Esplora server: its API base URL and host.
+type esploraServer struct{ base, host string }
+
+// getPublic reads path from the servers in order. One that doesn't answer (a network error,
+// a timeout, 429 or 5xx) is asked last for downFor, while the next one answers; when
+// every other server fails too it still gets its turn, as it may be back.
 func (s *Source) getPublic(ctx context.Context, path string, out any) error {
-	if s.fallback == "" {
-		return s.fetch(ctx, s.client, s.esplora, path, out, "")
-	}
-	skipped := s.usingFallback()
-	if !skipped {
-		err := s.fetch(ctx, s.fast, s.esplora, path, out, "")
-		if err == nil || ctx.Err() != nil || !unavailable(err) {
+	order := s.serverOrder()
+	var err error
+	for i, srv := range order {
+		c := s.fast
+		if i == len(order)-1 {
+			c = s.client // the last resort gets the full retries
+		}
+		if err = s.fetch(ctx, c, srv.base, path, out, ""); err == nil {
+			s.mu.Lock()
+			delete(s.down, srv.base)
+			s.answeredBy = srv.host
+			s.mu.Unlock()
+			return nil
+		}
+		if ctx.Err() != nil || !unavailable(err) {
 			return err
 		}
-		s.mu.Lock()
-		first := !s.now().Before(s.primaryDown)
-		s.primaryDown = s.now().Add(primaryRetry)
-		s.mu.Unlock()
-		if first {
-			slog.Warn("bitcoin: Esplora server isn't answering; using the fallback", "wallet", s.id, "server", s.node, "fallback", s.fallbackNode)
+		s.markDown(srv)
+	}
+	return err
+}
+
+// serverOrder is the servers answering lately, in configured order, then the others.
+func (s *Source) serverOrder() []esploraServer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var up, down []esploraServer
+	for _, srv := range s.servers {
+		if s.now().Before(s.down[srv.base]) {
+			down = append(down, srv)
+		} else {
+			up = append(up, srv)
 		}
 	}
-	err := s.fetch(ctx, s.client, s.fallback, path, out, "")
-	if err == nil || ctx.Err() != nil || !unavailable(err) || !skipped {
-		return err
-	}
-	// The fallback can't answer either; the primary, skipped this time, may be back.
-	if s.fetch(ctx, s.fast, s.esplora, path, out, "") != nil {
-		return err
-	}
+	return append(up, down...)
+}
+
+// markDown moves srv to the back of the order for downFor.
+func (s *Source) markDown(srv esploraServer) {
 	s.mu.Lock()
-	s.primaryDown = time.Time{}
+	first := !s.now().Before(s.down[srv.base])
+	s.down[srv.base] = s.now().Add(downFor)
 	s.mu.Unlock()
-	return nil
+	if first && len(s.servers) > 1 {
+		slog.Warn("bitcoin: Esplora server isn't answering; trying the next one", "wallet", s.id, "server", srv.host)
+	}
+}
+
+// usingFallback reports whether the last request was answered by a server other than the
+// configured one.
+func (s *Source) usingFallback() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.answeredBy != "" && s.answeredBy != s.node
 }
 
 // fetch GETs base+path with c, sending token as a bearer token when set. A server that
@@ -196,16 +224,6 @@ func (s *Source) fetch(ctx context.Context, c *httpx.Client, base, path string, 
 		s.mu.Unlock()
 	}
 	return err
-}
-
-// usingFallback reports whether the primary server is being skipped.
-func (s *Source) usingFallback() bool {
-	if s.fallback == "" {
-		return false
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.now().Before(s.primaryDown)
 }
 
 // unavailable reports whether err means the server didn't answer, rather than answered no.
@@ -416,8 +434,10 @@ func (s *Source) Fetch(ctx context.Context) (core.WalletResult, error) {
 		host, _ := esploraHost(s.auth.baseURL)
 		node = host + " (API key)"
 	case s.usingFallback():
-		node = s.fallbackNode
-		out.Warnings = append(out.Warnings, fmt.Sprintf("%s isn't answering; using %s for now.", s.node, s.fallbackNode))
+		s.mu.Lock()
+		node = s.answeredBy
+		s.mu.Unlock()
+		out.Warnings = append(out.Warnings, fmt.Sprintf("%s isn't answering; using %s for now.", s.node, node))
 	}
 	if keyErr != "" {
 		out.Warnings = append(out.Warnings, "Blockstream API key isn't working ("+keyErr+"); using the public servers.")

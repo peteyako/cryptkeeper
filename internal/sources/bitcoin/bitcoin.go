@@ -22,13 +22,15 @@ import (
 // Config configures one Bitcoin wallet source. Exactly one of Key, Descriptor or
 // WalletFile must be set.
 type Config struct {
-	ID, Label   string
-	Key         string // xpub/ypub/zpub OR a plain address (bc1…/1…/3…)
-	Descriptor  string // output descriptor, or "receive descriptor\nchange descriptor"
-	WalletFile  []byte // Caravan/Unchained JSON or a text file containing a descriptor (Sparrow export)
-	ScriptType  string // optional override for an extended Key: "p2pkh", "p2sh-p2wpkh", "p2wpkh", "p2tr"
-	EsploraURL  string // e.g. https://mempool.space/api (no trailing slash); DefaultEsploraURL if empty
-	FallbackURL string // a second Esplora server, asked while EsploraURL isn't answering; "" for none
+	ID, Label  string
+	Key        string // xpub/ypub/zpub OR a plain address (bc1…/1…/3…)
+	Descriptor string // output descriptor, or "receive descriptor\nchange descriptor"
+	WalletFile []byte // Caravan/Unchained JSON or a text file containing a descriptor (Sparrow export)
+	ScriptType string // optional override for an extended Key: "p2pkh", "p2sh-p2wpkh", "p2wpkh", "p2tr"
+	EsploraURL string // e.g. https://mempool.space/api (no trailing slash); DefaultEsploraURL if empty
+	// FallbackURLs are further Esplora servers, asked in order while the ones before them
+	// aren't answering.
+	FallbackURLs []string
 	// Auth is the shared Blockstream API key. When it is set and EsploraURL is a public server,
 	// requests go to Blockstream's enterprise server instead, the public ones standing by.
 	Auth *BlockstreamAuth
@@ -78,12 +80,13 @@ type Source struct {
 	client      *httpx.Client
 	now         func() time.Time
 
-	// fallback is the second Esplora server ("" for none); fast is client cut to one short
-	// attempt, used for the primary server when there is a fallback to turn to.
-	fallback, fallbackNode string
-	fast                   *httpx.Client
-	auth                   *BlockstreamAuth // nil unless the configured server is a public one
-	store                  ScanStore
+	// servers are the Esplora servers in the order they are asked: the configured one, then
+	// the fallbacks. fast is client cut to one short attempt, for every server but the last
+	// one asked, so a server that doesn't answer costs seconds.
+	servers []esploraServer
+	fast    *httpx.Client
+	auth    *BlockstreamAuth // nil unless the configured server is a public one
+	store   ScanStore
 
 	// autoKey is an xpub read as Legacy because no script type was chosen. Ledger shows an
 	// xpub for SegWit and Taproot accounts too, so an empty scan of it earns a hint.
@@ -92,16 +95,17 @@ type Source struct {
 	chains []chainSpec // chains[0] is receive; chains[1], when present, is change
 	ranged bool        // false for a single address
 
-	mu          sync.Mutex
-	addrs       map[[2]int]string // derived address cache, keyed by (chain, index)
-	last        *scanResult
-	primaryDown time.Time            // the primary server isn't answering; use the fallback until then
-	paused      map[string]time.Time // by server base URL: answered 429, left alone until then
-	keyUsed     bool                 // the last request was answered through the Blockstream key
-	keyErr      string               // why the Blockstream key didn't work last time; "" when it did
-	hint        string               // script-type hint for autoKey, once checked
-	hintDone    bool
-	restored    bool // the saved scan was looked for
+	mu         sync.Mutex
+	addrs      map[[2]int]string // derived address cache, keyed by (chain, index)
+	last       *scanResult
+	down       map[string]time.Time // by server base URL: didn't answer, asked last until then
+	answeredBy string               // host of the server that answered the last request
+	paused     map[string]time.Time // by server base URL: answered 429, left alone until then
+	keyUsed    bool                 // the last request was answered through the Blockstream key
+	keyErr     string               // why the Blockstream key didn't work last time; "" when it did
+	hint       string               // script-type hint for autoKey, once checked
+	hintDone   bool
+	restored   bool // the saved scan was looked for
 }
 
 // New parses and validates cfg. It does no network I/O. A nil client means httpx.New().
@@ -146,16 +150,26 @@ func New(cfg Config, c *httpx.Client) (*Source, error) {
 		now:     time.Now,
 		addrs:   map[[2]int]string{},
 		paused:  map[string]time.Time{},
+		down:    map[string]time.Time{},
 		store:   cfg.ScanStore,
+		servers: []esploraServer{{base: esplora, host: node}},
 	}
 	if cfg.Auth != nil && publicEsploraHosts[node] {
 		s.auth = cfg.Auth
 	}
-	if fb := strings.TrimRight(strings.TrimSpace(cfg.FallbackURL), "/"); fb != "" {
-		if s.fallbackNode, err = esploraHost(fb); err != nil {
-			return nil, fmt.Errorf("invalid fallback Esplora URL %q: want e.g. https://blockstream.info/api", cfg.FallbackURL)
+	for _, raw := range cfg.FallbackURLs {
+		fb := strings.TrimRight(strings.TrimSpace(raw), "/")
+		if fb == "" || fb == esplora {
+			continue
 		}
-		s.fallback, s.fast = fb, failFast(c)
+		host, err := esploraHost(fb)
+		if err != nil {
+			return nil, fmt.Errorf("invalid fallback Esplora URL %q: want e.g. https://blockstream.info/api", raw)
+		}
+		s.servers = append(s.servers, esploraServer{base: fb, host: host})
+	}
+	if len(s.servers) > 1 {
+		s.fast = failFast(c)
 	}
 	if s.gap <= 0 {
 		s.gap = DefaultGapLimit

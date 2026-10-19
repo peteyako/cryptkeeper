@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,11 +62,36 @@ func (c Config) TaxLocation() (*time.Location, error) {
 
 type Bitcoin struct {
 	EsploraURL string `yaml:"esploraUrl"`
-	// EsploraFallbackURL is asked while EsploraURL isn't answering. It defaults to the other
-	// public server when EsploraURL is mempool.space or blockstream.info, and to none for a
-	// private node (a fallback would send its addresses to a public server); "off" disables it.
+	// EsploraFallbackURLs are asked in order while EsploraURL isn't answering. Unset, it is the
+	// other public server when EsploraURL is mempool.space or blockstream.info, and none for a
+	// private node (a fallback would send its addresses to a public server). After Load it
+	// holds every fallback, EsploraFallbackURL's included.
+	EsploraFallbackURLs []string `yaml:"esploraFallbackUrls"`
+	// EsploraFallbackURL is one more fallback, after the list; "off" turns fallbacks off.
 	EsploraFallbackURL string `yaml:"esploraFallbackUrl"`
 	GapLimit           int    `yaml:"gapLimit"`
+}
+
+// esploraFallbacks resolves the fallback servers: the list, then the single one, without
+// repeats or the primary; the default pair for a public primary when none is set.
+func esploraFallbacks(b Bitcoin) []string {
+	single := strings.TrimRight(strings.TrimSpace(b.EsploraFallbackURL), "/")
+	if single == "off" {
+		return nil
+	}
+	var out []string
+	for _, u := range append(slices.Clone(b.EsploraFallbackURLs), single) {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u != "" && u != b.EsploraURL && !slices.Contains(out, u) {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 && len(b.EsploraFallbackURLs) == 0 && single == "" {
+		if fb := publicEsplora[b.EsploraURL]; fb != "" {
+			out = []string{fb}
+		}
+	}
+	return out
 }
 
 // publicEsplora pairs each public Esplora server with the one that backs it up.
@@ -148,14 +174,8 @@ func Load(path string) (Config, error) {
 		cfg.Bitcoin.EsploraURL = d.Bitcoin.EsploraURL
 	}
 	cfg.Bitcoin.EsploraURL = strings.TrimRight(cfg.Bitcoin.EsploraURL, "/")
-	switch fb := strings.TrimRight(strings.TrimSpace(cfg.Bitcoin.EsploraFallbackURL), "/"); fb {
-	case "off":
-		cfg.Bitcoin.EsploraFallbackURL = ""
-	case "":
-		cfg.Bitcoin.EsploraFallbackURL = publicEsplora[cfg.Bitcoin.EsploraURL]
-	default:
-		cfg.Bitcoin.EsploraFallbackURL = fb
-	}
+	cfg.Bitcoin.EsploraFallbackURLs = esploraFallbacks(cfg.Bitcoin)
+	cfg.Bitcoin.EsploraFallbackURL = ""
 	if cfg.Bitcoin.GapLimit <= 0 {
 		cfg.Bitcoin.GapLimit = d.Bitcoin.GapLimit
 	}

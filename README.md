@@ -82,8 +82,17 @@ old, emptied address shows at the next full scan. A server that answers "429 Too
 is left alone for at least 5 minutes.
 
 While mempool.space isn't answering, CryptKeep asks `blockstream.info` instead (and the other way
-round), and the wallet says so. A private node gets no fallback unless you set
-`bitcoin.esploraFallbackUrl`; `esploraFallbackUrl: "off"` turns the fallback off.
+round), and the wallet says so. List your own fallbacks, asked in order, under
+`bitcoin.esploraFallbackUrls`; a server that stops answering is asked last for 10 minutes. A
+private node gets no fallback unless you list one; `esploraFallbackUrl: "off"` turns fallbacks off.
+
+```yaml
+bitcoin:
+  esploraUrl: https://mempool.emzy.de/api   # a community mempool instance
+  esploraFallbackUrls:
+    - https://blockstream.info/api
+    - https://mempool.space/api
+```
 
 **Blockstream API key.** For far higher limits, create a key at
 [dashboard.blockstream.info](https://dashboard.blockstream.info) → Manage Keys and enter its client

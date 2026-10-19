@@ -26,13 +26,15 @@ func downServer(t *testing.T, status int) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// sourceWithFallback builds a source whose primary Esplora is primaryURL and whose fallback
-// is fallbackURL ("" for none).
-func sourceWithFallback(t *testing.T, cfg Config, primaryURL, fallbackURL string) *Source {
+// sourceWithFallback builds a source whose primary Esplora is primaryURL and whose fallbacks
+// are fallbackURLs, in order ("" for none).
+func sourceWithFallback(t *testing.T, cfg Config, primaryURL string, fallbackURLs ...string) *Source {
 	t.Helper()
-	cfg.EsploraURL, cfg.FallbackURL = primaryURL+"/api", ""
-	if fallbackURL != "" {
-		cfg.FallbackURL = fallbackURL + "/api"
+	cfg.EsploraURL, cfg.FallbackURLs = primaryURL+"/api", nil
+	for _, u := range fallbackURLs {
+		if u != "" {
+			cfg.FallbackURLs = append(cfg.FallbackURLs, u+"/api")
+		}
 	}
 	client := &httpx.Client{HTTP: &http.Client{}, MaxRetries: 0, BaseDelay: time.Millisecond}
 	s, err := New(cfg, client)
@@ -112,7 +114,7 @@ func TestNoFallbackConfigured(t *testing.T) {
 }
 
 func TestInvalidFallbackURLRejected(t *testing.T) {
-	if _, err := New(Config{Key: bip84Zpub, FallbackURL: "ftp://x"}, nil); err == nil {
+	if _, err := New(Config{Key: bip84Zpub, FallbackURLs: []string{"https://ok.example/api", "ftp://x"}}, nil); err == nil {
 		t.Fatal("accepted an ftp fallback URL")
 	}
 }
@@ -177,5 +179,43 @@ func TestNoScriptHint(t *testing.T) {
 		if hasWarning(res.Warnings, "Script type") {
 			t.Errorf("%s: unexpected hint %v", name, res.Warnings)
 		}
+	}
+}
+
+// TestFallbacksTriedInOrder: with several fallbacks, the first one that answers serves the
+// request, and the servers that didn't are skipped next time.
+func TestFallbacksTriedInOrder(t *testing.T) {
+	primary := &switchable{h: newFake()}
+	primary.status.Store(http.StatusServiceUnavailable)
+	limited := &switchable{h: newFake()}
+	limited.status.Store(http.StatusTooManyRequests)
+	f := newFake()
+	f.stats[bip84Receive0] = &fakeStats{chainFunded: 12_000, chainTx: 1}
+	good := &switchable{h: f}
+	var urls []string
+	for _, h := range []http.Handler{primary, limited, good} {
+		srv := httptest.NewServer(h)
+		t.Cleanup(srv.Close)
+		urls = append(urls, srv.URL)
+	}
+	s := sourceWithFallback(t, Config{ID: "w", Key: bip84Zpub}, urls[0], urls[1], urls[2])
+	res, err := s.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Holdings[0].AmountStr != "0.00012000" {
+		t.Fatalf("balance %s, want the third server's", res.Holdings[0].AmountStr)
+	}
+	goodHost := strings.TrimPrefix(urls[2], "http://")
+	if node := metaValue(res.Meta, "Node"); node != goodHost {
+		t.Errorf("Node = %q, want %s", node, goodHost)
+	}
+	p, l := primary.hits.Load(), limited.hits.Load()
+	var r esploraAddress
+	if err := s.get(context.Background(), addressPath(bip84Receive0), &r); err != nil {
+		t.Fatal(err)
+	}
+	if primary.hits.Load() != p || limited.hits.Load() != l {
+		t.Error("servers that failed were asked again before the one that answers")
 	}
 }

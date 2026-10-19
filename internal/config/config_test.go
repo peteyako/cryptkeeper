@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,6 +73,9 @@ func TestEsploraFallback(t *testing.T) {
 		{"bitcoin:\n  esploraUrl: http://node.lan:3002/api\n", ""},
 		{"bitcoin:\n  esploraUrl: http://node.lan:3002/api\n  esploraFallbackUrl: http://node2.lan/api/\n", "http://node2.lan/api"},
 		{"bitcoin:\n  esploraFallbackUrl: \"off\"\n", ""},
+		{"bitcoin:\n  esploraUrl: https://a.example/api\n  esploraFallbackUrls:\n    - https://b.example/api/\n    - https://a.example/api\n    - https://c.example/api\n    - https://b.example/api\n",
+			"https://b.example/api https://c.example/api"},
+		{"bitcoin:\n  esploraFallbackUrls: [https://b.example/api]\n  esploraFallbackUrl: https://c.example/api\n", "https://b.example/api https://c.example/api"},
 	} {
 		path := filepath.Join(t.TempDir(), "config.yaml")
 		if err := os.WriteFile(path, []byte(tc.yaml), 0o600); err != nil {
@@ -81,8 +85,8 @@ func TestEsploraFallback(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.Bitcoin.EsploraFallbackURL != tc.want {
-			t.Errorf("%q: fallback = %q, want %q", tc.yaml, cfg.Bitcoin.EsploraFallbackURL, tc.want)
+		if got := strings.Join(cfg.Bitcoin.EsploraFallbackURLs, " "); got != tc.want {
+			t.Errorf("%q: fallbacks = %q, want %q", tc.yaml, got, tc.want)
 		}
 	}
 }

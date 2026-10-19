@@ -263,7 +263,7 @@ func (a *app) factory(meta solana.MetaCache) sources.Factory {
 		case sources.TypeBitcoin:
 			return asSource(bitcoin.New(bitcoin.Config{
 				ID: d.ID, Label: d.Label, Key: d.Key, Descriptor: d.Descriptor, ScriptType: d.ScriptType,
-				EsploraURL: a.cfg.Bitcoin.EsploraURL, FallbackURL: a.cfg.Bitcoin.EsploraFallbackURL, GapLimit: a.cfg.Bitcoin.GapLimit,
+				EsploraURL: a.cfg.Bitcoin.EsploraURL, FallbackURLs: a.cfg.Bitcoin.EsploraFallbackURLs, GapLimit: a.cfg.Bitcoin.GapLimit,
 				Auth: a.blockstream, ScanStore: kvScans{a.db},
 			}, a.client))
 		case sources.TypeSolana:
