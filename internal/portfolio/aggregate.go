@@ -26,6 +26,7 @@ type PriceFunc func(ctx context.Context, reqs []PriceReq) map[string]core.Price
 // Wallet is one source to fetch, with the display facts the snapshot needs.
 type Wallet struct {
 	ID, Label, Type string
+	Description     string // what the wallet is for, as the user wrote it
 	Kind            core.Kind
 	Source          core.Source // nil when the source failed to build
 	BuildErr        error
@@ -227,7 +228,7 @@ func assemble(wallets []Wallet, results []core.WalletResult, status []Status, pr
 	for i, w := range wallets {
 		res := results[i]
 		wv := WalletView{
-			ID: w.ID, Label: w.Label, Type: w.Type, Kind: w.Kind,
+			ID: w.ID, Label: w.Label, Description: w.Description, Type: w.Type, Kind: w.Kind,
 			NFTCount: res.NFTCount, Warnings: res.Warnings, Meta: res.Meta,
 			Status: status[i], Err: res.Err, AsOf: res.AsOf,
 		}

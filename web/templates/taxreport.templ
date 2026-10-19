@@ -121,7 +121,13 @@ templ TaxReportPage(v TaxReportView) {
 				<tbody>
 					for _, w := range v.Wallets {
 						<tr>
-							<td>{ w.Label }</td>
+							<td>
+								{ w.Label }
+								if w.Description != "" {
+									<br/>
+									<span class="muted">{ w.Description }</span>
+								}
+							</td>
 							<td>{ w.Type }</td>
 							<td>{ w.Box }</td>
 						</tr>

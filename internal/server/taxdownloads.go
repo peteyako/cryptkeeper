@@ -414,7 +414,7 @@ func (s *Server) reportWallets(rep report.YearReport, label func(string) string)
 		if name == "" {
 			name = d.ID
 		}
-		out = append(out, templates.ReportWallet{Label: name, Type: d.Type, Box: box})
+		out = append(out, templates.ReportWallet{Label: name, Description: d.Description, Type: d.Type, Box: box})
 	}
 	for _, row := range rep.Rows {
 		if row.Wallet == tax.Untracked {

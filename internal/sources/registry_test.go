@@ -163,3 +163,30 @@ func TestValidateRefusesSeedInVault(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestDescriptionIsDisplayOnly: a wallet's description is saved with it, capped in length,
+// and changing it doesn't rebuild the live source.
+func TestDescriptionIsDisplayOnly(t *testing.T) {
+	var builds atomic.Int32
+	r, _ := newReg(t, &builds)
+	mom := Def{ID: "mom", Type: TypeManual, Label: "Mom", Holdings: []manual.Holding{{Asset: "BTC", Amount: 1}}}
+	if _, err := r.Upsert(mom); err != nil {
+		t.Fatal(err)
+	}
+	r.Entries()
+	mom.Description = "Paper wallet in the safe, for the kids"
+	if _, err := r.Upsert(mom); err != nil {
+		t.Fatal(err)
+	}
+	es := r.Entries()
+	if es[0].Def.Description != mom.Description {
+		t.Fatalf("description %q", es[0].Def.Description)
+	}
+	if builds.Load() != 1 {
+		t.Fatalf("a new description rebuilt the source (%d builds)", builds.Load())
+	}
+	mom.Description = strings.Repeat("x", MaxDescription+1)
+	if _, err := r.Upsert(mom); err == nil {
+		t.Fatal("an over-long description was saved")
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
@@ -64,7 +65,7 @@ func (s *Server) sourceEdit(w http.ResponseWriter, r *http.Request) {
 
 // formValues is the non-secret re-fill for the edit form. Secrets are never included.
 func formValues(d sources.Def) map[string]string {
-	v := map[string]string{"label": d.Label, "kind": string(d.Kind)}
+	v := map[string]string{"label": d.Label, "description": d.Description, "kind": string(d.Kind)}
 	switch d.Type {
 	case sources.TypeCoinbase:
 		v["keyName"] = d.KeyName
@@ -94,6 +95,7 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 	f := func(k string) string { return strings.TrimSpace(r.PostFormValue(k)) }
 
 	d := sources.Def{Type: f("type"), Label: f("label"), Kind: core.Kind(f("kind"))}
+	d.Description = strings.Join(strings.Fields(r.PostFormValue("description")), " ") // one line, however it was typed
 	if editID != "" {
 		existing, ok := s.Registry.Get(editID)
 		if !ok {
@@ -108,6 +110,9 @@ func (s *Server) parseSourceForm(r *http.Request, editID string) (sources.Def, m
 	}
 	if d.Label == "" {
 		errs["label"] = "Give it a name, e.g. \"Cold storage\"."
+	}
+	if n := utf8.RuneCountInString(d.Description); n > sources.MaxDescription {
+		errs["description"] = fmt.Sprintf("Keep it to %d characters (this is %d).", sources.MaxDescription, n)
 	}
 	if d.Kind == "" {
 		d.Kind = sources.DefaultKind(d.Type)

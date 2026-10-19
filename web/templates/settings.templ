@@ -87,6 +87,9 @@ templ settingsBody(p SettingsPage) {
 									<span class="src-row__text">
 										<span class="src-row__name">{ w.Label }</span>
 										<span class="src-row__kind">{ KindLabel(w) }</span>
+										if w.Description != "" {
+											<span class="src-row__desc">{ w.Description }</span>
+										}
 									</span>
 								</a>
 								<span class={ "chip", "chip--sm", "chip--" + tone }>

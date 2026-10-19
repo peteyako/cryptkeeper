@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"crypto-portfolio/internal/core"
 	"crypto-portfolio/internal/sources/manual"
@@ -22,6 +23,9 @@ const (
 	TypeManual   = "manual"
 )
 
+// MaxDescription is the longest description a source may have, in characters.
+const MaxDescription = 280
+
 // Types lists every supported type in display order.
 var Types = []string{TypeCoinbase, TypeKraken, TypeBitcoin, TypeSolana, TypeManual}
 
@@ -31,6 +35,9 @@ type Def struct {
 	Type  string    `yaml:"type"`
 	Label string    `yaml:"label"`
 	Kind  core.Kind `yaml:"kind"`
+	// Description says what the wallet is for ("Long-term savings, never sold"). Display
+	// only: it never reaches the live source.
+	Description string `yaml:"description,omitempty"`
 
 	// coinbase
 	KeyName    string `yaml:"keyName,omitempty"`
@@ -91,6 +98,9 @@ func (d *Def) Validate() error {
 	}
 	if strings.TrimSpace(d.Label) == "" {
 		return fmt.Errorf("%s: label is required", d.ID)
+	}
+	if utf8.RuneCountInString(d.Description) > MaxDescription {
+		return fmt.Errorf("%s: description is longer than %d characters", d.ID, MaxDescription)
 	}
 	switch d.Kind {
 	case core.KindExchange, core.KindHot, core.KindHardware, core.KindManual:

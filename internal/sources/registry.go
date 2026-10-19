@@ -382,7 +382,10 @@ func (r *Registry) writeLocked(f File) error {
 // Path returns the file path (for messages).
 func (r *Registry) Path() string { return filepath.Clean(r.path) }
 
+// defHash identifies what a live source is built from; the description isn't part of it,
+// so editing one doesn't restart the wallet's sync.
 func defHash(d Def) string {
+	d.Description = ""
 	raw, _ := yamlfile.Encode(d)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:8])

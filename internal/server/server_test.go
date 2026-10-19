@@ -101,7 +101,7 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 	wallets := func() []portfolio.Wallet {
 		var ws []portfolio.Wallet
 		for _, e := range reg.Entries() {
-			ws = append(ws, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
+			ws = append(ws, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Description: e.Def.Description, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
 		}
 		return ws
 	}

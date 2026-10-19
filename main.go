@@ -315,7 +315,7 @@ func priceWants(reqs []portfolio.PriceReq) []prices.Want {
 func (a *app) wallets() []portfolio.Wallet {
 	var out []portfolio.Wallet
 	for _, e := range a.registry.Entries() {
-		out = append(out, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
+		out = append(out, portfolio.Wallet{ID: e.Def.ID, Label: e.Def.Label, Description: e.Def.Description, Type: e.Def.Type, Kind: e.Def.Kind, Source: e.Source, BuildErr: e.BuildErr})
 	}
 	return out
 }

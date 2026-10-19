@@ -182,12 +182,15 @@ sources:
   - { id: coinbase, type: coinbase, label: Coinbase, kind: exchange,
       keyName: "organizations/…/apiKeys/…", secret: "enc:v1:<base64 nonce|ciphertext>" }
   - { id: kraken, type: kraken, label: Kraken, kind: exchange, apiKey: "enc:v1:…", secret: "enc:v1:…" }
-  - { id: cold, type: bitcoin, label: "Cold storage", kind: hardware, key: "zpub6r…" }
+  - { id: cold, type: bitcoin, label: "Cold storage", kind: hardware, key: "zpub6r…",
+      description: "Long-term savings on the Ledger. Never sold." }
   - { id: vault, type: bitcoin, label: "2-of-3 multisig", kind: hardware, descriptor: "wsh(sortedmulti(2,…))#chk" }
   - { id: phantom, type: solana, label: "Phantom", kind: hot, address: "7xKX…", jupiterVault: "E8XE…" }
   - { id: mom-safe, type: manual, label: "Paper wallet at mom's", kind: manual,
       holdings: [ { asset: BTC, amount: 0.25 }, { asset: ETH, amount: 2, note: "…" } ] }
 ```
+Every source may have a `description` (up to 280 characters) saying what it's for. It shows on the wallet's page, its card, Settings and the CPA package, and changing it doesn't restart the wallet's sync.
+
 **Secrets:**
 - API secrets (and the Coinbase PEM) are sealed with AES-256-GCM. The key comes from `CRYPTKEEP_SECRET_KEY` (base64, 32 bytes). If that is unset, a key is generated once into `data/secret.key` (mode 0600) and the README tells you to back it up.
 - Secrets are **never rendered back** into HTML. The UI shows `kr_live_••••3f9a` (last 4), and editing requires re-entering the secret.

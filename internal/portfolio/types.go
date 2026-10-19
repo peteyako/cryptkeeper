@@ -90,19 +90,20 @@ type AssetRow struct {
 
 // WalletView is one source with its priced holdings.
 type WalletView struct {
-	ID         string       `json:"id"`
-	Label      string       `json:"label"`
-	Type       string       `json:"type"` // coinbase, kraken, bitcoin, solana, manual
-	Kind       core.Kind    `json:"kind"`
-	Rows       []HoldingRow `json:"rows"`
-	HiddenRows []HoldingRow `json:"hiddenRows,omitempty"`
-	NFTCount   int          `json:"nftCount,omitempty"`
-	Warnings   []string     `json:"warnings,omitempty"`
-	Meta       []core.KV    `json:"meta,omitempty"`
-	ValueUSD   float64      `json:"valueUsd"`
-	Status     Status       `json:"status"`
-	Err        string       `json:"error,omitempty"`
-	AsOf       time.Time    `json:"asOf"`
+	ID          string       `json:"id"`
+	Label       string       `json:"label"`
+	Description string       `json:"description,omitempty"`
+	Type        string       `json:"type"` // coinbase, kraken, bitcoin, solana, manual
+	Kind        core.Kind    `json:"kind"`
+	Rows        []HoldingRow `json:"rows"`
+	HiddenRows  []HoldingRow `json:"hiddenRows,omitempty"`
+	NFTCount    int          `json:"nftCount,omitempty"`
+	Warnings    []string     `json:"warnings,omitempty"`
+	Meta        []core.KV    `json:"meta,omitempty"`
+	ValueUSD    float64      `json:"valueUsd"`
+	Status      Status       `json:"status"`
+	Err         string       `json:"error,omitempty"`
+	AsOf        time.Time    `json:"asOf"`
 }
 
 // HoldingRow is a holding with its price applied.

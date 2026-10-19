@@ -117,7 +117,8 @@ func Wallets(now time.Time) []portfolio.WalletView {
 
 	cold := portfolio.WalletView{
 		ID: IDCold, Label: "Cold storage", Type: "bitcoin", Kind: core.KindHardware,
-		Status: portfolio.StatusSynced, AsOf: fresh,
+		Description: "Long-term savings on the Ledger. Never sold.",
+		Status:      portfolio.StatusSynced, AsOf: fresh,
 		Rows: []portfolio.HoldingRow{row(hold(IDCold, "BTC", 0.30006114), prices)},
 		Meta: []core.KV{
 			{K: "Imported via", V: "xpub / zpub"},
@@ -177,7 +178,8 @@ func Wallets(now time.Time) []portfolio.WalletView {
 	}
 	phantom := portfolio.WalletView{
 		ID: IDPhantom, Label: "Phantom", Type: "solana", Kind: core.KindHot,
-		Status: portfolio.StatusSynced, AsOf: fresh,
+		Description: "Everyday DeFi: staking, swaps and Jupiter orders.",
+		Status:      portfolio.StatusSynced, AsOf: fresh,
 		Rows: []portfolio.HoldingRow{
 			row(sol, prices), row(staked, prices), row(usdc, prices), row(jup, prices), row(bonk, prices),
 			row(lpSOL, prices), row(lpUSDC, prices),

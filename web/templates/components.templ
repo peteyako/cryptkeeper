@@ -73,7 +73,8 @@ templ SourceChip(kind core.Kind, text string) {
 	</span>
 }
 
-// AccountCard is a source: a 3px rail in the source color, name, kind, status, value and meta.
+// AccountCard is a source: a 3px rail in the source color, name, kind, status, the
+// description when there is one, value and meta.
 templ AccountCard(w portfolio.WalletView, now time.Time) {
 	{{ glyph, label, tone := StatusView(w, now) }}
 	<a class="acct" href={ templ.URL(walletHref(w.ID)) } data-on:click={ navClick(walletHref(w.ID), "") }>
@@ -89,6 +90,9 @@ templ AccountCard(w portfolio.WalletView, now time.Time) {
 					<span class="chip__text">{ label }</span>
 				</span>
 			</span>
+			if w.Description != "" {
+				<span class="acct__desc">{ w.Description }</span>
+			}
 			<span class="acct__value">
 				@FigFiat(w.ValueUSD)
 			</span>

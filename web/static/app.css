@@ -1618,6 +1618,17 @@ body.amounts-hidden .fig-m {
   line-height: 16px;
 }
 
+.acct__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .acct__value {
   font-size: 20px;
   line-height: 28px;
@@ -1704,7 +1715,8 @@ body.amounts-hidden .fig-m {
     font-size: 11px;
   }
 
-  .sources .acct__meta {
+  .sources .acct__meta,
+  .sources .acct__desc {
     display: none;
   }
 }
@@ -2097,6 +2109,14 @@ body.amounts-hidden .fig-m {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.wallet-head__desc {
+  max-width: 60ch;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
 }
 
 .wallet-head__actions {
@@ -2780,6 +2800,15 @@ body.amounts-hidden .fig-m {
 
 .src-row__kind {
   color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.src-row__desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
   font-size: 12px;
   line-height: 16px;
 }

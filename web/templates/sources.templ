@@ -3,6 +3,8 @@ package templates
 import (
 	"fmt"
 	"strings"
+
+	"crypto-portfolio/internal/sources"
 )
 
 type pickOpt struct{ Type, Name, How, Mono, Tone string }
@@ -83,7 +85,9 @@ type fieldSpec struct {
 	Secret      bool // never prefilled, whatever the page was given
 	Password    bool
 	Rows        int
-	MaxLen      int // maxlength of a text input; 0 = none
+	MaxLen      int  // maxlength of a text input or textarea; 0 = none
+	Prose       bool // free text: spellcheck and autocapitalize stay on
+	Optional    bool // the label says "optional"
 	List        string // id of a <datalist> of suggestions
 	InputMode   string // inputmode hint, e.g. "decimal"
 }
@@ -282,6 +286,7 @@ templ coinbaseFields(p SourceFormPage) {
 		{{ label.Value = "Coinbase" }}
 	}
 	@textField(label)
+	@descriptionField(p)
 	{{ keyName := p.field("keyName", "API key name") }}
 	{{ keyName.Mono, keyName.Required, keyName.Placeholder = true, true, "organizations/…/apiKeys/…" }}
 	@textField(keyName)
@@ -299,6 +304,7 @@ templ krakenFields(p SourceFormPage) {
 		{{ label.Value = "Kraken" }}
 	}
 	@textField(label)
+	@descriptionField(p)
 	@textField(p.secret("apiKey", "API key", "Paste key"))
 	{{ secret := p.secret("apiSecret", "API secret (private key)", "Paste secret") }}
 	{{ secret.Password = true }}
@@ -310,6 +316,7 @@ templ bitcoinFields(p SourceFormPage) {
 	{{ label := p.field("label", "Label") }}
 	{{ label.Required, label.Placeholder = true, "e.g. Cold storage" }}
 	@textField(label)
+	@descriptionField(p)
 	@selectField("kind", "Wallet type", p.kindValue("hardware"), []selectOpt{{"hardware", "Hardware wallet"}, {"hot", "Hot wallet"}}, p.Errors["kind"])
 	{{ key := p.field("key", "Extended public key, output descriptor, or address") }}
 	{{ key.Mono, key.Placeholder, key.Help = true, "zpub6r… / wsh(sortedmulti(…)) / bc1q…", "Public data only. CryptKeep scans the addresses it derives. From Ledger, paste the whole JSON under Edit account → Advanced, or its xpub and pick the script type below." }}
@@ -350,6 +357,7 @@ templ solanaFields(p SourceFormPage) {
 	{{ label := p.field("label", "Label") }}
 	{{ label.Required, label.Placeholder = true, "e.g. Phantom" }}
 	@textField(label)
+	@descriptionField(p)
 	@selectField("kind", "Wallet type", p.kindValue("hot"), []selectOpt{{"hot", "Hot wallet"}, {"hardware", "Hardware wallet"}}, p.Errors["kind"])
 	{{ addr := p.field("address", "Public address") }}
 	{{ addr.Mono, addr.Required, addr.Placeholder = true, true, "7xKX…" }}
@@ -367,14 +375,32 @@ templ manualFields(p SourceFormPage) {
 	{{ label := p.field("label", "Label") }}
 	{{ label.Required, label.Placeholder = true, "e.g. Paper wallet at mom's" }}
 	@textField(label)
+	@descriptionField(p)
 	{{ h := p.field("holdings", "Holdings") }}
 	{{ h.Mono, h.Required, h.Placeholder, h.Help = true, true, "BTC 0.25 owed by Sam\nETH 2 cold backup", "One holding per line: the asset, the amount, then an optional note." }}
 	@areaField(h, 6)
 }
 
+// descriptionField is every source's optional note on what the wallet is for.
+templ descriptionField(p SourceFormPage) {
+	{{ d := p.field("description", "Description") }}
+	{{ d.Prose, d.Optional, d.MaxLen = true, true, sources.MaxDescription }}
+	{{ d.Placeholder = "What it's for, e.g. long-term savings, never sold" }}
+	@areaField(d, 2)
+}
+
+templ fieldLabel(f fieldSpec) {
+	<label class="field__label" for={ f.ID() }>
+		{ f.Label }
+		if f.Optional {
+			<span class="field__opt">optional</span>
+		}
+	</label>
+}
+
 templ textField(f fieldSpec) {
 	<div class="field">
-		<label class="field__label" for={ f.ID() }>{ f.Label }</label>
+		@fieldLabel(f)
 		<input
 			class={ "input", templ.KV("input--mono", f.Mono), templ.KV("input--error", f.Err != "") }
 			id={ f.ID() }
@@ -413,17 +439,22 @@ templ textField(f fieldSpec) {
 
 templ areaField(f fieldSpec, rows int) {
 	<div class="field">
-		<label class="field__label" for={ f.ID() }>{ f.Label }</label>
+		@fieldLabel(f)
 		<textarea
 			class={ "input", "input--area", templ.KV("input--mono", f.Mono), templ.KV("input--error", f.Err != "") }
 			id={ f.ID() }
 			name={ f.Name }
 			rows={ fmt.Sprint(rows) }
 			autocomplete="off"
-			autocapitalize="off"
-			spellcheck="false"
+			if !f.Prose {
+				autocapitalize="off"
+			}
+			spellcheck={ boolStr(f.Prose) }
 			if f.Placeholder != "" {
 				placeholder={ f.Placeholder }
+			}
+			if f.MaxLen > 0 {
+				maxlength={ fmt.Sprint(f.MaxLen) }
 			}
 			if f.Required {
 				required

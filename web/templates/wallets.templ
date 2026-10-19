@@ -59,6 +59,9 @@ templ walletBody(p WalletPage) {
 				</span>
 				<div class="wallet-head__text">
 					<h1 class="h-title">{ p.W.Label }</h1>
+					if p.W.Description != "" {
+						<p class="wallet-head__desc">{ p.W.Description }</p>
+					}
 					<div class="chips">
 						@SourceChip(p.W.Kind, SourceChipText(p.W))
 						<span class="chip chip--neutral">{ AccessLabel(p.W) }</span>

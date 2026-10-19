@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -56,5 +57,35 @@ func TestSourceFormLedgerExport(t *testing.T) {
 		if d.Key != "xpub6LedgerAccountKey" || d.ScriptType != tc.want {
 			t.Errorf("chosen %q: key %q script %q, want the xpub and %q", tc.chosen, d.Key, d.ScriptType, tc.want)
 		}
+	}
+}
+
+// TestSourceDescription: a wallet's description is saved from the form, refilled on edit,
+// and shown on the wallet page, the Wallets list and Settings.
+func TestSourceDescription(t *testing.T) {
+	e := newEnv(t, "")
+	body, hdr := form(url.Values{"type": {"manual"}, "label": {"Safe"}, "holdings": {"BTC 0.25"},
+		"description": {"  Paper wallet in the safe,\n  for the kids  "}})
+	if resp, out := e.do("POST", "/sources", body, hdr); resp.StatusCode != 200 || !strings.Contains(out, "/w/safe") {
+		t.Fatalf("save: %d %s", resp.StatusCode, out)
+	}
+	const want = "Paper wallet in the safe, for the kids"
+	if d, _ := e.reg.Get("safe"); d.Description != want {
+		t.Fatalf("stored description %q, want %q", d.Description, want)
+	}
+	e.ref.Force(context.Background())
+	for _, path := range []string{"/sources/safe/edit", "/w/safe", "/wallets", "/settings"} {
+		if _, page := e.do("GET", path, nil, nil); !strings.Contains(page, want) {
+			t.Errorf("%s doesn't show the description", path)
+		}
+	}
+
+	body, hdr = form(url.Values{"type": {"manual"}, "label": {"Safe"}, "holdings": {"BTC 0.25"},
+		"description": {strings.Repeat("x", sources.MaxDescription+1)}})
+	if _, out := e.do("POST", "/sources/safe", body, hdr); !strings.Contains(out, "280 characters") {
+		t.Fatalf("an over-long description must be refused on the form: %.600s", out)
+	}
+	if d, _ := e.reg.Get("safe"); d.Description != want {
+		t.Fatalf("refused edit changed the description to %q", d.Description)
 	}
 }

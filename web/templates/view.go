@@ -298,6 +298,8 @@ func FieldLabel(name string) string {
 	switch name {
 	case "label":
 		return "Label"
+	case "description":
+		return "Description"
 	case "keyName":
 		return "API key name"
 	case "privateKey":

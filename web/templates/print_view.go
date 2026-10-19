@@ -43,8 +43,8 @@ type TaxReportView struct {
 // ReportIncomeRow is one income line, formatted.
 type ReportIncomeRow struct{ Date, Asset, Amount, Value, Type, Wallet string }
 
-// ReportWallet is one wallet of the report: label, type and Form 8949 box.
-type ReportWallet struct{ Label, Type, Box string }
+// ReportWallet is one wallet of the report: label, what it's for, type and Form 8949 box.
+type ReportWallet struct{ Label, Description, Type, Box string }
 
 // ReportIssueCount is the number of open review issues of one kind.
 type ReportIssueCount struct {
