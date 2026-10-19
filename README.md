@@ -428,3 +428,8 @@ task that builds runs `task generate` (`go tool templ generate`) first, and so d
 and the Docker build; after a fresh clone, run it once before plain `go build` or `go test`.
 
 The design source of truth is the Vault design system (`docs/design/`). The full plan is in `docs/plan.md`.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled fonts, the Datastar client and the IRS forms keep
+their own licenses: see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

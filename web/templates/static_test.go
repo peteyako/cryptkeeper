@@ -60,7 +60,7 @@ func TestEmbeddedAssets(t *testing.T) {
 	for _, name := range []string{
 		"tokens.css", "app.css", "datastar.js", "manifest.webmanifest",
 		"fonts/ibm-plex-sans-400.woff2", "fonts/ibm-plex-sans-500.woff2", "fonts/ibm-plex-sans-600.woff2",
-		"fonts/ibm-plex-mono-400.woff2", "fonts/ibm-plex-mono-500.woff2",
+		"fonts/ibm-plex-mono-400.woff2", "fonts/ibm-plex-mono-500.woff2", "fonts/OFL.txt",
 		"icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png", "icons/apple-touch-icon.png",
 	} {
 		if b, err := fs.ReadFile(static.FS, name); err != nil || len(b) == 0 {
