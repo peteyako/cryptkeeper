@@ -175,7 +175,9 @@ func (s *Server) renderStatus(w http.ResponseWriter, r *http.Request, code int, 
 	if isNav(r) {
 		r = r.WithContext(templates.WithNav(r.Context()))
 		sse := datastar.NewSSE(w, r)
-		if err := sse.PatchElementTempl(c); err != nil {
+		// A browser that moved on before the patch went out cancels the request: routine
+		// when clicking through pages, not an error.
+		if err := sse.PatchElementTempl(c); err != nil && r.Context().Err() == nil {
 			s.Log.Error("render nav", "path", r.URL.Path, "err", err)
 		}
 		return
