@@ -649,3 +649,27 @@ func TestJupiterCapsChunksPerCall(t *testing.T) {
 		t.Fatalf("made %d Jupiter requests in one call, cap is 10", n)
 	}
 }
+
+// TestCachedNeedsNoNetwork: Cached answers from stored prices only, so a warm start never
+// waits on a price API.
+func TestCachedNeedsNoNetwork(t *testing.T) {
+	e := newEnv(t)
+	e.fk.spot["BTC"] = "65000"
+	e.fk.stats["BTC"] = [2]string{"50000", "65000"}
+	e.svc.Get(ctx, keys("BTC"))
+
+	svc2 := e.newService() // a restart: empty in-memory cache, same database
+	before := e.fk.total()
+	got := svc2.Cached(ctx, keys("BTC", "USD", "USDC", "ETH"))
+	if n := e.fk.total() - before; n != 0 {
+		t.Fatalf("Cached made %d requests", n)
+	}
+	if p := wantUSD(t, got, "BTC", 65000); !p.Stale {
+		t.Errorf("stored price not marked stale: %+v", p)
+	}
+	wantUSD(t, got, "USD", 1)
+	wantUSD(t, got, "USDC", 1)
+	if _, ok := got["ETH"]; ok {
+		t.Error("ETH has no stored price and must be absent")
+	}
+}

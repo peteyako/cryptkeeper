@@ -20,12 +20,15 @@ const (
 
 // Snapshot is the fully priced state of everything (or of one portfolio, after filtering).
 type Snapshot struct {
-	UpdatedAt time.Time             `json:"updatedAt"`
-	TotalUSD  float64               `json:"totalUsd"`
-	HasStale  bool                  `json:"hasStale"` // total includes stale prices or balances
-	Assets    []AssetRow            `json:"assets"`   // merged across wallets, sorted by value desc
-	Wallets   []WalletView          `json:"wallets"`
-	Prices    map[string]core.Price `json:"prices"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	TotalUSD  float64   `json:"totalUsd"`
+	HasStale  bool      `json:"hasStale"` // total includes stale prices or balances
+	// Warm: built at startup from the last session's balances and prices while the first live
+	// refresh runs. Its wallets are pending; nothing that needs live data should use it.
+	Warm    bool                  `json:"warm,omitempty"`
+	Assets  []AssetRow            `json:"assets"` // merged across wallets, sorted by value desc
+	Wallets []WalletView          `json:"wallets"`
+	Prices  map[string]core.Price `json:"prices"`
 }
 
 // StableShare is the share (0..1) of the snapshot's value held as cash or USD

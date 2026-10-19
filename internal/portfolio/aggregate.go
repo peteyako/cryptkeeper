@@ -33,8 +33,10 @@ type Wallet struct {
 
 // Aggregator fetches every wallet, prices holdings and builds a Snapshot.
 type Aggregator struct {
-	Wallets      func() []Wallet
-	Prices       PriceFunc
+	Wallets func() []Wallet
+	Prices  PriceFunc
+	// CachedPrices prices a warm start from stored prices, without network calls; optional.
+	CachedPrices PriceFunc
 	DB           *store.DB // last-good wallet cache; may be nil in tests
 	StaleMax     time.Duration
 	FetchTimeout time.Duration
@@ -68,6 +70,36 @@ func (a *Aggregator) Build(ctx context.Context) Snapshot {
 		prices = a.Prices(ctx, reqs)
 	}
 	return assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, a.now())
+}
+
+// Warm builds a snapshot from the last session, without fetching anything: each wallet's
+// last good result (within StaleMax) priced by CachedPrices. After a restart, pages show
+// balances at once from it while the first live refresh runs. Its wallets are pending and
+// its time is the newest result's. ok is false when no wallet has a usable last result.
+func (a *Aggregator) Warm(ctx context.Context) (s Snapshot, ok bool) {
+	wallets := a.Wallets()
+	results := make([]core.WalletResult, len(wallets))
+	status := make([]Status, len(wallets))
+	var newest time.Time
+	for i, w := range wallets {
+		results[i], status[i] = core.WalletResult{WalletID: w.ID}, StatusPending
+		if lg, ok := a.loadLastGood(ctx, w.ID); ok && a.now().Sub(lg.AsOf) <= a.StaleMax {
+			results[i] = lg
+			if lg.AsOf.After(newest) {
+				newest = lg.AsOf
+			}
+		}
+	}
+	if newest.IsZero() {
+		return Snapshot{}, false
+	}
+	prices := map[string]core.Price{}
+	if reqs := PriceRequests(results); len(reqs) > 0 && a.CachedPrices != nil {
+		prices = a.CachedPrices(ctx, reqs)
+	}
+	s = assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, newest)
+	s.Warm = true
+	return s, true
 }
 
 func (a *Aggregator) fetchOne(ctx context.Context, w Wallet) (core.WalletResult, Status) {

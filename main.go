@@ -288,16 +288,27 @@ func asSource[T core.Source](s T, err error) (core.Source, error) {
 
 func (a *app) priceFunc() portfolio.PriceFunc {
 	return func(ctx context.Context, reqs []portfolio.PriceReq) map[string]core.Price {
-		wants := make([]prices.Want, len(reqs))
-		for i, r := range reqs {
-			wants[i] = prices.Want{Key: r.Key, Mint: r.Mint}
-			if wants[i].Mint == "" {
-				// Exchange holdings of Solana-native tokens (JUP on Kraken) get priced by mint too.
-				wants[i].Mint, _ = solana.MintForSymbol(r.Key)
-			}
-		}
-		return a.prices.Get(ctx, wants)
+		return a.prices.Get(ctx, priceWants(reqs))
 	}
+}
+
+// cachedPriceFunc prices from stored prices only, for the warm start after a restart.
+func (a *app) cachedPriceFunc() portfolio.PriceFunc {
+	return func(ctx context.Context, reqs []portfolio.PriceReq) map[string]core.Price {
+		return a.prices.Cached(ctx, priceWants(reqs))
+	}
+}
+
+func priceWants(reqs []portfolio.PriceReq) []prices.Want {
+	wants := make([]prices.Want, len(reqs))
+	for i, r := range reqs {
+		wants[i] = prices.Want{Key: r.Key, Mint: r.Mint}
+		if wants[i].Mint == "" {
+			// Exchange holdings of Solana-native tokens (JUP on Kraken) get priced by mint too.
+			wants[i].Mint, _ = solana.MintForSymbol(r.Key)
+		}
+	}
+	return wants
 }
 
 func (a *app) wallets() []portfolio.Wallet {
@@ -443,6 +454,7 @@ func serve(args []string) error {
 	agg := &portfolio.Aggregator{
 		Wallets:      a.wallets,
 		Prices:       a.priceFunc(),
+		CachedPrices: a.cachedPriceFunc(),
 		DB:           a.db,
 		StaleMax:     a.cfg.StaleMax(),
 		FetchTimeout: 45 * time.Second,

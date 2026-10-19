@@ -201,6 +201,32 @@ func (s *Service) Get(ctx context.Context, wants []Want) map[string]core.Price {
 	return out
 }
 
+// Cached prices wants from what is already known, without network calls: USD, the
+// in-memory cache, pegged stablecoins and the stored last-good prices (marked stale). An
+// asset with none of those is absent. A warm start after a restart uses it.
+func (s *Service) Cached(ctx context.Context, wants []Want) map[string]core.Price {
+	out := make(map[string]core.Price, len(wants))
+	now := s.now()
+	for _, w := range dedupe(wants) {
+		if w.Key == "USD" {
+			out[w.Key] = core.Price{USD: 1, AsOf: now}
+			continue
+		}
+		if p, ok := s.cacheGet(w.Key, now); ok {
+			out[w.Key] = p
+			continue
+		}
+		if p, ok := s.lastGood(ctx, w.Key, now); ok {
+			out[w.Key] = p
+			continue
+		}
+		if _, isSPL := core.IsSPLKey(w.Key); !isSPL && core.Pegged[strings.ToUpper(w.Key)] {
+			out[w.Key] = core.Price{USD: 1, AsOf: now}
+		}
+	}
+	return out
+}
+
 // dedupe drops empty and repeated keys, keeping the first position and any non-empty Mint.
 func dedupe(wants []Want) []Want {
 	idx := make(map[string]int, len(wants))

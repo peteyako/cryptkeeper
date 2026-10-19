@@ -112,7 +112,8 @@ func (s *Server) taxResult(ctx context.Context) (tax.Result, bool) {
 //   - Spam is spamSet of the configured hidden mints; Quiet is quietSet of the latest
 //     snapshot (the tokens hidden automatically).
 //
-// ready is false while there is no snapshot yet (the quiet set is then incomplete).
+// ready is false until the first live snapshot (before it, the quiet set is incomplete or the
+// last session's).
 func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err error) {
 	txs, err := s.taxActivity(ctx)
 	if err != nil {
@@ -124,6 +125,7 @@ func (s *Server) taxInput(ctx context.Context) (in tax.Input, ready bool, err er
 		settings = s.TaxSettings.Get()
 	}
 	snap, ready := s.latest()
+	ready = ready && !snap.Warm // the last session's snapshot isn't enough to close a year on
 	spam := spamSet(s.Cfg.Solana.HideMints)
 	in = tax.Input{
 		Loc:       loc,

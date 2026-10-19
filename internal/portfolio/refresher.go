@@ -34,7 +34,9 @@ type Refresher struct {
 }
 
 // Run refreshes immediately and then every Interval until ctx is done. Kick() triggers an
-// early refresh (e.g. after a source is added).
+// early refresh (e.g. after a source is added). Until the first refresh finishes, the last
+// session's balances (Aggregator.Warm) stand in, so pages don't wait on slow APIs after a
+// restart; that snapshot isn't recorded, alerted on or counted as a sync.
 func (r *Refresher) Run(ctx context.Context) {
 	r.mu.Lock()
 	if r.kick == nil {
@@ -42,6 +44,16 @@ func (r *Refresher) Run(ctx context.Context) {
 	}
 	kick := r.kick
 	r.mu.Unlock()
+	if s, ok := r.Agg.Warm(ctx); ok {
+		r.mu.Lock()
+		if r.latest == nil {
+			r.latest = &s
+		}
+		r.mu.Unlock()
+		if r.Broker != nil {
+			r.Broker.Publish(s)
+		}
+	}
 	t := time.NewTicker(r.Interval)
 	defer t.Stop()
 	for {

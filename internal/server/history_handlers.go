@@ -71,7 +71,7 @@ func backfillErrText(err error) string {
 // tax.RollBack does), and returns how many rows it wrote.
 func (s *Server) runBackfill(ctx context.Context, days int) (int, error) {
 	snap, ready := s.latest()
-	if !ready {
+	if !ready || snap.Warm {
 		return 0, errNoSnapshot
 	}
 	var txs []core.Tx

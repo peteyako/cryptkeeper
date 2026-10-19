@@ -79,6 +79,9 @@ func (s *Server) syncInfo(snap portfolio.Snapshot, ready bool) templates.SyncInf
 	if !ready {
 		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing…"}
 	}
+	if snap.Warm {
+		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Updating…"}
+	}
 	var failing, stale int
 	var oldest time.Time
 	for _, w := range snap.Wallets {
