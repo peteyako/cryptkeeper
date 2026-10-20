@@ -179,9 +179,10 @@ func TestRepriceNow(t *testing.T) {
 	}
 }
 
-// TestSetPriceInterval: Settings changes how often prices refresh while the refresher runs.
-// PriceEvery is the interval in effect, never longer than Interval.
-func TestSetPriceInterval(t *testing.T) {
+// TestSetIntervals: Settings changes how often the wallets are fetched and prices refresh
+// while the refresher runs. PriceEvery is the price interval in effect, never longer than
+// RefreshEvery.
+func TestSetIntervals(t *testing.T) {
 	src := &stubSource{id: "cold", res: core.WalletResult{Holdings: []core.Holding{h("cold", "BTC", 2)}}}
 	p := &livePricer{usd: map[string]float64{"BTC": 100}}
 	a := &Aggregator{
@@ -205,12 +206,23 @@ func TestSetPriceInterval(t *testing.T) {
 	if s, _ := r.Latest(); !near(s.TotalUSD, 200) {
 		t.Fatalf("repriced to %v though prices refresh only with the balances", s.TotalUSD)
 	}
-	r.SetPriceInterval(20 * time.Millisecond)
+	r.SetIntervals(time.Hour, 20*time.Millisecond)
 	if got := r.PriceEvery(); got != 20*time.Millisecond {
-		t.Errorf("PriceEvery = %v after SetPriceInterval(20ms)", got)
+		t.Errorf("PriceEvery = %v after SetIntervals(1h, 20ms)", got)
 	}
 	waitFor(t, 2*time.Second, "the new price interval didn't take effect", func() bool {
 		s, _ := r.Latest()
 		return near(s.TotalUSD, 600)
+	})
+	if n := src.hits.Load(); n != 1 {
+		t.Errorf("the wallet was fetched %d times before the balance interval changed, want once", n)
+	}
+
+	r.SetIntervals(30*time.Millisecond, 0)
+	if r.RefreshEvery() != 30*time.Millisecond || r.PriceEvery() != 30*time.Millisecond {
+		t.Errorf("after SetIntervals(30ms, 0): RefreshEvery %v, PriceEvery %v; want 30ms both", r.RefreshEvery(), r.PriceEvery())
+	}
+	waitFor(t, 2*time.Second, "the new balance interval didn't take effect", func() bool {
+		return src.hits.Load() >= 3
 	})
 }

@@ -21,8 +21,11 @@ import (
 // uiSettings are display options changed from Settings and stored in the database
 // (config.yaml supplies the defaults and is never written by the app).
 type uiSettings struct {
-	ShowLogos    *bool `json:"showLogos,omitempty"`
-	PriceMinutes *int  `json:"priceMinutes,omitempty"` // how often prices refresh
+	ShowLogos *bool `json:"showLogos,omitempty"`
+	// RefreshMinutes and PriceMinutes are how often balances and prices refresh; prices 0
+	// means with every balance refresh.
+	RefreshMinutes *int `json:"refreshMinutes,omitempty"`
+	PriceMinutes   *int `json:"priceMinutes,omitempty"`
 }
 
 const uiSettingsKey = "ui.settings"
@@ -45,19 +48,29 @@ func (s *Server) showLogos(ctx context.Context) bool {
 	return s.Cfg.ShowTokenLogos
 }
 
-// applyPriceInterval tells the refresher how often prices refresh (priceMinutes).
-func (s *Server) applyPriceInterval(ctx context.Context) {
-	s.Refresher.SetPriceInterval(time.Duration(s.priceMinutes(ctx)) * time.Minute)
+// applyIntervals tells the refresher how often balances and prices refresh (intervals).
+func (s *Server) applyIntervals(ctx context.Context) {
+	balances, prices := s.intervals(ctx)
+	s.Refresher.SetIntervals(time.Duration(balances)*time.Minute, time.Duration(prices)*time.Minute)
 }
 
-// priceMinutes is how often prices refresh: as saved in Settings, else priceMinutes in
-// config.yaml, held to between 1 and the balance interval.
-func (s *Server) priceMinutes(ctx context.Context) int {
-	m := s.Cfg.PriceMinutes
-	if st := s.loadUISettings(ctx); st.PriceMinutes != nil {
-		m = *st.PriceMinutes
+// intervals are how often balances and prices refresh, in minutes: as saved in Settings,
+// else refreshMinutes and priceMinutes from config.yaml. Prices refresh at least with every
+// balance refresh, which a saved 0 asks for outright.
+func (s *Server) intervals(ctx context.Context) (balances, prices int) {
+	balances, prices = s.Cfg.RefreshMinutes, s.Cfg.PriceMinutes
+	st := s.loadUISettings(ctx)
+	if st.RefreshMinutes != nil {
+		balances = *st.RefreshMinutes
 	}
-	return min(max(m, 1), s.Cfg.RefreshMinutes)
+	if st.PriceMinutes != nil {
+		prices = *st.PriceMinutes
+	}
+	balances = max(balances, 1)
+	if prices <= 0 || prices > balances {
+		prices = balances
+	}
+	return balances, prices
 }
 
 func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
@@ -73,14 +86,15 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 			wallets = append(wallets, pendingWallet(d))
 		}
 	}
-	return templates.SettingsPage{
+	p := templates.SettingsPage{
 		Shell: s.shell(r, "Settings", "settings", "all", ""), Wallets: wallets,
 		DataDir: s.DataDir, AuthEnabled: s.Cfg.Password != "", Version: s.Version,
 		Sync: s.syncRows(r.Context()), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports(),
 		PriceKeyFromEnv: s.Cfg.CoinGeckoKey != "", PriceKey: s.maskedPriceKey(r.Context()),
 		BlockstreamFromEnv: s.Cfg.BlockstreamClientID != "", BlockstreamID: s.maskedBlockstreamID(r.Context()),
-		PriceMinutes: s.priceMinutes(r.Context()), RefreshMinutes: s.Cfg.RefreshMinutes,
 	}
+	p.RefreshMinutes, p.PriceMinutes = s.intervals(r.Context())
+	return p
 }
 
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
@@ -104,20 +118,25 @@ func (s *Server) settingsLogos(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElementTempl(templates.SettingsDisplay(s.settingsPage(r)))
 }
 
-// settingsPriceInterval saves how often prices refresh and tells the running refresher.
-func (s *Server) settingsPriceInterval(w http.ResponseWriter, r *http.Request) {
+// settingsIntervals saves how often balances and prices refresh (prices 0: with every
+// balance refresh) and tells the running refresher.
+func (s *Server) settingsIntervals(w http.ResponseWriter, r *http.Request) {
 	_ = parseBody(r)
-	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("priceMinutes"))); err == nil {
-		st := s.loadUISettings(r.Context())
-		m = min(max(m, 1), s.Cfg.RefreshMinutes)
-		st.PriceMinutes = &m
-		if s.DB != nil {
-			if err := s.DB.PutJSON(r.Context(), uiSettingsKey, st); err != nil {
-				s.Log.Warn("save ui settings", "err", err)
-			}
-		}
-		s.applyPriceInterval(r.Context())
+	st := s.loadUISettings(r.Context())
+	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("refreshMinutes"))); err == nil {
+		m = min(max(m, 1), 24*60)
+		st.RefreshMinutes = &m
 	}
+	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("priceMinutes"))); err == nil {
+		m = max(m, 0)
+		st.PriceMinutes = &m
+	}
+	if s.DB != nil {
+		if err := s.DB.PutJSON(r.Context(), uiSettingsKey, st); err != nil {
+			s.Log.Warn("save ui settings", "err", err)
+		}
+	}
+	s.applyIntervals(r.Context())
 	sse := datastar.NewSSE(w, r)
 	_ = sse.PatchElementTempl(templates.SettingsRefresh(s.settingsPage(r)))
 }
@@ -358,7 +377,7 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 			s.invalidateTax()
 		}
 		if res.Database {
-			s.applyPriceInterval(r.Context()) // the restored settings may set another
+			s.applyIntervals(r.Context()) // the restored settings may set others
 		}
 		s.Refresher.Kick()
 		if s.Syncer != nil {
@@ -384,7 +403,7 @@ func (s *Server) backupReset(w http.ResponseWriter, r *http.Request) {
 		s.Blockstream.SetCredentials("", "")
 	}
 	s.invalidateTax()
-	s.applyPriceInterval(ctx) // back to config.yaml's
+	s.applyIntervals(ctx) // back to config.yaml's
 	s.Refresher.Rebuild(ctx)
 	if s.Syncer != nil {
 		s.Syncer.Kick()

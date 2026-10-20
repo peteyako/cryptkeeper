@@ -78,7 +78,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	} else {
 		out.LastSuccess = &last
 		out.AgeSeconds = int64(s.Now().Sub(last).Seconds())
-		if s.Now().Sub(last) > 3*s.Cfg.RefreshInterval() {
+		if s.Now().Sub(last) > 3*s.Refresher.RefreshEvery() {
 			out.Status, code = "stale", http.StatusServiceUnavailable
 		}
 	}

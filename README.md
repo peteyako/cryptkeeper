@@ -408,7 +408,7 @@ needs HTTPS (use the `tailscale serve` URL) → menu → *Install app*.
 See `config.example.yaml`. Token logos (instead of ticker monograms) can be switched on in **Settings**; they load from
 the token issuers' servers. Dates and times are shown in the server's time zone; in Docker set
 `TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (balances, default 5), `priceMinutes`
-(prices, refreshed in between, default 1; **Settings → Price updates** overrides it; the header
+(prices, refreshed in between, default 1; **Settings → Refresh** overrides both; the header
 shows a chip for each), `staleMaxHours`
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.

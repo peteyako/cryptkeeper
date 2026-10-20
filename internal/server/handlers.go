@@ -109,7 +109,7 @@ func (s *Server) priceSync(snap portfolio.Snapshot, ready bool) templates.SyncIn
 // walletSync is the wallets chip: when the balances were last fetched, or which sources are
 // failing or stale.
 func (s *Server) walletSync(snap portfolio.Snapshot, ready bool) templates.SyncInfo {
-	title := "Balances refresh " + templates.Every(s.Cfg.RefreshInterval())
+	title := "Balances refresh " + templates.Every(s.Refresher.RefreshEvery())
 	if !ready {
 		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing wallets…", Title: title}
 	}
@@ -368,7 +368,7 @@ func (s *Server) walletPage(r *http.Request, id, tab string) (templates.WalletPa
 	p := templates.WalletPage{
 		Shell: s.shell(r, wv.Label, "wallets", "all", ""),
 		W:     wv, Tab: tab, IsBitcoin: isBTC, Now: s.Now(),
-		PublicEndpoint: s.publicEndpoint(wv.Type), RetryEvery: time.Duration(s.Cfg.RefreshMinutes) * time.Minute,
+		PublicEndpoint: s.publicEndpoint(wv.Type), RetryEvery: s.Refresher.RefreshEvery(),
 	}
 	if tab == "activity" {
 		s.walletActivity(r.Context(), &p)

@@ -17,13 +17,13 @@ var ErrTooSoon = errors.New("refreshed moments ago")
 // one to the broker, including a refresh's progress as wallets finish (Warm snapshots), so
 // one slow wallet doesn't hold back the others. Page loads never wait on slow APIs.
 type Refresher struct {
-	Agg      *Aggregator
-	Broker   *Broker
-	History  *History // optional
-	Interval time.Duration
-	// PriceInterval, when shorter than Interval, reprices the last balances in between
-	// (Aggregator.Reprice), so prices refresh more often than the wallets are fetched. Set it
-	// before Run; SetPriceInterval changes it after.
+	Agg     *Aggregator
+	Broker  *Broker
+	History *History // optional
+	// Interval is how often the wallets are fetched. PriceInterval, when shorter, reprices
+	// the last balances in between (Aggregator.Reprice), so prices refresh more often than
+	// the wallets are fetched. Set both before Run; SetIntervals changes them after.
+	Interval         time.Duration
 	PriceInterval    time.Duration
 	MinForceInterval time.Duration // default 30s
 	Log              *slog.Logger
@@ -36,7 +36,7 @@ type Refresher struct {
 	lastForced  time.Time
 	lastSuccess time.Time
 	kick        chan struct{}
-	priceSet    chan struct{}      // SetPriceInterval tells Run to restart its price ticker
+	intervalSet chan struct{}      // SetIntervals tells Run to restart its tickers
 	gen         uint64             // bumped by Kick: a build publishes only while it is the newest
 	cancelBuild context.CancelFunc // stops the build in progress when a kick replaces it
 }
@@ -52,8 +52,8 @@ func (r *Refresher) Run(ctx context.Context) {
 		r.kick = make(chan struct{}, 1)
 	}
 	kick := r.kick
-	r.priceSet = make(chan struct{}, 1)
-	priceSet := r.priceSet
+	r.intervalSet = make(chan struct{}, 1)
+	intervalSet := r.intervalSet
 	r.mu.Unlock()
 	if s, ok := r.Agg.Warm(ctx); ok {
 		r.mu.Lock()
@@ -65,24 +65,28 @@ func (r *Refresher) Run(ctx context.Context) {
 			r.Broker.Publish(s)
 		}
 	}
-	t := time.NewTicker(r.Interval)
-	defer t.Stop()
 	var (
-		pt        *time.Ticker
+		t, pt     *time.Ticker
 		priceTick <-chan time.Time // nil: prices refresh only with the wallets
 	)
-	startPrices := func() {
+	startTickers := func() {
+		if t != nil {
+			t.Stop()
+		}
 		if pt != nil {
 			pt.Stop()
 			pt, priceTick = nil, nil
 		}
-		if every := r.PriceEvery(); every < r.Interval {
-			pt = time.NewTicker(every)
+		every, prices := r.RefreshEvery(), r.PriceEvery()
+		t = time.NewTicker(every)
+		if prices < every {
+			pt = time.NewTicker(prices)
 			priceTick = pt.C
 		}
 	}
-	startPrices()
+	startTickers()
 	defer func() {
+		t.Stop()
 		if pt != nil {
 			pt.Stop()
 		}
@@ -98,10 +102,17 @@ func (r *Refresher) Run(ctx context.Context) {
 			r.refresh(ctx)
 		case <-priceTick:
 			go r.reprice(ctx, false) // never delays a kick
-		case <-priceSet:
-			startPrices()
+		case <-intervalSet:
+			startTickers()
 		}
 	}
+}
+
+// RefreshEvery is how often the wallets are fetched (Interval).
+func (r *Refresher) RefreshEvery() time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.Interval
 }
 
 // PriceEvery is how often prices refresh: PriceInterval, but at least with every refresh.
@@ -119,11 +130,15 @@ func (r *Refresher) priceEvery() time.Duration {
 	return r.Interval
 }
 
-// SetPriceInterval changes PriceInterval (Settings); a running Run restarts its price ticker.
-func (r *Refresher) SetPriceInterval(d time.Duration) {
+// SetIntervals changes Interval and PriceInterval (Settings); a running Run restarts its
+// tickers. A balance interval of 0 or less keeps the current one.
+func (r *Refresher) SetIntervals(balances, prices time.Duration) {
 	r.mu.Lock()
-	r.PriceInterval = d
-	ch := r.priceSet
+	if balances > 0 {
+		r.Interval = balances
+	}
+	r.PriceInterval = prices
+	ch := r.intervalSet
 	r.mu.Unlock()
 	if ch != nil {
 		select {

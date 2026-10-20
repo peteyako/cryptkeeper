@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -188,35 +189,54 @@ templ SettingsDisplay(p SettingsPage) {
 	</section>
 }
 
-// SettingsRefresh sets how often prices refresh between balance refreshes.
+// SettingsRefresh sets how often balances refresh, and prices in between.
 templ SettingsRefresh(p SettingsPage) {
 	<section id="settings-refresh" class="card setting" aria-labelledby="set-refresh-h">
 		<div class="setting__text">
-			<h2 id="set-refresh-h" class="h-card">Price updates</h2>
-			<p class="muted-text">Balances refresh { Every(time.Duration(p.RefreshMinutes) * time.Minute) } (refreshMinutes in config.yaml). In between, CryptKeeper refreshes the prices of what they hold, without asking your wallets and exchanges again.</p>
+			<h2 id="set-refresh-h" class="h-card">Refresh</h2>
+			<p class="muted-text">How often CryptKeeper checks your wallets, exchanges and accounts, and how often it refreshes prices in between, on the balances it already has. These override refreshMinutes and priceMinutes in config.yaml.</p>
 		</div>
-		<form id="price-every-form" class="form" method="post" action="/settings/price-interval" data-on:change={ priceEveryChange }>
-			@selectField("priceMinutes", "Refresh prices", strconv.Itoa(p.PriceMinutes), priceEveryOpts(p.PriceMinutes, p.RefreshMinutes), "")
+		<form id="refresh-form" class="form" method="post" action="/settings/intervals" data-on:change={ intervalsChange }>
+			@selectField("refreshMinutes", "Refresh balances", strconv.Itoa(p.RefreshMinutes), everyOpts(refreshSteps, p.RefreshMinutes, math.MaxInt), "")
+			@selectField("priceMinutes", "Refresh prices", priceChoice(p), priceEveryOpts(p.PriceMinutes, p.RefreshMinutes), "")
 		</form>
 	</section>
 }
 
-// priceEveryOpts are the choices for how often prices refresh: the usual steps below the
-// balance interval (and current, if it isn't one), then with every balance refresh.
-func priceEveryOpts(current, refresh int) []selectOpt {
-	steps := []int{1, 2, 3, 5, 10, 15, 30}
-	if current < refresh && !slices.Contains(steps, current) {
-		steps = append(steps, current)
+var (
+	refreshSteps = []int{1, 2, 3, 5, 10, 15, 30, 60} // balance intervals Settings offers, in minutes
+	priceSteps   = []int{1, 2, 3, 5, 10, 15, 30}     // price intervals, below the balance one
+)
+
+// everyOpts are interval choices in minutes, worded "Every 5 min": the steps (and current,
+// if it isn't one) below limit.
+func everyOpts(steps []int, current, limit int) []selectOpt {
+	if current < limit && !slices.Contains(steps, current) {
+		steps = append(slices.Clone(steps), current)
 		slices.Sort(steps)
 	}
 	var opts []selectOpt
 	for _, m := range steps {
-		if m < refresh {
+		if m < limit {
 			every := Every(time.Duration(m) * time.Minute)
 			opts = append(opts, selectOpt{strconv.Itoa(m), strings.ToUpper(every[:1]) + every[1:]})
 		}
 	}
-	return append(opts, selectOpt{strconv.Itoa(refresh), "With the balances (" + Every(time.Duration(refresh)*time.Minute) + ")"})
+	return opts
+}
+
+// priceEveryOpts are the choices for how often prices refresh: the steps below the balance
+// interval, then "with the balances" (0).
+func priceEveryOpts(current, refresh int) []selectOpt {
+	return append(everyOpts(priceSteps, current, refresh), selectOpt{"0", "With the balances (" + Every(time.Duration(refresh)*time.Minute) + ")"})
+}
+
+// priceChoice is the price option to select: "0" when prices refresh with the balances.
+func priceChoice(p SettingsPage) string {
+	if p.PriceMinutes >= p.RefreshMinutes {
+		return "0"
+	}
+	return strconv.Itoa(p.PriceMinutes)
 }
 
 // SettingsPrices holds the CoinGecko demo key used for historical prices of Solana tokens.

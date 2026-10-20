@@ -393,8 +393,8 @@ func ruleTypeIs(t string) string { return "$ruleType === " + JSString(t) }
 // logosChange saves the token-logos setting when its checkbox changes.
 const logosChange = `@post('/settings/logos', {contentType: 'form'})`
 
-// priceEveryChange saves how often prices refresh as soon as one is picked.
-const priceEveryChange = `@post('/settings/price-interval', {contentType: 'form'})`
+// intervalsChange saves how often balances and prices refresh as soon as one is picked.
+const intervalsChange = `@post('/settings/intervals', {contentType: 'form'})`
 
 // pricesSubmit saves or clears the CoinGecko key.
 const pricesSubmit = `@post('/settings/prices', {contentType: 'form'})`

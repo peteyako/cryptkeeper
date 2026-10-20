@@ -7,54 +7,61 @@ import (
 	"time"
 )
 
-// TestSettingsPriceInterval: Settings offers how often prices refresh, up to with every
-// balance refresh. Saving changes the running refresher at once, a value past the balance
-// interval is held to it, and the saved choice applies again after a restart.
-func TestSettingsPriceInterval(t *testing.T) {
+// TestSettingsIntervals: Settings picks how often balances refresh and how often prices
+// refresh in between, up to with every balance refresh. Saving changes the running refresher
+// at once; prices "with the balances" follow the balance interval; the saved choices apply
+// again after a restart.
+func TestSettingsIntervals(t *testing.T) {
 	e := newEnv(t, "")
 	_, page := e.do("GET", "/settings", nil, nil)
-	for _, want := range []string{`id="f-priceMinutes"`, `<option value="1" selected>Every minute</option>`, "With the balances (every 5 min)"} {
+	for _, want := range []string{`id="f-refreshMinutes"`, `<option value="5" selected>Every 5 min</option>`,
+		`id="f-priceMinutes"`, `<option value="1" selected>Every minute</option>`, "With the balances (every 5 min)"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("Settings lacks %q", want)
 		}
 	}
 
-	save := func(minutes string) string {
-		body, hdr := form(url.Values{"priceMinutes": {minutes}})
-		_, out := e.do("POST", "/settings/price-interval", body, hdr)
+	save := func(v url.Values) string {
+		body, hdr := form(v)
+		_, out := e.do("POST", "/settings/intervals", body, hdr)
 		return out
 	}
-	if out := save("2"); !strings.Contains(out, `id="settings-refresh"`) {
+	check := func(what string, balances, prices time.Duration) {
+		t.Helper()
+		if b, p := e.ref.RefreshEvery(), e.ref.PriceEvery(); b != balances || p != prices {
+			t.Errorf("%s: balances every %v, prices every %v; want %v, %v", what, b, p, balances, prices)
+		}
+	}
+	if out := save(url.Values{"refreshMinutes": {"10"}, "priceMinutes": {"2"}}); !strings.Contains(out, `id="settings-refresh"`) {
 		t.Fatalf("saving answered: %.400s", out)
 	}
-	if got := e.ref.PriceEvery(); got != 2*time.Minute {
-		t.Errorf("PriceEvery = %v after saving 2 min", got)
-	}
-	if _, page = e.do("GET", "/settings", nil, nil); !strings.Contains(page, `<option value="2" selected>`) {
-		t.Error("Settings doesn't show the saved 2 min")
+	check("10 and 2", 10*time.Minute, 2*time.Minute)
+	if _, page = e.do("GET", "/settings", nil, nil); !strings.Contains(page, `<option value="10" selected>`) || !strings.Contains(page, `<option value="2" selected>`) {
+		t.Error("Settings doesn't show the saved 10 and 2 min")
 	}
 
-	save("99")
-	if got := e.ref.PriceEvery(); got != 5*time.Minute {
-		t.Errorf("PriceEvery = %v after saving 99 min, want the balance interval (5 min)", got)
-	}
+	save(url.Values{"refreshMinutes": {"10"}, "priceMinutes": {"0"}})
+	check("prices with the balances", 10*time.Minute, 10*time.Minute)
+	save(url.Values{"refreshMinutes": {"30"}, "priceMinutes": {"0"}})
+	check("prices still with the balances", 30*time.Minute, 30*time.Minute)
 
-	e.ref.SetPriceInterval(time.Minute)
+	save(url.Values{"refreshMinutes": {"2"}, "priceMinutes": {"5"}})
+	check("prices held to the balance interval", 2*time.Minute, 2*time.Minute)
+
+	e.ref.SetIntervals(time.Hour, time.Minute)
 	New(e.deps)
-	if got := e.ref.PriceEvery(); got != 5*time.Minute {
-		t.Errorf("after a restart PriceEvery = %v, want the saved 5 min", got)
-	}
+	check("after a restart", 2*time.Minute, 2*time.Minute)
 }
 
-// TestResetRestoresPriceInterval: a reset erases the saved price interval, so prices go back
-// to refreshing as config.yaml says.
-func TestResetRestoresPriceInterval(t *testing.T) {
+// TestResetRestoresIntervals: a reset erases the saved intervals, so balances and prices go
+// back to refreshing as config.yaml says.
+func TestResetRestoresIntervals(t *testing.T) {
 	e := newEnv(t, "")
-	body, hdr := form(url.Values{"priceMinutes": {"3"}})
-	e.do("POST", "/settings/price-interval", body, hdr)
+	body, hdr := form(url.Values{"refreshMinutes": {"15"}, "priceMinutes": {"3"}})
+	e.do("POST", "/settings/intervals", body, hdr)
 	body, hdr = form(url.Values{"confirm": {"RESET"}})
 	e.do("POST", "/backup/reset", body, hdr)
-	if got := e.ref.PriceEvery(); got != time.Minute {
-		t.Errorf("after a reset PriceEvery = %v, want config.yaml's 1 min", got)
+	if b, p := e.ref.RefreshEvery(), e.ref.PriceEvery(); b != 5*time.Minute || p != time.Minute {
+		t.Errorf("after a reset: balances every %v, prices every %v; want config.yaml's 5 min and 1 min", b, p)
 	}
 }
