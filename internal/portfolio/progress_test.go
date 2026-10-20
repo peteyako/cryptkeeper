@@ -138,3 +138,78 @@ func TestKickStartsOverWithTheNewWallets(t *testing.T) {
 		t.Fatal("the refresh the kick replaced published its old wallet list afterwards")
 	}
 }
+
+// TestPricesDontWaitForSlowWallets: a refresh asks for live prices at once, for the assets
+// the wallets held last time, instead of after the slowest wallet answers. While a wallet is
+// slow the dashboard already shows the new prices; when it answers, only an asset that is
+// new in its balance is priced, and nothing is asked for twice.
+func TestPricesDontWaitForSlowWallets(t *testing.T) {
+	var mu sync.Mutex
+	live := map[string]float64{"BTC": 100, "ETH": 10}
+	asked := map[string]int{}
+	pricer := func(_ context.Context, reqs []PriceReq) map[string]core.Price {
+		mu.Lock()
+		defer mu.Unlock()
+		out := map[string]core.Price{}
+		for _, r := range reqs {
+			asked[r.Key]++
+			if v, ok := live[r.Key]; ok {
+				out[r.Key] = core.Price{USD: v, AsOf: time.Now()}
+			}
+		}
+		return out
+	}
+	hot := &stubSource{id: "hot", res: core.WalletResult{Holdings: []core.Holding{h("hot", "BTC", 1)}}}
+	var cold core.Source = &stubSource{id: "cold", res: core.WalletResult{Holdings: []core.Holding{h("cold", "BTC", 5)}}}
+	a := &Aggregator{
+		Wallets: func() []Wallet {
+			mu.Lock()
+			defer mu.Unlock()
+			return []Wallet{{ID: "hot", Label: "Hot", Source: hot}, {ID: "cold", Label: "Cold", Source: cold}}
+		},
+		Prices:       pricer,
+		CachedPrices: fixedPrices(map[string]float64{"BTC": 100, "ETH": 10}),
+		DB:           openDB(t), StaleMax: time.Hour, FetchTimeout: 10 * time.Second,
+	}
+	r := &Refresher{Agg: a, Broker: NewBroker(), Interval: time.Hour}
+	if s := r.Rebuild(context.Background()); !near(s.TotalUSD, 600) {
+		t.Fatalf("first refresh total=%v, want 600", s.TotalUSD)
+	}
+
+	// BTC doubles; the cold wallet is slow, and when it answers it holds ETH as well.
+	slow := &blockingSource{release: make(chan struct{}), res: core.WalletResult{Holdings: []core.Holding{h("cold", "BTC", 5), h("cold", "ETH", 3)}}}
+	defer func() {
+		select {
+		case <-slow.release:
+		default:
+			close(slow.release)
+		}
+	}()
+	mu.Lock()
+	live["BTC"] = 200
+	clear(asked)
+	cold = slow
+	mu.Unlock()
+	done := make(chan Snapshot, 1)
+	go func() { done <- r.Rebuild(context.Background()) }()
+
+	waitFor(t, 2*time.Second, "the new BTC price waited for the slow wallet", func() bool {
+		s, _ := r.Latest()
+		return s.Warm && near(s.TotalUSD, 1200) // 6 BTC at the new 200
+	})
+
+	close(slow.release)
+	select {
+	case s := <-done:
+		if s.Warm || !near(s.TotalUSD, 1230) {
+			t.Fatalf("finished refresh warm=%v total=%v, want 1230 (6 BTC at 200 + 3 ETH at 10)", s.Warm, s.TotalUSD)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the refresh didn't finish after the slow wallet answered")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked["BTC"] != 1 || asked["ETH"] != 1 {
+		t.Errorf("asked for BTC %d times and ETH %d times in one refresh, want once each", asked["BTC"], asked["ETH"])
+	}
+}
