@@ -500,9 +500,19 @@ func scaleChange(c portfolio.Change, k float64) portfolio.Change {
 	return c
 }
 
-// SyncSynced is the happy-path sync chip.
-func SyncSynced() templates.SyncInfo {
-	return templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Synced 2m ago"}
+// SyncSynced is the happy-path pair of sync chips.
+func SyncSynced() templates.SyncStatus {
+	return templates.SyncStatus{
+		Prices:  templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Prices just now", Title: "Prices refresh every minute"},
+		Wallets: templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Wallets 2m ago", Title: "Balances refresh every 5 min"},
+	}
+}
+
+// SyncSyncing is the pair of sync chips while the wallets are fetched.
+func SyncSyncing() templates.SyncStatus {
+	s := SyncSynced()
+	s.Wallets.Status, s.Wallets.Label = portfolio.StatusPending, "Syncing wallets…"
+	return s
 }
 
 // OverviewEmpty is the overview with no sources at all.
@@ -512,7 +522,7 @@ func OverviewEmpty(now time.Time) templates.OverviewPage {
 		PortfolioName: "All holdings",
 		Snap:          portfolio.Snapshot{UpdatedAt: now, Prices: map[string]core.Price{}},
 		Change:        portfolio.Change{Label: "past week"},
-		Sync:          templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing…"},
+		Sync:          SyncSyncing(),
 		Now:           now,
 	}
 }

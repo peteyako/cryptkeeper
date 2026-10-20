@@ -21,8 +21,15 @@ const (
 // Snapshot is the fully priced state of everything (or of one portfolio, after filtering).
 type Snapshot struct {
 	UpdatedAt time.Time `json:"updatedAt"`
-	TotalUSD  float64   `json:"totalUsd"`
-	HasStale  bool      `json:"hasStale"` // total includes stale prices or balances
+	// SyncedAt is when the balances were fetched: the finished refresh's time, which a
+	// reprice keeps. A Warm snapshot carries the last finished refresh's (zero before one).
+	SyncedAt time.Time `json:"syncedAt"`
+	// PricedAt is when the prices were fetched live: UpdatedAt for a finished refresh or a
+	// reprice. A Warm one has this refresh's early prices' time once they arrive, else the
+	// last finished refresh's (zero before one).
+	PricedAt time.Time `json:"pricedAt"`
+	TotalUSD float64   `json:"totalUsd"`
+	HasStale bool      `json:"hasStale"` // total includes stale prices or balances
 	// Warm: not a finished live refresh. Built at startup from the last session's balances
 	// and prices while the first refresh runs, or published while a refresh is still going,
 	// its wallets not done yet showing what they showed before. Nothing that needs live data

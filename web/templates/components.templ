@@ -7,10 +7,18 @@ import (
 	"cryptkeeper/internal/portfolio"
 )
 
-// SyncChip is the header sync status, patched on its own by /refresh.
-templ SyncChip(s SyncInfo) {
+// SyncChip is the header sync status, a chip for prices and one for wallet balances,
+// patched on its own by /refresh.
+templ SyncChip(s SyncStatus) {
+	<span id="sync-status" class="sync-chips">
+		@syncChip(s.Prices)
+		@syncChip(s.Wallets)
+	</span>
+}
+
+templ syncChip(s SyncInfo) {
 	{{ glyph, label, tone := SyncView(s) }}
-	<span id="sync-status" class={ "chip", "chip--" + tone }>
+	<span class={ "chip", "chip--" + tone } title={ s.Title }>
 		<span aria-hidden="true">{ glyph }</span>
 		<span>{ label }</span>
 	</span>
@@ -184,7 +192,7 @@ templ priceCell(p *core.Price, now time.Time) {
 }
 
 // pageHeadActions is the right-hand side of a page header: sync chip, hide, refresh.
-templ pageHeadTools(sync SyncInfo) {
+templ pageHeadTools(sync SyncStatus) {
 	@SyncChip(sync)
 	@HideButton()
 	@RefreshButton()

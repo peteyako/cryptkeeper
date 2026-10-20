@@ -75,12 +75,46 @@ func (s *Server) latest() (portfolio.Snapshot, bool) {
 	return snap, ok
 }
 
-func (s *Server) syncInfo(snap portfolio.Snapshot, ready bool) templates.SyncInfo {
+// syncStatus is the header's two chips: prices and wallet balances refresh on their own
+// schedules, so each says when it last came in.
+func (s *Server) syncStatus(snap portfolio.Snapshot, ready bool) templates.SyncStatus {
+	return templates.SyncStatus{Prices: s.priceSync(snap, ready), Wallets: s.walletSync(snap, ready)}
+}
+
+// priceSync is the prices chip: when prices last came in live, or how many shown prices are
+// stale (their source failed, so the last good one stands in). Prices that stopped coming
+// for three refreshes turn it amber too.
+func (s *Server) priceSync(snap portfolio.Snapshot, ready bool) templates.SyncInfo {
+	every := s.Cfg.PriceInterval()
+	info := templates.SyncInfo{Title: "Prices refresh " + templates.Every(every)}
+	stale := 0
+	for _, a := range snap.Assets {
+		if a.Price != nil && a.Price.Stale {
+			stale++
+		}
+	}
+	switch {
+	case !ready || snap.PricedAt.IsZero():
+		info.Status, info.Label = portfolio.StatusPending, "Loading prices…"
+	case stale > 0:
+		info.Status, info.Label = portfolio.StatusStale, plural(stale, "price")+" stale"
+	case s.Now().Sub(snap.PricedAt) > 3*every:
+		info.Status, info.Label = portfolio.StatusStale, "Prices "+templates.Ago(snap.PricedAt, s.Now())
+	default:
+		info.Status, info.Label = portfolio.StatusSynced, "Prices "+templates.Ago(snap.PricedAt, s.Now())
+	}
+	return info
+}
+
+// walletSync is the wallets chip: when the balances were last fetched, or which sources are
+// failing or stale.
+func (s *Server) walletSync(snap portfolio.Snapshot, ready bool) templates.SyncInfo {
+	title := "Balances refresh " + templates.Every(s.Cfg.RefreshInterval())
 	if !ready {
-		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing…"}
+		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing wallets…", Title: title}
 	}
 	if snap.Warm {
-		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Updating…"}
+		return templates.SyncInfo{Status: portfolio.StatusPending, Label: "Updating wallets…", Title: title}
 	}
 	var failing, stale int
 	var oldest time.Time
@@ -97,11 +131,11 @@ func (s *Server) syncInfo(snap portfolio.Snapshot, ready bool) templates.SyncInf
 	}
 	switch {
 	case failing > 0:
-		return templates.SyncInfo{Status: portfolio.StatusError, Label: plural(failing, "source") + " failing"}
+		return templates.SyncInfo{Status: portfolio.StatusError, Label: plural(failing, "source") + " failing", Title: title}
 	case stale > 0:
-		return templates.SyncInfo{Status: portfolio.StatusStale, Label: "Stale " + templates.Ago(oldest, s.Now())}
+		return templates.SyncInfo{Status: portfolio.StatusStale, Label: "Wallets stale " + templates.Ago(oldest, s.Now()), Title: title}
 	}
-	return templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Synced " + templates.Ago(snap.UpdatedAt, s.Now())}
+	return templates.SyncInfo{Status: portfolio.StatusSynced, Label: "Wallets " + templates.Ago(snap.SyncedAt, s.Now()), Title: title}
 }
 
 // overviewPage builds the overview model for a portfolio and range. Unknown portfolio ids
@@ -119,7 +153,7 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		Shell:         s.shell(r, pv.name, "overview", v.PF, v.Range),
 		PortfolioName: pv.name,
 		Snap:          snap,
-		Sync:          s.syncInfo(all, ready),
+		Sync:          s.syncStatus(all, ready),
 		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
 		NetWorthShare: pv.share,
 		PnL:           s.pnlCells(r.Context(), snap.Assets, pv.lotWallets),
@@ -254,11 +288,11 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	v := readView(r)
 	sse := datastar.NewSSE(w, r)
-	_ = sse.PatchElementTempl(templates.SyncChip(templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing…"}))
+	syncing := s.syncStatus(s.latest())
+	syncing.Wallets.Status, syncing.Wallets.Label = portfolio.StatusPending, "Syncing wallets…"
+	_ = sse.PatchElementTempl(templates.SyncChip(syncing))
 	if _, err := s.Refresher.Force(r.Context()); errors.Is(err, portfolio.ErrTooSoon) {
-		snap, ready := s.latest()
-		info := s.syncInfo(snap, ready)
-		_ = sse.PatchElementTempl(templates.SyncChip(info))
+		_ = sse.PatchElementTempl(templates.SyncChip(s.syncStatus(s.latest())))
 		return
 	}
 	_ = sse.PatchElementTempl(templates.Dashboard(s.overviewPage(r, v)))
@@ -276,7 +310,7 @@ func (s *Server) portfolioJSON(w http.ResponseWriter, r *http.Request) {
 func (s *Server) wallets(w http.ResponseWriter, r *http.Request) {
 	snap, ready := s.latest()
 	s.render(w, r, templates.WalletsFull(templates.WalletsPage{
-		Shell: s.shell(r, "Wallets", "wallets", "all", ""), Wallets: snap.Wallets, Sync: s.syncInfo(snap, ready), Now: s.Now(),
+		Shell: s.shell(r, "Wallets", "wallets", "all", ""), Wallets: snap.Wallets, Sync: s.syncStatus(snap, ready), Now: s.Now(),
 	}))
 }
 

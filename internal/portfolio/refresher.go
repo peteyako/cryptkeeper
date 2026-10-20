@@ -17,13 +17,16 @@ var ErrTooSoon = errors.New("refreshed moments ago")
 // one to the broker, including a refresh's progress as wallets finish (Warm snapshots), so
 // one slow wallet doesn't hold back the others. Page loads never wait on slow APIs.
 type Refresher struct {
-	Agg              *Aggregator
-	Broker           *Broker
-	History          *History // optional
-	Interval         time.Duration
+	Agg      *Aggregator
+	Broker   *Broker
+	History  *History // optional
+	Interval time.Duration
+	// PriceInterval, when shorter than Interval, reprices the last balances in between
+	// (Aggregator.Reprice), so prices refresh more often than the wallets are fetched.
+	PriceInterval    time.Duration
 	MinForceInterval time.Duration // default 30s
 	Log              *slog.Logger
-	// OnSnapshot runs after each refresh (alerts engine hooks in here later).
+	// OnSnapshot runs after each refresh and reprice (the alerts engine hooks in here).
 	OnSnapshot func(Snapshot)
 
 	sf          singleflight.Group
@@ -36,10 +39,11 @@ type Refresher struct {
 	cancelBuild context.CancelFunc // stops the build in progress when a kick replaces it
 }
 
-// Run refreshes immediately and then every Interval until ctx is done. Kick() triggers an
-// early refresh (e.g. after a source is added). Until the first refresh finishes, the last
-// session's balances (Aggregator.Warm) stand in, so pages don't wait on slow APIs after a
-// restart; that snapshot isn't recorded, alerted on or counted as a sync.
+// Run refreshes immediately and then every Interval until ctx is done, repricing every
+// PriceInterval in between. Kick() triggers an early refresh (e.g. after a source is added).
+// Until the first refresh finishes, the last session's balances (Aggregator.Warm) stand in,
+// so pages don't wait on slow APIs after a restart; that snapshot isn't recorded, alerted on
+// or counted as a sync.
 func (r *Refresher) Run(ctx context.Context) {
 	r.mu.Lock()
 	if r.kick == nil {
@@ -59,13 +63,23 @@ func (r *Refresher) Run(ctx context.Context) {
 	}
 	t := time.NewTicker(r.Interval)
 	defer t.Stop()
+	var priceTick <-chan time.Time // nil: prices refresh only with the wallets
+	if r.PriceInterval > 0 && r.PriceInterval < r.Interval {
+		pt := time.NewTicker(r.PriceInterval)
+		defer pt.Stop()
+		priceTick = pt.C
+	}
+	r.refresh(ctx)
 	for {
-		r.refresh(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			r.refresh(ctx)
 		case <-kick:
+			r.refresh(ctx)
+		case <-priceTick:
+			go r.reprice(ctx) // never delays a kick
 		}
 	}
 }
@@ -127,6 +141,47 @@ func (r *Refresher) Force(ctx context.Context) (Snapshot, error) {
 // Rebuild runs a refresh now, whatever MinForceInterval says: after a reset the old
 // snapshot must not be served again.
 func (r *Refresher) Rebuild(ctx context.Context) Snapshot { return r.refresh(ctx) }
+
+// reprice publishes the last balances at new prices, between refreshes. A refresh prices
+// too, so a reprice gives way to one: it doesn't start while one runs or within half a
+// PriceInterval of the last prices, and it publishes nothing if anything else was
+// published, or a kick came, while it priced. It isn't counted as a sync.
+func (r *Refresher) reprice(ctx context.Context) {
+	r.sf.Do("reprice", func() (any, error) {
+		r.mu.Lock()
+		prev, gen := r.latest, r.gen
+		busy := r.cancelBuild != nil || prev == nil || prev.Warm || time.Since(prev.PricedAt) < r.PriceInterval/2
+		r.mu.Unlock()
+		if busy {
+			return nil, nil
+		}
+		pctx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		s, ok := r.Agg.Reprice(pctx)
+		if !ok {
+			return nil, nil
+		}
+		r.mu.Lock()
+		if r.latest != prev || r.gen != gen || r.cancelBuild != nil {
+			r.mu.Unlock()
+			return nil, nil
+		}
+		r.latest = &s
+		if r.Broker != nil {
+			r.Broker.Publish(s)
+		}
+		r.mu.Unlock()
+		if r.History != nil {
+			if err := r.History.Record(pctx, s); err != nil && r.Log != nil {
+				r.Log.Warn("history record failed", "err", err)
+			}
+		}
+		if r.OnSnapshot != nil {
+			r.OnSnapshot(s)
+		}
+		return nil, nil
+	})
+}
 
 // refresh builds a snapshot, publishing its progress; concurrent callers share one build.
 // A build a kick replaced returns the latest snapshot instead of its own.

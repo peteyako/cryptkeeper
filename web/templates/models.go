@@ -25,12 +25,17 @@ type Shell struct {
 // PortfolioNav is one entry of the sidebar "Portfolios" list.
 type PortfolioNav struct{ ID, Name, Count string }
 
-// SyncInfo drives the sync chip, e.g. synced/"Synced 2m ago", stale/"Stale 3h",
-// error/"2 sources failing", pending/"Syncing…".
+// SyncInfo drives one sync chip, e.g. synced/"Prices just now", stale/"Wallets stale 3h ago",
+// error/"2 sources failing", pending/"Syncing wallets…". Title is its tooltip.
 type SyncInfo struct {
 	Status portfolio.Status
 	Label  string
+	Title  string
 }
+
+// SyncStatus drives the header's two sync chips. Prices refresh more often than wallet
+// balances, so each says on its own when it last came in.
+type SyncStatus struct{ Prices, Wallets SyncInfo }
 
 // WatchRow is one line of the "Watching" table.
 type WatchRow struct {
@@ -45,7 +50,7 @@ type OverviewPage struct {
 	Snap          portfolio.Snapshot
 	Chart         []portfolio.Point
 	Change        portfolio.Change
-	Sync          SyncInfo
+	Sync          SyncStatus
 	Watch         []WatchRow
 	NetWorthShare float64 // 0..1, shown only when PF != "all"
 	// PnL is the unrealized profit or loss per merged asset key. It feeds the optional
@@ -64,7 +69,7 @@ type OverviewPage struct {
 type WalletsPage struct {
 	Shell
 	Wallets []portfolio.WalletView
-	Sync    SyncInfo
+	Sync    SyncStatus
 	Now     time.Time
 }
 
@@ -541,7 +546,7 @@ type CoinPage struct {
 	Points                          []portfolio.Point
 	Change                          portfolio.Change // over the chart range, from Points
 	Loading                         bool             // chart not loaded yet: shows a note and loads itself
-	Sync                            SyncInfo
+	Sync                            SyncStatus
 	Now                             time.Time
 }
 

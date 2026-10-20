@@ -37,7 +37,6 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 
 	"cryptkeeper/internal/demo"
-	"cryptkeeper/internal/portfolio"
 	"cryptkeeper/web/static"
 	"cryptkeeper/web/templates"
 )
@@ -118,7 +117,7 @@ func router() http.Handler {
 	r.Post("/refresh", func(w http.ResponseWriter, r *http.Request) {
 		s := readSignals(r)
 		sse := datastar.NewSSE(w, r)
-		_ = sse.PatchElementTempl(templates.SyncChip(templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing…"}))
+		_ = sse.PatchElementTempl(templates.SyncChip(demo.SyncSyncing()))
 		time.Sleep(900 * time.Millisecond)
 		if p, ok := demo.OverviewFor(s.PF, s.Range, time.Now()); ok {
 			_ = sse.PatchElementTempl(templates.Dashboard(p))

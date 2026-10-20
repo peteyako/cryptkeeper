@@ -51,7 +51,7 @@ func (s *Server) coinPage(r *http.Request, rng string, withSeries bool) (templat
 		Shell:    s.shell(r, row.Symbol, "overview", "all", ""),
 		AssetKey: row.AssetKey, Symbol: row.Symbol, Name: row.Name, LogoURL: row.LogoURL,
 		Price: row.Price, Amount: row.Amount, ValueUSD: row.ValueUSD,
-		Range: rng, Sync: s.syncInfo(snap, ready), Now: s.Now(),
+		Range: rng, Sync: s.syncStatus(snap, ready), Now: s.Now(),
 	}
 	p.Wallets = templates.CoinWalletsOf(snap.Wallets, key)
 	p.Loading = !withSeries

@@ -85,14 +85,20 @@ func retryText(every time.Duration) string {
 	if every <= 0 {
 		return "CryptKeeper tries again on the next sync."
 	}
-	if every < time.Hour || every%time.Hour != 0 {
-		return "CryptKeeper tries again every " + strconv.Itoa(int(every.Round(time.Minute)/time.Minute)) + " min."
+	return "CryptKeeper tries again " + Every(every) + "."
+}
+
+// Every words an interval: "every minute", "every 15 min", "every hour", "every 2 hours".
+func Every(d time.Duration) string {
+	switch {
+	case d == time.Minute:
+		return "every minute"
+	case d < time.Hour || d%time.Hour != 0:
+		return "every " + strconv.Itoa(int(d.Round(time.Minute)/time.Minute)) + " min"
+	case d == time.Hour:
+		return "every hour"
 	}
-	h := int(every / time.Hour)
-	if h == 1 {
-		return "CryptKeeper tries again every hour."
-	}
-	return "CryptKeeper tries again every " + strconv.Itoa(h) + " hours."
+	return "every " + strconv.Itoa(int(d/time.Hour)) + " hours"
 }
 
 // slowFix is the advice for a slow or rate-limited source: a public endpoint is shared, and

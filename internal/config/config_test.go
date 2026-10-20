@@ -95,3 +95,29 @@ func TestEsploraFallback(t *testing.T) {
 		}
 	}
 }
+
+// TestPriceInterval: prices refresh every minute by default, and never less often than the
+// balances.
+func TestPriceInterval(t *testing.T) {
+	for _, tc := range []struct {
+		yaml string
+		want time.Duration
+	}{
+		{"", time.Minute},
+		{"priceMinutes: 2\n", 2 * time.Minute},
+		{"refreshMinutes: 3\npriceMinutes: 10\n", 3 * time.Minute},
+		{"priceMinutes: 0\n", time.Minute},
+	} {
+		p := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(p, []byte(tc.yaml), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.PriceInterval(); got != tc.want {
+			t.Errorf("%q: PriceInterval = %v, want %v", tc.yaml, got, tc.want)
+		}
+	}
+}

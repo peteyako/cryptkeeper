@@ -1,7 +1,8 @@
 # CryptKeeper server settings. Sources (exchanges, wallets) are added in the web UI and stored
 # in data/sources.yaml — they don't go here.
 
-refreshMinutes: 5        # balances and prices
+refreshMinutes: 5        # wallet, exchange and account balances
+priceMinutes: 1          # prices, in between balance refreshes (never less often than those)
 staleMaxHours: 24        # show last-good data (badged "stale") for up to this long when an API fails
 activityMinutes: 15      # activity sync cadence
 showTokenLogos: false    # true = show Jupiter logos for SPL tokens instead of ticker monograms

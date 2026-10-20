@@ -17,12 +17,12 @@ func TestSyncChipWarmStart(t *testing.T) {
 	s := &Server{Deps: Deps{Now: func() time.Time { return now }}}
 	snap := portfolio.Snapshot{Warm: true, UpdatedAt: now.Add(-time.Hour),
 		Wallets: []portfolio.WalletView{{ID: "cold", Status: portfolio.StatusPending, AsOf: now.Add(-time.Hour)}}}
-	if got := s.syncInfo(snap, true); got.Status != portfolio.StatusPending || got.Label != "Updating…" {
-		t.Fatalf("sync chip = %+v, want pending Updating…", got)
+	if got := s.syncStatus(snap, true).Wallets; got.Status != portfolio.StatusPending || got.Label != "Updating wallets…" {
+		t.Fatalf("sync chip = %+v, want pending Updating wallets…", got)
 	}
 	snap.Warm = false
 	snap.Wallets[0].Status = portfolio.StatusSynced
-	if got := s.syncInfo(snap, true); got.Status != portfolio.StatusSynced {
+	if got := s.syncStatus(snap, true).Wallets; got.Status != portfolio.StatusSynced {
 		t.Fatalf("live snapshot chip = %+v", got)
 	}
 }

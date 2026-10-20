@@ -16,7 +16,8 @@ import (
 )
 
 type Config struct {
-	RefreshMinutes  int      `yaml:"refreshMinutes"`
+	RefreshMinutes  int      `yaml:"refreshMinutes"` // wallet, exchange and account balances
+	PriceMinutes    int      `yaml:"priceMinutes"`   // prices, in between balance refreshes
 	StaleMaxHours   int      `yaml:"staleMaxHours"`
 	ActivityMinutes int      `yaml:"activityMinutes"`
 	ShowTokenLogos  bool     `yaml:"showTokenLogos"`
@@ -129,6 +130,7 @@ type Activity struct {
 func Default() Config {
 	return Config{
 		RefreshMinutes:  5,
+		PriceMinutes:    1,
 		StaleMaxHours:   24,
 		ActivityMinutes: 15,
 		Bitcoin:         Bitcoin{EsploraURL: "https://mempool.space/api", GapLimit: 20},
@@ -163,6 +165,9 @@ func Load(path string) (Config, error) {
 	d := Default()
 	if cfg.RefreshMinutes <= 0 {
 		cfg.RefreshMinutes = d.RefreshMinutes
+	}
+	if cfg.PriceMinutes <= 0 {
+		cfg.PriceMinutes = d.PriceMinutes
 	}
 	if cfg.StaleMaxHours <= 0 {
 		cfg.StaleMaxHours = d.StaleMaxHours
@@ -205,6 +210,12 @@ func Load(path string) (Config, error) {
 }
 
 func (c Config) RefreshInterval() time.Duration { return time.Duration(c.RefreshMinutes) * time.Minute }
+
+// PriceInterval is how often prices refresh: every priceMinutes, and at least with every
+// balance refresh.
+func (c Config) PriceInterval() time.Duration {
+	return time.Duration(min(c.PriceMinutes, c.RefreshMinutes)) * time.Minute
+}
 func (c Config) ActivityInterval() time.Duration {
 	return time.Duration(c.ActivityMinutes) * time.Minute
 }

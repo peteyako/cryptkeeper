@@ -64,7 +64,10 @@ func allPages(t *testing.T) []page {
 	frag("dashboard", templates.Dashboard(ov))
 	frag("value card", templates.ValueCard(ov))
 	for _, st := range []portfolio.Status{portfolio.StatusSynced, portfolio.StatusStale, portfolio.StatusError, portfolio.StatusPending} {
-		frag("sync chip "+string(st), templates.SyncChip(templates.SyncInfo{Status: st, Label: "label " + string(st)}))
+		frag("sync chip "+string(st), templates.SyncChip(templates.SyncStatus{
+			Prices:  templates.SyncInfo{Status: portfolio.StatusSynced, Label: "prices label"},
+			Wallets: templates.SyncInfo{Status: st, Label: "label " + string(st)},
+		}))
 	}
 
 	wp := demo.WalletsPage(now)

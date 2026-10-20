@@ -469,6 +469,13 @@ body.amounts-hidden .fig-m {
   vertical-align: 1px;
 }
 
+/* The header's prices and wallets chips, side by side. */
+.sync-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;

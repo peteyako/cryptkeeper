@@ -49,13 +49,22 @@ type Aggregator struct {
 
 	mu         sync.Mutex
 	last       map[string]walletState // each wallet as the last finished build left it
-	lastPrices map[string]core.Price  // the live prices of the last finished build
+	lastPrices map[string]core.Price  // the newest live prices: the last build's or reprice's
+	syncedAt   time.Time              // when the last finished build fetched the wallets
+	pricedAt   time.Time              // when lastPrices were fetched
+	builds     uint64                 // finished builds, so a reprice can tell one finished meanwhile
 }
 
 // walletState is one wallet's result and status in a build.
 type walletState struct {
 	res    core.WalletResult
 	status Status
+}
+
+// livePrices is a set of live prices and when they were fetched.
+type livePrices struct {
+	prices map[string]core.Price
+	at     time.Time
 }
 
 func (a *Aggregator) now() time.Time {
@@ -96,12 +105,15 @@ func (a *Aggregator) BuildProgress(ctx context.Context, progress func(Snapshot))
 		}()
 	}
 	early := PriceRequests(results)
-	var priced chan map[string]core.Price // nil (never ready) when nothing is priced early
+	var earlyCh chan livePrices // nil (never ready) when nothing is priced early
 	if len(early) > 0 && a.Prices != nil {
-		priced = make(chan map[string]core.Price, 1)
-		go func() { priced <- a.Prices(ctx, early) }()
+		earlyCh = make(chan livePrices, 1)
+		go func() {
+			p := a.Prices(ctx, early)
+			earlyCh <- livePrices{p, a.now()}
+		}()
 	}
-	var live map[string]core.Price // the early prices, once they arrive
+	var live livePrices // the early prices, once they arrive
 	if progress != nil {
 		progress(a.inProgress(ctx, wallets, results, status, live))
 	}
@@ -122,8 +134,8 @@ func (a *Aggregator) BuildProgress(ctx context.Context, progress func(Snapshot))
 					more = false
 				}
 			}
-		case live = <-priced:
-			priced = nil
+		case live = <-earlyCh:
+			earlyCh = nil
 		}
 		if progress != nil && left > 0 {
 			progress(a.inProgress(ctx, wallets, results, status, live))
@@ -134,8 +146,8 @@ func (a *Aggregator) BuildProgress(ctx context.Context, progress func(Snapshot))
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, a.now())
 	}
-	if priced != nil {
-		live = <-priced
+	if earlyCh != nil {
+		live = <-earlyCh
 	}
 	asked := make(map[string]bool, len(early))
 	for _, req := range early {
@@ -143,7 +155,7 @@ func (a *Aggregator) BuildProgress(ctx context.Context, progress func(Snapshot))
 	}
 	var rest []PriceReq // assets that appeared since the start, asked for once like the others
 	for _, req := range PriceRequests(results) {
-		if p, ok := live[req.Key]; ok {
+		if p, ok := live.prices[req.Key]; ok {
 			prices[req.Key] = p
 		} else if !asked[req.Key] {
 			rest = append(rest, req)
@@ -152,8 +164,47 @@ func (a *Aggregator) BuildProgress(ctx context.Context, progress func(Snapshot))
 	if len(rest) > 0 && a.Prices != nil {
 		maps.Copy(prices, a.Prices(ctx, rest))
 	}
-	a.remember(wallets, results, status, prices)
-	return assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, a.now())
+	now := a.now()
+	a.remember(wallets, results, status, prices, now)
+	s := assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, now)
+	s.SyncedAt, s.PricedAt = now, now
+	return s
+}
+
+// Reprice prices the last finished build's balances again, live, without fetching any
+// wallet, so prices can refresh more often than balances. Its snapshot keeps that build's
+// SyncedAt. ok is false before the first finished build, and when a build finished while it
+// priced: that build's snapshot is newer.
+func (a *Aggregator) Reprice(ctx context.Context) (Snapshot, bool) {
+	a.mu.Lock()
+	builds, syncedAt, started := a.builds, a.syncedAt, a.last != nil
+	a.mu.Unlock()
+	if !started {
+		return Snapshot{}, false
+	}
+	wallets := a.Wallets()
+	results := make([]core.WalletResult, len(wallets))
+	status := make([]Status, len(wallets))
+	for i, w := range wallets {
+		results[i], status[i] = a.known(ctx, w.ID)
+	}
+	prices := map[string]core.Price{}
+	if reqs := PriceRequests(results); len(reqs) > 0 && a.Prices != nil {
+		prices = a.Prices(ctx, reqs)
+	}
+	if ctx.Err() != nil {
+		return Snapshot{}, false
+	}
+	now := a.now()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.builds != builds {
+		return Snapshot{}, false
+	}
+	a.lastPrices, a.pricedAt = prices, now
+	s := assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, now)
+	s.SyncedAt, s.PricedAt = syncedAt, now
+	return s, true
 }
 
 // known is what a wallet showed before this build: its result and status from the last
@@ -172,14 +223,15 @@ func (a *Aggregator) known(ctx context.Context, id string) (core.WalletResult, S
 }
 
 // inProgress is the Warm snapshot of a build still running, priced without network calls:
-// this build's live prices once they have arrived (live), the last finished build's for the
-// rest, then CachedPrices.
-func (a *Aggregator) inProgress(ctx context.Context, wallets []Wallet, results []core.WalletResult, status []Status, live map[string]core.Price) Snapshot {
+// this build's live prices once they have arrived, the newest earlier ones for the rest,
+// then CachedPrices.
+func (a *Aggregator) inProgress(ctx context.Context, wallets []Wallet, results []core.WalletResult, status []Status, live livePrices) Snapshot {
 	prices := map[string]core.Price{}
 	var missing []PriceReq
 	a.mu.Lock()
+	syncedAt, pricedAt := a.syncedAt, a.pricedAt
 	for _, req := range PriceRequests(results) {
-		if p, ok := live[req.Key]; ok {
+		if p, ok := live.prices[req.Key]; ok {
 			prices[req.Key] = p
 		} else if p, ok := a.lastPrices[req.Key]; ok {
 			prices[req.Key] = p
@@ -194,18 +246,24 @@ func (a *Aggregator) inProgress(ctx context.Context, wallets []Wallet, results [
 		}
 	}
 	s := assemble(wallets, results, status, prices, a.HideUnpriced, a.MinUSD, a.now())
-	s.Warm = true
+	s.Warm, s.SyncedAt, s.PricedAt = true, syncedAt, pricedAt
+	if !live.at.IsZero() {
+		s.PricedAt = live.at
+	}
 	return s
 }
 
-// remember keeps a finished build's wallets and prices for the next build's progress.
-func (a *Aggregator) remember(wallets []Wallet, results []core.WalletResult, status []Status, prices map[string]core.Price) {
+// remember keeps a finished build's wallets and prices, and when it fetched them, for the
+// next build's progress and for Reprice.
+func (a *Aggregator) remember(wallets []Wallet, results []core.WalletResult, status []Status, prices map[string]core.Price, at time.Time) {
 	last := make(map[string]walletState, len(wallets))
 	for i, w := range wallets {
 		last[w.ID] = walletState{results[i], status[i]}
 	}
 	a.mu.Lock()
 	a.last, a.lastPrices = last, prices
+	a.syncedAt, a.pricedAt = at, at
+	a.builds++
 	a.mu.Unlock()
 }
 

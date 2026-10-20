@@ -485,7 +485,7 @@ func serve(args []string) error {
 		HideUnpriced: a.cfg.Solana.HideUnpriced,
 		MinUSD:       a.cfg.Solana.MinUSD,
 	}
-	ref := &portfolio.Refresher{Agg: agg, Broker: broker, History: hist, Interval: a.cfg.RefreshInterval(), Log: a.log}
+	ref := &portfolio.Refresher{Agg: agg, Broker: broker, History: hist, Interval: a.cfg.RefreshInterval(), PriceInterval: a.cfg.PriceInterval(), Log: a.log}
 
 	engine := a.alertsEngine(hist)
 	ref.OnSnapshot = func(snap portfolio.Snapshot) {
