@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/yamlfile/yamlfile.go
 ---
 
@@ -34,7 +34,7 @@ The user hand-edits these files, so a typo must fail loudly with a line number a
 | `data/tax/<year>.yaml` | tax `YearStore` (`years.go:326,388`; bare `Backup` before a delete, `:344,378`) | `yearBackups = 20` (`years.go:20`) |
 | `data/costbasis.yaml` | costbasis `ManualStore` (`manual.go:285`) | `manualBackups = 20` (`manual.go:23`) |
 
-`costbasis.yaml` is partly leftover: its manual lots move into `tax.yaml` once, while `tax.yaml` does not yet exist (`main.go:209-235`), but the store still loads and backs up per-asset entries. Neither `config.yaml` (read with its own strict decoder, `internal/config/config.go:154`) nor the encrypted export envelope (`internal/secrets/file.go:42`) goes through this package.
+`costbasis.yaml` is partly leftover: its manual lots move into `tax.yaml` once, while `tax.yaml` does not yet exist (`main.go:209-235`), but the store still loads and backs up per-asset entries. Neither `config.yaml` (read with its own strict decoder, `internal/config/config.go:156`) nor the encrypted export envelope (`internal/secrets/file.go:42`) goes through this package.
 
 ## Connected to
 
@@ -53,7 +53,7 @@ The user hand-edits these files, so a typo must fail loudly with a line number a
 | Surface | Role |
 |---|---|
 | owning stores (main.go `setup`) | load at start, `WriteAtomic` on every save |
-| web handlers (portfolios restore, `server.go:140`) | list and restore a backup copy |
+| web handlers (portfolios restore, `server.go:145`) | list and restore a backup copy |
 | user | hand-edits files; a parse error names the line |
 | tests | `internal/yamlfile/yamlfile_test.go` |
 

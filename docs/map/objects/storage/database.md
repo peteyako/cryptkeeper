@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/store/store.go
 ---
 
@@ -20,7 +20,7 @@ Caches, history and sync state are written by the app every few minutes and must
 - Open/migrate: `store.Open` (`internal/store/store.go:35`), `migrate` (`:48`). Never edit a released migration; add a new one with a new name (`:101-102`).
 - First release used a `schema_version` counter; `migrate` maps it onto `001-base` (`internal/store/store.go:69-77`).
 - Typed JSON helpers on the `kv` table: `GetJSON`, `PutJSON`, `DeleteKV` (`internal/store/store.go:113-140`).
-- Whole-file copy for backups: `DB.Snapshot` (VACUUM INTO a temp file, `internal/store/snapshot.go:24`) and `DB.Restore` (`:43`): the snapshot is first migrated to this build's schema (`:59`), then every table both files have is copied by shared columns (`:145`), merging by primary key (`INSERT OR IGNORE`) or, with replace, after emptying the table; `schema_migrations` and `sqlite_sequence` are skipped (`notRestored`, `:20`).
+- Whole-file copy for backups: `DB.Snapshot` (VACUUM INTO a temp file, `internal/store/snapshot.go:24`) and `DB.Restore` (`:43`): the snapshot is first migrated to this build's schema (`:59`), then every table both files have is copied by shared columns (`:175`), merging by primary key (`INSERT OR IGNORE`) or, with replace, after emptying the table; `schema_migrations` and `sqlite_sequence` are skipped (`notRestored`, `:20`).
 - Legacy file name move: `dbName = "cryptkeeper.db"`, `legacyDBNames = {cryptkeep.db, vault.db}`; `renameLegacyDB` moves the file plus `-wal`/`-shm` (main file last) once, only if `dbName` does not exist yet (`main.go:102-136`), called in `setup` before `store.Open` (`main.go:165-168`).
 
 ### Table to owner
@@ -30,7 +30,7 @@ Caches, history and sync state are written by the app every few minutes and must
 | `schema_migrations` | `migrate` (`store.go:49`) | store | applied migration names | this card |
 | `kv` | `001-base` (`store.go:26`) | server, main.go (keys below) | JSON settings blobs | [config](config.md) |
 | `lastgood_price` | `001-base` (`store.go:27`) | prices (`prices.go:442-485`) | last live price per asset, for stale fallback | [price](../valuation/price.md) |
-| `lastgood_wallet` | `001-base` (`store.go:28`) | portfolio aggregator (`aggregate.go:291,300`) | last good result per source (JSON) | [snapshot](../valuation/snapshot.md) |
+| `lastgood_wallet` | `001-base` (`store.go:28`) | portfolio aggregator (`aggregate.go:349,358`) | last good result per source (JSON) | [snapshot](../valuation/snapshot.md) |
 | `history` | `001-base` (`store.go:29`) | portfolio (`history.go:65,76,92`, `backfill.go:273`) | value over time: ts, prices, amounts | [value-history](../valuation/value-history.md) |
 | `token_meta` | `001-base` (`store.go:30`) | solana (`sources/solana/metacache.go:52,72`); server reads (`taxview.go:129`) | SPL token metadata cache | [solana-source](../sources/solana-source.md) |
 | `price_history` | `001-base` (`store.go:31`) | prices (`history.go:245-276`; `stocks.go:346`) | daily USD closes (asset, day) | [price](../valuation/price.md) |
@@ -40,7 +40,7 @@ Caches, history and sync state are written by the app every few minutes and must
 | `alert_state` | `alerts-v1` (`alerts/state.go:19-25`) | alerts engine | per-rule engine state (baselines, cooldowns) | [alert-rule](../views/alert-rule.md) |
 | `alert_log` | `alerts-v1` (`alerts/state.go:26`) | alerts engine | fired alerts and delivery errors | [alert-rule](../views/alert-rule.md) |
 
-`kv` keys: `ui.settings` (`internal/server/settings_handlers.go:25`), `prices.coingeckoKey` and `bitcoin.blockstreamKey` (sealed, `:89,129`; read by `main.go:801-846` too), `bitcoin.scan.<walletID>` (saved scans: constant `:334`, written by `main.go:795`), `tax.koinly.draft` (`internal/server/koinly_handlers.go:34`). There is no `extra` table in the app: it appears only in a test (`internal/store/store_test.go:39`).
+`kv` keys: `ui.settings` (`internal/server/settings_handlers.go:28`), `prices.coingeckoKey` and `bitcoin.blockstreamKey` (sealed, `:89,129`; read by `main.go:801-846` too), `bitcoin.scan.<walletID>` (saved scans: constant `:334`, written by `main.go:795`), `tax.koinly.draft` (`internal/server/koinly_handlers.go:34`). There is no `extra` table in the app: it appears only in a test (`internal/store/store_test.go:39`).
 
 ## Connected to
 
@@ -51,7 +51,7 @@ Caches, history and sync state are written by the app every few minutes and must
 
 ## If you change this
 
-- **Hits:** a new named migration (`AddMigration` in the owning package's `init()`, or a new entry after `001-base` in `store.go` for a base table); the package that reads/writes the table; `DB.Restore` copies shared columns only, after migrating the snapshot, so a column a newer build added is dropped when its backup is restored into an older build (`internal/store/snapshot.go:59,145`); a table that must never be restored goes in `notRestored` (`snapshot.go:20`).
+- **Hits:** a new named migration (`AddMigration` in the owning package's `init()`, or a new entry after `001-base` in `store.go` for a base table); the package that reads/writes the table; `DB.Restore` copies shared columns only, after migrating the snapshot, so a column a newer build added is dropped when its backup is restored into an older build (`internal/store/snapshot.go:59,175`); a table that must never be restored goes in `notRestored` (`snapshot.go:20`).
 - **Does not hit:** `data/*.yaml` stores ([yaml-store](yaml-store.md)); `config.yaml` keys ([config](config.md)); `internal/backup` (it carries the snapshot bytes without knowing the tables).
 
 ## Surfaces

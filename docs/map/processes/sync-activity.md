@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 consumes: [source-contract, source-def, price, config, tax-lot]
 produces: [activity-entry, database, value-history, alert-rule]
 ---
@@ -27,12 +27,12 @@ Input: the live sources that implement `core.ActivitySource`, the per-source `ac
 ## Steps
 
 1. `serve` builds the `Syncer` with `Since` = backfill days, or back to the open tax year's start if earlier (`syncSince`), plus interval, `Valuer` = the prices service, `SkipMints`, and `OnNew` calling `engine.OnActivity`: `main.go:495-508`, `main.go:251-258`.
-2. `go syncer.Run(ctx)` starts it; registry changes also kick it: `main.go:509-511`. Other kicks: backup import, source save (delete kicks only through the registry hook), and accepting a Koinly opening-year import (`internal/server/settings_handlers.go:323-325`, `internal/server/source_handlers.go:351-353`, `internal/server/koinly_handlers.go:613`).
+2. `go syncer.Run(ctx)` starts it; registry changes also kick it: `main.go:509-511`. Other kicks: backup import, source save (delete kicks only through the registry hook), and accepting a Koinly opening-year import (`internal/server/settings_handlers.go:363-365`, `internal/server/source_handlers.go:426-428`, `internal/server/koinly_handlers.go:613`).
 3. `Run` syncs at once, then on `Interval` (default 15 min) or `kick`: `internal/activity/syncer.go:164-183`. `SyncOnce` takes a one-slot semaphore so passes run one after another: `internal/activity/syncer.go:189-196`.
 4. `a.activitySources` supplies the entries: registry sources whose `Source` implements `core.ActivitySource`: `main.go:367-375`.
 5. Each source runs in an errgroup limited to 4, marked running (signals SSE subscribers) until its outcome is saved: `internal/activity/syncer.go:213-229`, `:135-152`.
 6. `syncSource` loads `state` and `backfill_done`; it makes 1 call, or up to 3 while backfilling (stopping once the source reports done), all sharing one 60s timeout, budget 30 per call: `internal/activity/syncer.go:379-396`, `:418-421`, `:19-25`, `internal/activity/store.go:324-331`.
-7. The `Activity` call hits the source's own paced HTTP: `httpx.Wait` before each request, `hold` on 429: `internal/httpx/httpx.go:72`, `:92-98`. Pace is set per host in `internal/sources/solana/solana.go:107`, `internal/sources/solana/rpc.go:57`, `internal/sources/bitcoin/bitcoin.go:178`, `internal/prices/prices.go:141`.
+7. The `Activity` call hits the source's own paced HTTP: `httpx.Wait` before each request, `hold` on 429: `internal/httpx/httpx.go:77`, `:97-103`. Pace is set per host in `internal/sources/solana/solana.go:107`, `internal/sources/solana/rpc.go:57`, `internal/sources/bitcoin/bitcoin.go:178`, `internal/prices/prices.go:141`.
 8. `prepare` fills `SourceID`/`ID`, drops id-less entries and values legs and fees (skipping hidden mints): pegged stablecoins at face value, others at the UTC day's close, SPL tokens by mint. The closes come from `prices.Service.Historical`/`HistoricalMint`, which read and fill the shared `price_history` cache: `internal/activity/syncer.go:403-405`, `:428-445`, `:500-524`, `internal/prices/history.go:43-131`.
 9. `Store.upsert` writes in one SQL transaction, preserves transfer links, and returns only entries whose IDs were new: `internal/activity/store.go:83-145`.
 10. `saveProgress` stores the new state, backfill flag and `last_sync`, clears `last_error`; an error is then written by `saveError` (after that saved progress when the source still returned a `State`): `internal/activity/syncer.go:411-417`, `:370-376`, `internal/activity/store.go:334-358`.

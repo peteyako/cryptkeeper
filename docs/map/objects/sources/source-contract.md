@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-20 @ a83d5cd
+verified: 2026-10-20 @ 936c434
 entity: internal/core/core.go
 ---
 
@@ -17,7 +17,7 @@ The small set of types every source type implements and returns; the aggregator 
 
 ## Shape
 
-- `Source`: `ID() string`, `Fetch(ctx) (WalletResult, error)` (`internal/core/core.go:70-73`). On an error the aggregator discards the returned result and serves the last-good one marked `Stale` (within `StaleMax`) or an empty one with `Err` set from the error; it also overwrites `WalletID`, fills a zero `AsOf`, applies a 45 s timeout and recovers a panic (`internal/portfolio/aggregate.go:242-281`). A source need not set `Err` itself.
+- `Source`: `ID() string`, `Fetch(ctx) (WalletResult, error)` (`internal/core/core.go:70-73`). On an error the aggregator discards the returned result and serves the last-good one marked `Stale` (within `StaleMax`) or an empty one with `Err` set from the error; it also overwrites `WalletID`, fills a zero `AsOf`, applies a 45 s timeout and recovers a panic (`internal/portfolio/aggregate.go:300-339`). A source need not set `Err` itself.
 - `WalletResult`: `Holdings`, `Hidden` (spam/dust/unpriced, shown collapsed), `NFTCount`, `Warnings`, `Meta []KV` for the wallet-detail Connection panel, `Err`, `Stale` (last-good holdings), `AsOf` (`internal/core/core.go:49-61`).
 - `Holding`: `AssetKey` is the cross-source identity (`BTC`, `USDC`, `spl:<mint>`, `stock:<TICKER>`); `Symbol`, `Name`, `Amount` (negative is debt), `AmountStr` exact decimal, `Staked`, `Vault`, `Verified`, DeFi tags `Protocol/Position/PositionKind`, `Note` (`internal/core/core.go:24-46`). Key helpers `SPLKey/IsSPLKey`, `StockKey/IsStockKey`, `NormalizeTicker` (`:130-166`).
 - `Kind`: `exchange | hot | hardware | manual | brokerage`, the custody type that drives colour and dot shape (`internal/core/core.go:11-21`). `Validate` in sources accepts exactly these.
@@ -34,7 +34,7 @@ The small set of types every source type implements and returns; the aggregator 
 
 ## If you change this
 
-- **Hits:** adding a `Holding` field: only the sources that set it and the templates that show it; `portfolio.HoldingRow` embeds `Holding` (`internal/portfolio/types.go:112-113`, `internal/portfolio/aggregate.go:450-451`) so it reaches page models ([page-model](../web/page-model.md)) unchanged, and last-good JSON (`lastgood_wallet`) decodes older rows with the zero value. Adding a `Kind`: `Validate` kind switch (`internal/sources/model.go:112-116`), `DefaultKind`, the kind switches in `web/templates/view.go:63,81,123,132,472` and the source form selects ([templ-components](../web/templ-components.md)), and the self-custody check in the alerts engine (`internal/alerts/engine.go:611`, [alert-rule](../views/alert-rule.md)). Changing `AssetKey` rules: [price](../valuation/price.md) key routing and [manual-source](manual-source.md)/[brokerage-source](brokerage-source.md) normalisation.
+- **Hits:** adding a `Holding` field: only the sources that set it and the templates that show it; `portfolio.HoldingRow` embeds `Holding` (`internal/portfolio/types.go:119-120`, `internal/portfolio/aggregate.go:508-509`) so it reaches page models ([page-model](../web/page-model.md)) unchanged, and last-good JSON (`lastgood_wallet`) decodes older rows with the zero value. Adding a `Kind`: `Validate` kind switch (`internal/sources/model.go:112-116`), `DefaultKind`, the kind switches in `web/templates/view.go:63,81,123,132,480` and the source form selects ([templ-components](../web/templ-components.md)), and the self-custody check in the alerts engine (`internal/alerts/engine.go:611`, [alert-rule](../views/alert-rule.md)). Changing `AssetKey` rules: [price](../valuation/price.md) key routing and [manual-source](manual-source.md)/[brokerage-source](brokerage-source.md) normalisation.
 - **Does not hit:** `sources.Def` (the configuration; see [source-def](source-def.md)); `core.Tx` ledger types.
 
 ## Surfaces
@@ -43,7 +43,7 @@ The small set of types every source type implements and returns; the aggregator 
 |---|---|
 | Source packages | implement `Source` (+ optional interfaces) |
 | Refresher / aggregator | calls `Fetch`, prices holdings |
-| Server wallet pages | type-assert `AddressLister`, `UTXOLister`, `ReceiveAddresser` (`internal/server/handlers.go:332-348`) |
+| Server wallet pages | type-assert `AddressLister`, `UTXOLister`, `ReceiveAddresser` (`internal/server/handlers.go:382-398`) |
 | Koinly import | type-asserts `AddressDeriver` (`internal/server/koinly_handlers.go:395`) |
 | Tests | per-source `_test.go` files |
 

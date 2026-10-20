@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/sources/kraken/kraken.go
 ---
 
@@ -27,7 +27,7 @@ A read-only Kraken account over the private Spot REST API: balances from `Balanc
 - **Activity** (`core.ActivitySource`): `POST /0/private/Ledgers`, 50 per call, offset paging, budget capped at 6 per call regardless of the syncer `internal/sources/kraken/activity.go:45-52`, `internal/sources/kraken/activity.go:570-575` (the doc comment at `activity.go:558` still says "default 10"; the code says 6). State is `Runs` (newest id, oldest id, length), `Done`, `Since`, `Count`, `Start`, `Sweep` `internal/sources/kraken/activity.go:64-85`; `start` is rounded to the UTC day so a moving horizon does not invalidate the ledger count `internal/sources/kraken/activity.go:584-588`. A 429 or throttle text becomes `ErrRateLimited`, with progress kept `internal/sources/kraken/activity.go:58`, `internal/sources/kraken/activity.go:184-187`, `internal/sources/kraken/activity.go:204-213`.
 - **Ledger to Tx:** entries grouped by `refid` into one `core.Tx` with a leg per entry and one fee leg (extra fee assets go in the note) `internal/sources/kraken/activity.go:310-416`. Kind per entry: trade/spend/receive/conversion -> trade, deposit -> receive, withdrawal -> send, staking/earn/dividend/reward -> reward if positive, transfer if a Spot/Earn allocation move (`isAllocation`), else other; when entries of one refid disagree the higher `kindRank` wins `internal/sources/kraken/activity.go:269-300`. USD legs get `USD` set directly, and in a two-leg USD trade the other leg takes the USD amount `internal/sources/kraken/activity.go:302-308`, `internal/sources/kraken/activity.go:379-390`. Status is always confirmed.
 - **Config keys:** none in config.yaml; everything is on the Def. `BaseURL` is test-only `internal/sources/kraken/kraken.go:40-41`.
-- **Settings handlers:** form parse, key and secret required only when adding `internal/server/source_handlers.go:131-137`; the edit form shows no Kraken values (secrets never refilled) `internal/server/source_handlers.go:70-86`.
+- **Settings handlers:** form parse, key and secret required only when adding `internal/server/source_handlers.go:132-138`; the edit form shows no Kraken values (secrets never refilled) `internal/server/source_handlers.go:71-87`.
 - **Cross-source use:** `solana.MintForSymbol` lets a Kraken `JUP` balance price by Solana mint `main.go:332`. `NormalizeAsset` is exported because the Kraken CSV importer uses it too `internal/costbasis/kraken_csv.go:101`.
 
 ## Connected to

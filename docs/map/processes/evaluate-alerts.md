@@ -2,18 +2,18 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ a83d5cd
+verified: 2026-10-20 @ 936c434
 consumes: [alert-rule, snapshot, activity-entry, value-history, portfolio-view, config, database]
 produces: [database]
 ---
 
 # evaluate-alerts
 
-After every snapshot and after every pass that stored new activity, test each enabled alert rule against its saved state, send a push notification to ntfy when one trips, and log the attempt.
+After every finished refresh and price-only reprice, and after every pass that stored new activity, test each enabled alert rule against its saved state, send a push notification to ntfy when one trips, and log the attempt.
 
 ## Input → Movement → Output
 
-Input: a fresh `Snapshot` (from the refresher) or the entries newly inserted by a sync pass, plus the rules in `data/alerts.yaml` and the per-rule rows in `alert_state`. Movement: the engine takes its lock, loads each rule's state, compares (balance baseline, price threshold with arming, portfolio move over a history window, outage clock, large sends), and for a trip calls `fire`, which posts to ntfy and records the result. Output: an ntfy push, a row in `alert_log` (with the error text if delivery failed), and updated `alert_state`.
+Input: a fresh `Snapshot` (from the refresher: a finished refresh or a reprice, which keeps the last wallets and moves only prices; progress snapshots are not evaluated) or the entries newly inserted by a sync pass, plus the rules in `data/alerts.yaml` and the per-rule rows in `alert_state`. Movement: the engine takes its lock, loads each rule's state, compares (balance baseline, price threshold with arming, portfolio move over a history window, outage clock, large sends), and for a trip calls `fire`, which posts to ntfy and records the result. Output: an ntfy push, a row in `alert_log` (with the error text if delivery failed), and updated `alert_state`.
 
 ## Why this shape
 
@@ -28,7 +28,7 @@ Input: a fresh `Snapshot` (from the refresher) or the entries newly inserted by 
 ## Steps
 
 1. `alertsEngine` builds the engine: rules, DB, label lookups, portfolio and history valuers, and an `Ntfy` notifier only if `ntfy.url` is configured: `main.go:386-431`.
-2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:185-187`, `internal/activity/syncer.go:239-256`.
+2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:296-298` (refresh), `:233-235` (reprice), `internal/activity/syncer.go:239-256`.
 3. `OnSnapshot` returns if there is no rule store or database, locks, garbage-collects state of deleted or disabled rules, then evaluates each enabled rule inside a panic guard: `internal/alerts/engine.go:93-123`, `:167-174`, `internal/alerts/state.go:138-158`.
 4. `balance_drop`: per watched, freshly synced wallet compare current amounts to the stored baseline, fire on a fall beyond `MinPct`, then store the current amounts as the new baseline: `internal/alerts/engine.go:335-366`.
 5. `price`: skip stale or missing prices; compute threshold and re-arm line; first sight arms; an armed crossing disarms and fires if cooled down: `internal/alerts/engine.go:396-436`.

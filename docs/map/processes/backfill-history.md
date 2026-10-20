@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 consumes: [snapshot, activity-entry, price, value-history, tax-lot]
 produces: [value-history, price]
 ---
@@ -25,7 +25,7 @@ Input: a click on "Load last N days" (`POST /chart/backfill`, N from the selecte
 
 ## Steps
 
-1. The overview shows "Load last N days" only when the range's change is not valid; N is 7, 30, 365 or days since Jan 1 (YTD): `internal/server/handlers.go:128-151`, `web/templates/overview.templ:98-108`, click `web/templates/js.go:107`.
+1. The overview shows "Load last N days" only when the range's change is not valid; N is 7, 30, 365 or days since Jan 1 (YTD): `internal/server/handlers.go:162-185`, `web/templates/overview.templ:98-108`, click `web/templates/js.go:107`.
 2. `chartBackfill` runs under a 60s timeout; errors become a note on the card (and a log line), as does a run that wrote nothing: `internal/server/history_handlers.go:24-67`.
 3. `runBackfill` needs a ready, non-warm snapshot; reads activity through `taxActivity` (CSV duplicates removed); txs tagged `position` in `tax.yaml` keep their units like the tax engine: `internal/server/history_handlers.go:72-90`, `internal/server/tax.go:231-251`.
 4. `Backfill` first rejects errored or pending wallets (stale ones are allowed): `internal/portfolio/backfill.go:74-82`. It spans `days+1` UTC days ending yesterday and loads what is recorded: `internal/portfolio/backfill.go:83-135`, `:310-349`.
@@ -35,7 +35,7 @@ Input: a click on "Load last N days" (`POST /chart/backfill`, N from the selecte
 8. Solana mints use CoinGecko market-chart ranges (max 365 days back); a 429 pauses every CoinGecko lookup for 5 minutes or the Retry-After: `internal/prices/coingecko.go:44-94`, `:119-158`, `:168-205`.
 9. All writes happen in one transaction; a cancelled context or any error writes nothing: `internal/portfolio/backfill.go:256-290`.
 10. The handler rebuilds the overview page; `History.Series` reads rows since the range start, begins only when every live wallet has history, drops partial rows, and downsamples to 500 points: `internal/server/history_handlers.go:44-49`, `internal/portfolio/history.go:91-178`.
-11. Coin chart: `GET /a/{asset}` renders at once with a hidden element whose `data-init` posts `/a/{asset}/chart?range=`; a range click posts the same: `internal/server/coin_handlers.go:86-93`, `web/templates/coin.templ:143-144`, `web/templates/js.go:150-152`.
+11. Coin chart: `GET /a/{asset}` renders at once with a hidden element whose `data-init` posts `/a/{asset}/chart?range=`; a range click posts the same: `internal/server/coin_handlers.go:86-93`, `web/templates/coin.templ:143-144`, `web/templates/js.go:157-159`.
 12. `coinChart` builds the page with a 30s limit and `Series`, which calls `Historical` (or the mint close) for every day of the range, skipping failures, and patches `#coin-chart`: `internal/server/coin_handlers.go:29-105`, `internal/prices/series.go:24-72`. This writes `price_history` as a side effect but not `history`.
 
 ## If you change this

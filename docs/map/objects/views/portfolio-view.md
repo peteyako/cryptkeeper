@@ -3,7 +3,7 @@ type: object
 cluster: views
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/portfolios/portfolios.go
 ---
 
@@ -26,7 +26,7 @@ A portfolio is a filter, not a copy of data: a holding belongs to it iff its wal
 - `Store`: mtime check on every read picks up hand edits; an unparseable edit keeps the cached copy and sets `LoadError`; writes validate the whole file, back up the old one (30 kept) and replace atomically, caching only after success (`internal/portfolios/store.go:17-18`, `:31-36`, `:101-141`, `:162-186`). `OnChange` listeners fire on writes and detected edits (`:76-100`).
 - `Upsert` (empty ID derives a slug, `-2`, `-3`), `Delete`, `RemoveWallet` (when a source is deleted), `Export(id|"")`, `Import(merge|replace)` (parse first; empty input rejected), `Backups`, `Restore(name)` (a restore is itself backed up) (`store.go:189-380`, `portfolios.go:296-339`).
 - `WithAlerts` appends the alert rules to an exported document; `data/portfolios.yaml` itself never stores them (`portfolios.go:190-194`, `:341-352`).
-- Resolution in the server: `""`/`all` = whole snapshot; unknown id falls back to All holdings with `known=false` (`internal/server/portfolio_handlers.go:37-60`). Routes `/portfolios...` (`internal/server/server.go:133-142`). Tax view reuses `Apply` with a wallet-only selector (`internal/server/tax.go:197`).
+- Resolution in the server: `""`/`all` = whole snapshot; unknown id falls back to All holdings with `known=false` (`internal/server/portfolio_handlers.go:37-60`). Routes `/portfolios...` (`internal/server/server.go:138-147`). Tax view reuses `Apply` with a wallet-only selector (`internal/server/tax.go:197`).
 - Wired at `main.go:182`; the alert engine uses it for `portfolio_move` (`main.go:404-425`).
 
 Citations: `internal/portfolios/portfolios.go:109`, `internal/portfolios/filter.go:15`, `internal/portfolios/store.go:36`

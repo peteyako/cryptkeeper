@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/sources/manual/manual.go
 ---
 
@@ -21,7 +21,7 @@ It is the escape hatch for custody the app cannot query (paper wallets, other ch
 - `New(id, holdings)`; `Fetch` returns one `core.Holding` per line with `AssetKey = NormalizeAsset(asset)`, `Mint` set for `spl:` keys, `AmountStr` formatted from the float amount, `Note`, and Meta `Type`/`Entries` (`manual.go:28-49`).
 - `NormalizeAsset`: upper-cases symbols; `spl:<mint>` keys keep their case (mints are case-sensitive base58) and get a shortened symbol like `abcd…wxyz` (`manual.go:38-40,53-59`).
 - `ParseLines` / `FormatLines`: the form textarea, one `ASSET AMOUNT [note]` per line; `#` comments, thousands commas allowed, negative amounts rejected, at least one line required (`manual.go:63-100`).
-- Validation in `Def.Validate`: at least one holding (`internal/sources/model.go:134-137`). Kind is forced to `manual` by the form (`internal/server/source_handlers.go:186-192`) and is the default (`internal/sources/model.go:165`).
+- Validation in `Def.Validate`: at least one holding (`internal/sources/model.go:134-137`). Kind is forced to `manual` by the form (`internal/server/source_handlers.go:187-193`) and is the default (`internal/sources/model.go:165`).
 - Registered in the factory: `case sources.TypeManual: manual.New(d.ID, d.Holdings)` (`main.go:286-287`). `HandEntered("manual")` is true, so no activity sync and no sync-activity row (`internal/sources/model.go:37`).
 - No `ActivitySource`, no secrets, no config keys, no Settings handler.
 

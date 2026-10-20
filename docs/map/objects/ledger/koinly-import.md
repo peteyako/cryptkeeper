@@ -3,7 +3,7 @@ type: object
 cluster: ledger
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/tax/koinly/parse.go
 ---
 
@@ -22,7 +22,7 @@ CryptKeeper replaces Koinly but must start from Koinly's last filed year, so the
 - `SuggestAssets` maps Koinly `SYM (Name)` to asset keys, flagging ambiguous symbols (`internal/tax/koinly/suggest.go:174`).
 - `BuildOpening` -> `Opening{Rows, Lots, Parked, Problems}` from `OpeningInput` (holdings, txns, maps, `RollBack` balances, user-entered `ExtraBasis`) (`internal/tax/koinly/opening.go:28-104`).
 - Draft: `koinlyDraft` stored as JSON in the `kv` table under `tax.koinly.draft` (`internal/server/koinly_handlers.go:33-61`). Uploads of one year only; a re-uploaded kind replaces the earlier one (`internal/server/koinly_handlers.go:132-230`). Limits 8 MB per file, 64 MB per request.
-- Steps: `koinlyUpload` -> `suggestMappings` (saved `tax.yaml` maps reused unless rematch) -> `koinlyMap` (edits wallet/asset maps, `ExtraBasis`, `SkipOK`) -> `koinlyAccept` / `koinlyDiscard` (`internal/server/server.go:150-155`).
+- Steps: `koinlyUpload` -> `suggestMappings` (saved `tax.yaml` maps reused unless rematch) -> `koinlyMap` (edits wallet/asset maps, `ExtraBasis`, `SkipOK`) -> `koinlyAccept` / `koinlyDiscard` (`internal/server/server.go:155-160`).
 - Accept refuses until: holdings uploaded, year has ended, no later year closed, balances loaded, assets resolved (`internal/server/koinly_handlers.go:742-775`). It saves `tax.Year{Source:"koinly"}` first, then writes `walletMap`/`assetMap` into `tax.yaml`, then deletes the draft; a map-save failure keeps the draft for retry (`internal/server/koinly_handlers.go:619-672`). Accept holds `draftMu` then `closeMu`, then kicks the Syncer to widen the backfill.
 - `Why` for a Koinly wallet is dropped when the user picks another wallet (`internal/server/koinly_handlers.go:58-60`, `:523`).
 

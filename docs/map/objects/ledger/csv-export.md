@@ -3,7 +3,7 @@ type: object
 cluster: ledger
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/export/export.go
 ---
 
@@ -22,9 +22,9 @@ The writers take already-resolved values (a snapshot, points, rows, entries, a l
 - `History(w, pts)`: timestamp, value_usd (`internal/export/export.go:94-95`).
 - `PnL(w, rows)`: per asset basis, unrealized and one `realized_<year>` column per year present; `PnLRow` mirrors the page row (`internal/export/export.go:104-122`).
 - `Activity(w, txs, labels)`: one row per leg; the fee appears on the first row only so sums are not doubled; a leg-less tx still gets one row (`internal/export/export.go:162-169`).
-- Handlers (all GET): `/export/holdings.csv` (`?pf=` portfolio), `/export/history.csv` (`?pf=`, `?range=`), `/export/pnl.csv`, `/export/activity.csv` (feed filters: source, asset, kind, range, from, to) (`internal/server/server.go:170-173`, `internal/server/reports_handlers.go:338-410`). Activity uses `Activity.All` plus the same period/kind/asset filters, not `withoutSpam`, so spam-tagged entries are included.
+- Handlers (all GET): `/export/holdings.csv` (`?pf=` portfolio), `/export/history.csv` (`?pf=`, `?range=`), `/export/pnl.csv`, `/export/activity.csv` (feed filters: source, asset, kind, range, from, to) (`internal/server/server.go:175-178`, `internal/server/reports_handlers.go:338-410`). Activity uses `Activity.All` plus the same period/kind/asset filters, not `withoutSpam`, so spam-tagged entries are included.
 - `exportPnL` builds rows from `taxResult` plus `realizedByAsset`; with no tax result the rows have no basis (`internal/server/reports_handlers.go:366-379`).
-- Download links: `web/templates/reports_view.go:72-75` (Reports page), `web/templates/activity_view.go:327-329` and `web/templates/js.go:298` (activity feed button), `cmd/uipreview/pages.go:150` (preview stub).
+- Download links: `web/templates/reports_view.go:72-75` (Reports page), `web/templates/activity_view.go:327-329` and `web/templates/js.go:305` (activity feed button), `cmd/uipreview/pages.go:150` (preview stub).
 
 ## Connected to
 

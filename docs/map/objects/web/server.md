@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/server/server.go
 ---
 
@@ -13,34 +13,35 @@ The HTTP layer of CryptKeeper: package `internal/server`, a chi router (`server.
 
 ## Why this shape
 
-One `Server` struct embeds `Deps`, so every handler reaches every store through `s.<Dep>` and tests build a server from fakes (`internal/server/server.go:79`). The app is a single-user LAN/Tailscale tool, so there is no login by default: safety comes from a mutation guard that makes every POST prove it came from the app's own Datastar pages, plus optional basic auth. Pages are server-rendered; the same handler answers a browser load with a whole document and an in-app click with an SSE patch of the page regions, so styles/scripts never reload (`internal/server/handlers.go:160-189`). The server never imports the bitcoin package: Bitcoin helpers arrive as injected funcs (`internal/server/server.go:67-73`).
+One `Server` struct embeds `Deps`, so every handler reaches every store through `s.<Dep>` and tests build a server from fakes (`internal/server/server.go:79`). The app is a single-user LAN/Tailscale tool, so there is no login by default: safety comes from a mutation guard that makes every POST prove it came from the app's own Datastar pages, plus optional basic auth. Pages are server-rendered; the same handler answers a browser load with a whole document and an in-app click with an SSE patch of the page regions, so styles/scripts never reload (`internal/server/handlers.go:194-225`). The server never imports the bitcoin package: Bitcoin helpers arrive as injected funcs (`internal/server/server.go:67-73`).
 
 ## Shape
 
 - `Deps` (`internal/server/server.go:37-77`): config, `DataDir`, `HTTPClient` (IRS form downloads), `Version`, `Log`, `Box` (secret key), `Registry`, `Portfolios`, `Activity`/`Syncer`, `CostBasis` (retired manual store, backup only), `AlertRules`/`Alerts`, `DB`, `Refresher`/`Broker`/`History`, `Prices`/`Historical`, `TaxSettings`/`TaxYears`/`TaxLoc`, Bitcoin funcs, `Now` (test clock). `HTTPClient`, `Blockstream`, `Syncer`, `Historical` are optional.
 - Wiring: `serve` in `main.go:458-` builds the Aggregator/Refresher/Syncer/alerts engine, then `server.New(server.Deps{...})` at `main.go:513`; `ref.OnSnapshot` feeds the alerts engine, `registry.OnChange` kicks refresh+sync (`main.go:491,509`).
-- Middleware: `Recoverer` + `securityHeaders` (nosniff, no-referrer, X-Frame-Options DENY) on everything (`internal/server/server.go:98,217`). Unauthenticated: `/healthz`, `/manifest.webmanifest`, `/static/icons/*` (`:101-103`). Everything else sits behind `basicAuth` (active only when `Cfg.Password` is set) then `guard` (`:105-106`, `internal/server/guard.go:19-62`).
+- Middleware: `Recoverer` + `securityHeaders` (nosniff, no-referrer, X-Frame-Options DENY) on everything (`internal/server/server.go:101,224`). Unauthenticated: `/healthz`, `/manifest.webmanifest`, `/static/icons/*` (`:104-106`). Everything else sits behind `basicAuth` (active only when `Cfg.Password` is set) then `guard` (`:108-109`, `internal/server/guard.go:19-62`).
 - `guard`: GET/HEAD pass; any other method needs `Datastar-Request: true`, and, when the browser sends them, an `Origin` whose host matches and a `Sec-Fetch-Site` of same-origin/none; else 403 (`internal/server/guard.go:19-42`).
-- Routes are registered in one block, `internal/server/server.go:105-189`; owners by area:
+- Routes are registered in one block, `internal/server/server.go:108-196`; owners by area:
 
 | Area | Handler file |
 |---|---|
-| overview, `/stream`, `/view`, `/chart`, `/refresh`, `/portfolio.json`, render helpers, wallets pages | `handlers.go` |
+| overview, `/stream`, `/view`, `/chart`, `/refresh`, `/refresh/prices`, `/portfolio.json`, render helpers, wallets pages | `handlers.go` |
 | chart backfill; coin page `/a/{asset}` | `history_handlers.go`; `coin_handlers.go` |
-| sources add/edit/test/delete | `source_handlers.go` |
+| sources add/edit/test/delete, `/sources/find-vault` (the Solana vault Find button) | `source_handlers.go` |
 | portfolios manager, import/export/restore | `portfolio_handlers.go` |
 | activity feed and sync card | `activity_handlers.go` |
 | reports, CSV import, `/export/*.csv` | `reports_handlers.go` |
 | Koinly wizard | `koinly_handlers.go` |
 | tax view, year close, tags/write-offs, downloads | `taxview.go`, `close_handlers.go`, `review_handlers.go` (+ `review.go` panel builder), `taxdownloads.go` (`registerTaxDownloads`, `:142`), `tax.go` |
 | alerts | `alerts_handlers.go` |
-| settings, backup export/import | `settings_handlers.go` |
+| settings (`/settings/logos`, `/settings/price-interval`, `/settings/prices`, `/settings/bitcoin`), backup export/import | `settings_handlers.go` |
 
-- Render helpers: `isNav` (GET with `Datastar-Request`) → `renderStatus` wraps ctx with `templates.WithNav` and sends one SSE `PatchElementTempl`; otherwise a full HTML document with the given status. A navigation always answers 200 because Datastar retries other statuses (`internal/server/handlers.go:162-189`). `shell()` builds `templates.Shell` (`:43`).
-- SSE streams: `/stream` subscribes to the `Broker`, patches `Dashboard` per snapshot, 25 s keep-alive comment (`handlers.go:220-250`); `/activity/sync` patches `#activity-sync` on syncer changes and every 30 s, and `#activity-new` when `?feed=` is exceeded (`internal/server/activity_handlers.go:140-188`).
-- Cost cache: `taxCache` holds the last `tax.Compute` for one minute plus per-year reports; `invalidateTax()` drops it after any change to activity, tags, lots or closed years (`internal/server/tax.go:17-30,65-74,84-102`; callers e.g. `close_handlers.go:188`, `koinly_handlers.go:611`, `settings_handlers.go:321`). Not cached until the first live snapshot (`tax.go:84-86`).
+- Render helpers: `isNav` (GET with `Datastar-Request`) → `renderStatus` wraps ctx with `templates.WithNav` and sends one SSE `PatchElementTempl`; otherwise a full HTML document with the given status. A navigation always answers 200 because Datastar retries other statuses (`internal/server/handlers.go:196-225`). `shell()` builds `templates.Shell` (`:43`).
+- SSE streams: `/stream` subscribes to the `Broker`, patches `Dashboard` per snapshot, 25 s keep-alive comment (`handlers.go:256-286`); `/activity/sync` patches `#activity-sync` on syncer changes and every 30 s, and `#activity-new` when `?feed=` is exceeded (`internal/server/activity_handlers.go:140-188`).
+- Cost cache: `taxCache` holds the last `tax.Compute` for one minute plus per-year reports; `invalidateTax()` drops it after any change to activity, tags, lots or closed years (`internal/server/tax.go:17-30,65-74,84-102`; callers e.g. `close_handlers.go:188`, `koinly_handlers.go:611`, `settings_handlers.go:358`). Not cached until the first live snapshot (`tax.go:84-86`).
 - Serialisation: `closeMu` (year close/reopen) and `draftMu` (Koinly draft) (`server.go:82-85`).
-- Static: `staticHandler` sets `immutable` 1-year cache when `?v=` is present, else 1 h (`server.go:193-205`).
+- Price interval: `New` applies the saved Settings price interval to the `Refresher` at start (`internal/server/server.go:97-99`); `applyPriceInterval` does it again after a settings change, a database restore and a reset (`internal/server/settings_handlers.go:48-62`, [refresh-balances](../../processes/refresh-balances.md)). The header chips read it through `Refresher.PriceEvery` (`internal/server/handlers.go:88`).
+- Static: `staticHandler` sets `immutable` 1-year cache when `?v=` is present, else 1 h (`server.go:200-212`).
 
 ## Connected to
 

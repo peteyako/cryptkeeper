@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/secrets/secrets.go
 ---
 
@@ -30,7 +30,7 @@ It protects a leaked `sources.yaml` or backup, not someone who can also read the
 |---|---|
 | `app.box` in main.go (`main.go:89,161`) | CLI export `SealFile`, import `OpenFile` (`main.go:735-752`), key helpers (`main.go:801,820`) |
 | `sources.Registry` (`internal/sources/registry.go:32,49`) | seals and opens exchange secrets in `sources.yaml` (`:171,201,266`) |
-| `server.Deps.Box` (`internal/server/server.go:44`) | seals/opens saved CoinGecko and Blockstream keys in DB `kv` (`settings_handlers.go:100,117,149,216`), export seal (`:272`), import open (`:303`; `portfolio_handlers.go:408`); `secrets.Mask` for the UI (`settings_handlers.go:105,171`; `source_handlers.go:53`) |
+| `server.Deps.Box` (`internal/server/server.go:44`) | seals/opens saved CoinGecko and Blockstream keys in DB `kv` (`settings_handlers.go:137,154,186,253`), export seal (`:309`), import open (`:340`; `portfolio_handlers.go:408`); `secrets.Mask` for the UI (`settings_handlers.go:142,208`; `source_handlers.go:54`) |
 
 ## Connected to
 

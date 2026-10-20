@@ -3,7 +3,7 @@ type: object
 cluster: views
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/alerts/rules.go
 ---
 
@@ -25,8 +25,8 @@ Rules are hand-editable YAML, so a field that belongs to another rule type is a 
 - Evaluation: `OnSnapshot` runs the four snapshot types for enabled rules, each under `safely`; `OnActivity` runs `large_activity` on newly inserted txs (`engine.go:92-145`; hooks at `main.go:491-493` and `:505-507`). One mutex serializes read-modify-write state (`engine.go:60`).
 - Per-type rules in brief: price re-arms only after a 2% retreat and ignores stale prices (`engine.go:65-67`, `:396-436`); balance_drop compares synced wallets only against the last baseline (`:335-366`); source_down fires once per outage after N minutes (`:525-557`); portfolio_move needs history reaching back the window and a non-stale total (`:465-493`, `main.go:412`).
 - Tables (migration `alerts-v1`): `alert_state (rule_id, key, json)` PK (rule_id, key); `alert_log (id, ts, rule_id, title, body, err)`, pruned to 500 rows (`state.go:19-33`, `:178-197`).
-- Delivery: `Notifier` interface; `Ntfy{URL, Token, Client}` plain-text POST with Title/Priority/Tags/Click headers; errors never include the topic URL or token (`internal/alerts/ntfy.go:18-60`). Built only if `config ntfy.url` is set; token from `NTFY_TOKEN` (`main.go:427-429`, `internal/config/config.go:35`, `:119-122`). `Redact` keeps amounts out of text.
-- Wired: `alerts.NewRuleStore` at `main.go:193`; routes `/alerts*` including `POST /alerts/test` (`internal/server/server.go:175-181`, `internal/server/alerts_handlers.go`).
+- Delivery: `Notifier` interface; `Ntfy{URL, Token, Client}` plain-text POST with Title/Priority/Tags/Click headers; errors never include the topic URL or token (`internal/alerts/ntfy.go:18-60`). Built only if `config ntfy.url` is set; token from `NTFY_TOKEN` (`main.go:427-429`, `internal/config/config.go:36`, `:120-123`). `Redact` keeps amounts out of text.
+- Wired: `alerts.NewRuleStore` at `main.go:193`; routes `/alerts*` including `POST /alerts/test` (`internal/server/server.go:180-186`, `internal/server/alerts_handlers.go`).
 
 Citations: `internal/alerts/rules.go:56`, `internal/alerts/engine.go:37`, `internal/alerts/state.go:38`
 

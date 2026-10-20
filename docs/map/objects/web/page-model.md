@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: web/templates/models.go
 ---
 
@@ -17,14 +17,14 @@ Templates are dumb: a handler computes everything (snapshot, history, P&L, sync 
 
 ## Shape
 
-- Boundary: handler (`internal/server/*_handlers.go`) builds `templates.XxxPage` → `templates.XxxFull(page)` renders the document or, on a Datastar navigation, only the shell regions (see [server](server.md), [templ-components](templ-components.md)). Example: `overviewPage` → `templates.OverviewFull` (`internal/server/handlers.go:109-140,201`).
-- `Shell` (`web/templates/models.go:15-24`): `Title`, `Active` (one of overview/wallets/activity/reports/alerts/settings/portfolios), `Portfolios []PortfolioNav`, `PF`, `Range`, `ShowLogos`, `AuthUser`. Built by `Server.shell` (`internal/server/handlers.go:43-60`). Embedded by every full-page model; `TaxPage` and `ReviewPage` are sections inside `ReportsPage` (`models.go:295-296`) and carry none, and the print views (`TaxReportView`, `print_view.go:30`) have no app shell.
-- `SyncInfo` (`models.go:30`) drives the sync chip; `PnLCell` (`:466`) the P/L column.
-- Pages in `models.go`: `OverviewPage:42`, `WalletsPage:64`, `WalletPage:72`, `SourcePickPage:100`, `SourceFormPage:103`, `SettingsPage:120`, `PortfoliosPage:175`, `PortfolioFormPage:201`, `ActivityPage:243`, `ReportsPage:283`, `TaxPage:304`, `ReviewPage:341`, `KoinlyPage:409`/`KoinlyWizard:416`, `AlertsPage:486`/`AlertFormPage:498`, `CloseCard:512`, `CoinPage:534`.
+- Boundary: handler (`internal/server/*_handlers.go`) builds `templates.XxxPage` → `templates.XxxFull(page)` renders the document or, on a Datastar navigation, only the shell regions (see [server](server.md), [templ-components](templ-components.md)). Example: `overviewPage` → `templates.OverviewFull` (`internal/server/handlers.go:143-174,237`).
+- `Shell` (`web/templates/models.go:15-24`): `Title`, `Active` (one of overview/wallets/activity/reports/alerts/settings/portfolios), `Portfolios []PortfolioNav`, `PF`, `Range`, `ShowLogos`, `AuthUser`. Built by `Server.shell` (`internal/server/handlers.go:43-60`). Embedded by every full-page model; `TaxPage` and `ReviewPage` are sections inside `ReportsPage` (`models.go:302-303`) and carry none, and the print views (`TaxReportView`, `print_view.go:30`) have no app shell.
+- `SyncInfo` (`models.go:30`) drives one sync chip and `SyncStatus` (`:38`, `{Prices, Wallets}`) the header's pair; `Every` words an interval for their tooltips (`errors_view.go:91-103`); `SettingsPage.PriceMinutes`/`RefreshMinutes` (`:147-148`) feed the Settings price-interval picker; `PnLCell` (`:473`) the P/L column.
+- Pages in `models.go`: `OverviewPage:47`, `WalletsPage:69`, `WalletPage:77`, `SourcePickPage:105`, `SourceFormPage:108`, `SettingsPage:125`, `PortfoliosPage:182`, `PortfolioFormPage:208`, `ActivityPage:250`, `ReportsPage:290`, `TaxPage:311`, `ReviewPage:348`, `KoinlyPage:416`/`KoinlyWizard:423`, `AlertsPage:493`/`AlertFormPage:505`, `CloseCard:519`, `CoinPage:541`.
 - Builders and helpers by file (all `web/templates/`): `view.go` (source/status labels `StatusView:146`, `SyncView:163`, holding names, `Location`/`Local` time zone `:451-456`, `asset()` content-hashed URLs `:422`, `SafeLogoURL:408`, nav context `WithNav/IsNav:586-593`); `activity_view.go` (`TxTitle`, `TxStatusView`, date/leg text); `alerts_view.go`; `koinly_view.go`; `reports_view.go`; `tax_view.go`; `print_view.go`; `chart.go` (SVG path, axes, hover JSON from `portfolio.Point`).
 - `format.go` number rules, documented at its head (`web/templates/format.go:1-10`): `Fiat` 2 decimals with true minus (`:75`), `PriceFiat` (`:90`), `CoinAmount`/`Units` min 4 max 8 decimals, stables 2 (`:134,153`), `ChangePct` arrow+sign never color alone (`:182`), `ShortAddr` first 6 + last 4 (`:260`), `StalePrice` older than 15 min gets `~` (`:272`), `Ago/Since` (`:297,315`), `Allocation`/`HoldingItems` (`:401,477`).
-- `errors_view.go`: `ExplainError(raw, sourceType, public, every)` turns a stored raw sync error into `ErrorView{Text, Fix, Raw}` in plain language; errors are matched by wording because they are stored as text (`web/templates/errors_view.go:8-40,117`).
-- `SyncRow` (`models.go:227`) carries per-source sync state to the sync card (Activity and Settings pages); `ActivityRow` (`:219`) is one feed entry plus the labels the template cannot look up.
+- `errors_view.go`: `ExplainError(raw, sourceType, public, every)` turns a stored raw sync error into `ErrorView{Text, Fix, Raw}` in plain language; errors are matched by wording because they are stored as text (`web/templates/errors_view.go:8-40,123`).
+- `SyncRow` (`models.go:234`) carries per-source sync state to the sync card (Activity and Settings pages); `ActivityRow` (`:226`) is one feed entry plus the labels the template cannot look up.
 
 ## Connected to
 

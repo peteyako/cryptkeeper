@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/sources/coinbase/coinbase.go
 ---
 
@@ -27,7 +27,7 @@ A read-only Coinbase account, authenticated with a view-only CDP API key (key na
 - **Meta rows:** masked API key, account/vault counts, reconciliation summary, balance differences `internal/sources/coinbase/coinbase.go:535-542`.
 - **Activity** (`core.ActivitySource`) is v2 only: list accounts (cached in state 30 min) then each account's `/transactions`, newest first, with cursors per account, pending re-checks (max 25, 14 days) and a default budget of 20 when none is given (the syncer always passes 30, `internal/activity/syncer.go:20`) `internal/sources/coinbase/activity.go:34-51`, `internal/sources/coinbase/activity.go:464`, `internal/sources/coinbase/activity.go:726`. Each v2 transaction becomes one `core.Tx` with a single leg in the account's currency; USD value from `native_amount` `internal/sources/coinbase/activity.go:256-336`. Kind map: buy/sell/trade -> trade, send/receive by sign, rewards -> reward, deposits/withdrawals/staking transfers -> transfer, unknown -> other with the Coinbase type in the note `internal/sources/coinbase/activity.go:221-241`; status map `internal/sources/coinbase/activity.go:243`. Send fees are split into `Tx.Fee` `internal/sources/coinbase/activity.go:352`.
 - **Config keys:** none in config.yaml; everything lives on the Def (`keyName`, sealed `privateKey`). `BaseURL` is test-only `internal/sources/coinbase/coinbase.go:64-65`.
-- **Settings handlers:** edit form refill (key name only) `internal/server/source_handlers.go:71-72`; form parse with required-field checks, private key optional on edit `internal/server/source_handlers.go:123-130`.
+- **Settings handlers:** edit form refill (key name only) `internal/server/source_handlers.go:72-73`; form parse with required-field checks, private key optional on edit `internal/server/source_handlers.go:124-131`.
 
 ## Connected to
 

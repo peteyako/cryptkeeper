@@ -3,7 +3,7 @@ type: object
 cluster: valuation
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/portfolio/history.go
 ---
 
@@ -27,7 +27,7 @@ A `history` row stores per-wallet amounts and per-asset prices, not a total, so 
 - Mint closes: `HistoricalMint[Close]` use CoinGecko (365-day cap, demo key, 429 pauses lookups) with misses remembered in `price_unknown` (`internal/prices/coingecko.go:20-44`).
 - `Service.Series(assetKey, mint, days)` builds a daily series from those closes (`internal/prices/series.go:24`).
 - Backfill: `History.Backfill(days, now, current, txs, isPosition, PriceAt)` rolls current holdings back through activity, per wallet, only for days before that wallet's first recorded row (on days that already have rows it merges the missing wallets into them); refuses with `NotSyncedError` if any wallet is error or pending; looks prices up first, then writes all rows in one transaction; a failed lookup (`PriceError`) writes nothing (`internal/portfolio/backfill.go:41-70`, `:260-291`). Rows are stamped 23:59:59 UTC.
-- Handler: `POST /chart/backfill` -> `runBackfill` (needs a non-warm snapshot) -> `priceAt` adapter (pegs, mint closes, ticker then mint) (`internal/server/server.go:114`, `internal/server/history_handlers.go:28-130`).
+- Handler: `POST /chart/backfill` -> `runBackfill` (needs a non-warm snapshot) -> `priceAt` adapter (pegs, mint closes, ticker then mint) (`internal/server/server.go:117`, `internal/server/history_handlers.go:28-130`).
 
 Citations: `internal/portfolio/history.go:15`, `internal/prices/history.go:43`, `internal/portfolio/backfill.go:69`
 

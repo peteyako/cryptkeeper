@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: internal/sources/brokerage/brokerage.go
 ---
 
@@ -22,7 +22,7 @@ Brokerage access would need credentials the project refuses to hold, so the acco
 - `ParseLines`: `TICKER SHARES [note]`; first word `USD` or `CASH` means cash and a leading `$` is allowed; `stock:` prefix forces a ticker (`brokerage.go:127-163`).
 - `Fetch`: cash line yields `AssetKey/Symbol "USD"`, name "Cash"; ticker line yields `AssetKey core.StockKey(t)`, `Name` from the lookup (else the ticker). Warnings for a ticker Yahoo does not know, one listed in a non-USD currency (only US-dollar listings are priced), or an unreachable lookup (prices may be out of date). Meta `Prices: Yahoo Finance`, `Holdings` count (`brokerage.go:72-121`).
 - Naming/pricing wiring: `Lookup func(ctx, tickers) (map[string]Security, error)` is injected; `main.go` binds it to `prices.Securities` (Yahoo) in `app.tickerLookup` (`brokerage.go:46-66`, `main.go:288-304`). Prices themselves come from the price service via `stock:` keys with `Change24h`, `MarketTime`, `MarketOpen` ([price](../valuation/price.md); `internal/prices/prices.go:11,293`).
-- Kind forced to `brokerage` by the form (`internal/server/source_handlers.go:193-199`); `HandEntered` true, so no activity sync (`internal/sources/model.go:37`). Brokerage sources are skipped in tax-download wallet lists and Koinly wallet matching (`internal/server/taxdownloads.go:405`, `internal/server/koinly_handlers.go:386`) and the test message counts tickers priced (`source_handlers.go:288-290`).
+- Kind forced to `brokerage` by the form (`internal/server/source_handlers.go:194-200`); `HandEntered` true, so no activity sync (`internal/sources/model.go:37`). Brokerage sources are skipped in tax-download wallet lists and Koinly wallet matching (`internal/server/taxdownloads.go:405`, `internal/server/koinly_handlers.go:386`) and the test message counts tickers priced (`source_handlers.go:363-365`).
 - No secrets, no config keys, no Settings handler; depends only on the price service's Yahoo settings.
 
 ## Connected to
@@ -34,7 +34,7 @@ Brokerage access would need credentials the project refuses to hold, so the acco
 
 ## If you change this
 
-- **Hits:** the `stock:` key shape: `core.StockKey`, price routing in `internal/prices`, history lookups (`internal/prices/history.go:44`). Cash rule: `brokerage.Cash` and allocation grouping (`core.IsStable`, `internal/portfolio/types.go:43,62`). Ticker rule (`ValidAsset`): `Def.Validate` calls it (`internal/sources/model.go:143`), so a stricter rule makes saves and imports of existing rows fail ([source-def](source-def.md)). Currency rule: warning text and the lookup `Security`.
+- **Hits:** the `stock:` key shape: `core.StockKey`, price routing in `internal/prices`, history lookups (`internal/prices/history.go:44`). Cash rule: `brokerage.Cash` and allocation grouping (`core.IsStable`, `internal/portfolio/types.go:52,71`). Ticker rule (`ValidAsset`): `Def.Validate` calls it (`internal/sources/model.go:143`), so a stricter rule makes saves and imports of existing rows fail ([source-def](source-def.md)). Currency rule: warning text and the lookup `Security`.
 - **Does not hit:** [manual-source](manual-source.md) `ParseLines`; coin pricing (CoinGecko); activity sync.
 
 ## Surfaces

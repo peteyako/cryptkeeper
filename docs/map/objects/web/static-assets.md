@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 936c434
 entity: web/static/embed.go
 ---
 
@@ -18,8 +18,8 @@ The app ships as one binary with no build step for the front end, so assets are 
 ## Shape
 
 - `web/static/embed.go:13`: `//go:embed tokens.css app.css datastar.js chart.js fonts icons manifest.webmanifest`. Adding a file at the top level of `web/static` means adding it to this directive.
-- `Version` (`embed.go:19-34`): first 10 hex of a SHA-256 over every embedded path and content. Templates link `asset(name)` = `/static/<name>?v=<Version>` (`web/templates/view.go:422`, used in `layout.templ:82-85`).
-- Serving: `staticHandler` gives `Cache-Control: public, max-age=31536000, immutable` when `?v=` is present, else 1 h (`internal/server/server.go:193-205`). `/static/icons/*` and `/manifest.webmanifest` are unauthenticated so the install prompt works; the rest of `/static/*` is behind basic auth (`server.go:101-107`). `cmd/uipreview` serves the same FS with no-store (`cmd/uipreview/main.go:83`).
+- `Version` (`embed.go:19-34`): first 10 hex of a SHA-256 over every embedded path and content. Templates link `asset(name)` = `/static/<name>?v=<Version>` (`web/templates/view.go:430`, used in `layout.templ:82-85`).
+- Serving: `staticHandler` gives `Cache-Control: public, max-age=31536000, immutable` when `?v=` is present, else 1 h (`internal/server/server.go:200-212`). `/static/icons/*` and `/manifest.webmanifest` are unauthenticated so the install prompt works; the rest of `/static/*` is behind basic auth (`server.go:104-110`). `cmd/uipreview` serves the same FS with no-store (`cmd/uipreview/main.go:83`).
 - `tokens.css` (236 lines): `@font-face` for IBM Plex Sans 400/500/600 and Mono 400/500 (`fonts/*.woff2`), dark tokens in `:root`, light in `@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) }` (`:126-127`), and pinned `:root[data-theme="light"]` (`:181`) / `[data-theme="dark"]` (`:234`). Tokens: surfaces, text, accent, gain/loss/warn, `--src-*`, `--disc-*-bg/fg`, spacing `--s1..8`, radii, fonts. The settings Theme control sets `data-theme` through `bodyEffect` (`web/templates/js.go:88`). Its header comment still says "Vault design tokens" (`tokens.css:2`); that is the old app name.
 - `app.css` (~5,200 lines): all layout and component rules, mobile first with `@media (min-width: 760px)`. Privacy masking is `body.amounts-hidden .fig-v`/`.fig-m`.
 - `datastar.js`: vendored Datastar v1.0.4, first line asserted by the test (`web/templates/static_test.go:59-72`). Upgrade by replacing the file, updating that assertion and running the template tests.
@@ -37,7 +37,7 @@ The app ships as one binary with no build step for the front end, so assets are 
 
 ## If you change this
 
-- **Hits:** adding a template class → a rule in `app.css` or `TestAppCSSUsesOnlyTokens` fails (for classes a demo page renders); adding or renaming a token → `tokens.css` in dark and both light blocks, the required list in `TestTokens`, and the token names `format.go` writes into inline styles (`web/templates/format.go:359,427-454`); changing `--bg` → `ThemeColorDark/Light` and `manifest.webmanifest`; changing dark `--accent`/`--on-accent` → rerun `genicons` (values hard-coded); moving icons or the manifest → the unauthenticated routes (`server.go:101-103`) and the head links (`layout.templ:74-76`); adding a top-level static file → the `go:embed` line.
+- **Hits:** adding a template class → a rule in `app.css` or `TestAppCSSUsesOnlyTokens` fails (for classes a demo page renders); adding or renaming a token → `tokens.css` in dark and both light blocks, the required list in `TestTokens`, and the token names `format.go` writes into inline styles (`web/templates/format.go:359,427-454`); changing `--bg` → `ThemeColorDark/Light` and `manifest.webmanifest`; changing dark `--accent`/`--on-accent` → rerun `genicons` (values hard-coded); moving icons or the manifest → the unauthenticated routes (`server.go:104-106`) and the head links (`layout.templ:74-76`); adding a top-level static file → the `go:embed` line.
 - **Does not hit:** `.templ` markup unless a class is added; Go handlers (assets are not routed individually, beyond the icons and manifest routes).
 
 ## Surfaces
