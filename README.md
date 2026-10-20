@@ -409,9 +409,9 @@ See `config.example.yaml`. Token logos (instead of ticker monograms) can be swit
 the token issuers' servers. Dates and times are shown in the server's time zone; in Docker set
 `TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (balances, default 5), `priceMinutes`
 (prices, refreshed in between, default 1; the header shows a chip for each), `activityMinutes`
-(activity sync, default 15); **Settings → Refresh** overrides all three, `staleMaxHours`
-(how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
-Solana RPC and spam settings.
+(activity sync, default 15), `staleMaxHours` (how long last-good data is shown when an API
+fails, default 24), Bitcoin Esplora URL, Solana RPC and spam settings. **Settings → Refresh**
+overrides the three intervals.
 A free CoinGecko demo key (`COINGECKO_API_KEY`, or the **Settings → Historical prices** card, stored encrypted) prices Solana tokens Coinbase doesn't list, for the last 365 days.
 For taxes, set `tax.timezone` (an IANA name such as `America/New_York`; empty means the server's local time) to decide where a tax day starts and ends. The CoinGecko key also prices Solana tokens by mint for tax reports; the environment variable wins over the one saved in Settings.
 
