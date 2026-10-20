@@ -205,7 +205,7 @@ cryptkeeper portfolios import portfolios.yaml [-replace]
 
 Every source's transactions in one feed (**Activity**, and each wallet's Activity tab):
 Bitcoin from Esplora, Solana from your RPC, Coinbase and Kraken from their APIs. New activity
-syncs every `activityMinutes`; older history is backfilled gradually (down to
+syncs every `activityMinutes` (or as set in **Settings → Refresh**); older history is backfilled gradually (down to
 `activity.backfillDays`) so free APIs aren't hammered. A withdrawal from an exchange that lands
 in one of your own wallets is shown once, as a **Transfer · Coinbase → Cold storage**.
 
@@ -408,8 +408,8 @@ needs HTTPS (use the `tailscale serve` URL) → menu → *Install app*.
 See `config.example.yaml`. Token logos (instead of ticker monograms) can be switched on in **Settings**; they load from
 the token issuers' servers. Dates and times are shown in the server's time zone; in Docker set
 `TZ` (e.g. `TZ=America/Los_Angeles`). Highlights: `refreshMinutes` (balances, default 5), `priceMinutes`
-(prices, refreshed in between, default 1; **Settings → Refresh** overrides both; the header
-shows a chip for each), `staleMaxHours`
+(prices, refreshed in between, default 1; the header shows a chip for each), `activityMinutes`
+(activity sync, default 15); **Settings → Refresh** overrides all three, `staleMaxHours`
 (how long last-good data is shown when an API fails, default 24), Bitcoin Esplora URL,
 Solana RPC and spam settings.
 A free CoinGecko demo key (`COINGECKO_API_KEY`, or the **Settings → Historical prices** card, stored encrypted) prices Solana tokens Coinbase doesn't list, for the last 365 days.

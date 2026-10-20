@@ -4,7 +4,7 @@
 refreshMinutes: 5        # wallet, exchange and account balances; Settings → Refresh can override
 priceMinutes: 1          # prices, in between balance refreshes (never less often); Settings can override
 staleMaxHours: 24        # show last-good data (badged "stale") for up to this long when an API fails
-activityMinutes: 15      # activity sync cadence
+activityMinutes: 15      # activity sync cadence; Settings → Refresh can override
 showTokenLogos: false    # true = show Jupiter logos for SPL tokens instead of ticker monograms
 
 bitcoin:

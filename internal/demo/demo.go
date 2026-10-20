@@ -703,7 +703,7 @@ func Settings(now time.Time) templates.SettingsPage {
 		AuthEnabled:  true,
 		Version:      "v0.1.0-dev",
 		Sync:         SyncRows(now),
-		PriceMinutes: 1, RefreshMinutes: 5,
+		PriceMinutes: 1, RefreshMinutes: 5, ActivityMinutes: 15,
 		Now: now,
 	}
 }

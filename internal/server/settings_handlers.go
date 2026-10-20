@@ -22,10 +22,11 @@ import (
 // (config.yaml supplies the defaults and is never written by the app).
 type uiSettings struct {
 	ShowLogos *bool `json:"showLogos,omitempty"`
-	// RefreshMinutes and PriceMinutes are how often balances and prices refresh; prices 0
-	// means with every balance refresh.
-	RefreshMinutes *int `json:"refreshMinutes,omitempty"`
-	PriceMinutes   *int `json:"priceMinutes,omitempty"`
+	// RefreshMinutes, PriceMinutes and ActivityMinutes are how often balances and prices
+	// refresh and activity syncs; prices 0 means with every balance refresh.
+	RefreshMinutes  *int `json:"refreshMinutes,omitempty"`
+	PriceMinutes    *int `json:"priceMinutes,omitempty"`
+	ActivityMinutes *int `json:"activityMinutes,omitempty"`
 }
 
 const uiSettingsKey = "ui.settings"
@@ -48,29 +49,38 @@ func (s *Server) showLogos(ctx context.Context) bool {
 	return s.Cfg.ShowTokenLogos
 }
 
-// applyIntervals tells the refresher how often balances and prices refresh (intervals).
+// applyIntervals tells the refresher and the activity syncer how often to run (intervals).
 func (s *Server) applyIntervals(ctx context.Context) {
-	balances, prices := s.intervals(ctx)
-	s.Refresher.SetIntervals(time.Duration(balances)*time.Minute, time.Duration(prices)*time.Minute)
+	in := s.intervals(ctx)
+	s.Refresher.SetIntervals(time.Duration(in.Balances)*time.Minute, time.Duration(in.Prices)*time.Minute)
+	if s.Syncer != nil {
+		s.Syncer.SetInterval(time.Duration(in.Activity) * time.Minute)
+	}
 }
 
-// intervals are how often balances and prices refresh, in minutes: as saved in Settings,
-// else refreshMinutes and priceMinutes from config.yaml. Prices refresh at least with every
-// balance refresh, which a saved 0 asks for outright.
-func (s *Server) intervals(ctx context.Context) (balances, prices int) {
-	balances, prices = s.Cfg.RefreshMinutes, s.Cfg.PriceMinutes
+// refreshIntervals are how often balances and prices refresh and activity syncs, in minutes.
+type refreshIntervals struct{ Balances, Prices, Activity int }
+
+// intervals are how often balances and prices refresh and activity syncs: as saved in
+// Settings, else refreshMinutes, priceMinutes and activityMinutes from config.yaml. Prices
+// refresh at least with every balance refresh, which a saved 0 asks for outright.
+func (s *Server) intervals(ctx context.Context) refreshIntervals {
 	st := s.loadUISettings(ctx)
-	if st.RefreshMinutes != nil {
-		balances = *st.RefreshMinutes
+	saved := func(m *int, def int) int {
+		if m != nil {
+			return *m
+		}
+		return def
 	}
-	if st.PriceMinutes != nil {
-		prices = *st.PriceMinutes
+	in := refreshIntervals{
+		Balances: max(saved(st.RefreshMinutes, s.Cfg.RefreshMinutes), 1),
+		Prices:   saved(st.PriceMinutes, s.Cfg.PriceMinutes),
+		Activity: max(saved(st.ActivityMinutes, s.Cfg.ActivityMinutes), 1),
 	}
-	balances = max(balances, 1)
-	if prices <= 0 || prices > balances {
-		prices = balances
+	if in.Prices <= 0 || in.Prices > in.Balances {
+		in.Prices = in.Balances
 	}
-	return balances, prices
+	return in
 }
 
 func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
@@ -93,7 +103,8 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 		PriceKeyFromEnv: s.Cfg.CoinGeckoKey != "", PriceKey: s.maskedPriceKey(r.Context()),
 		BlockstreamFromEnv: s.Cfg.BlockstreamClientID != "", BlockstreamID: s.maskedBlockstreamID(r.Context()),
 	}
-	p.RefreshMinutes, p.PriceMinutes = s.intervals(r.Context())
+	in := s.intervals(r.Context())
+	p.RefreshMinutes, p.PriceMinutes, p.ActivityMinutes = in.Balances, in.Prices, in.Activity
 	return p
 }
 
@@ -119,17 +130,27 @@ func (s *Server) settingsLogos(w http.ResponseWriter, r *http.Request) {
 }
 
 // settingsIntervals saves how often balances and prices refresh (prices 0: with every
-// balance refresh) and tells the running refresher.
+// balance refresh) and activity syncs, and tells the running refresher and syncer.
 func (s *Server) settingsIntervals(w http.ResponseWriter, r *http.Request) {
 	_ = parseBody(r)
 	st := s.loadUISettings(r.Context())
-	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("refreshMinutes"))); err == nil {
-		m = min(max(m, 1), 24*60)
-		st.RefreshMinutes = &m
+	// minutes is a posted interval held to between lo and a day; nil when not posted.
+	minutes := func(name string, lo int) *int {
+		m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue(name)))
+		if err != nil {
+			return nil
+		}
+		m = min(max(m, lo), 24*60)
+		return &m
 	}
-	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("priceMinutes"))); err == nil {
-		m = max(m, 0)
-		st.PriceMinutes = &m
+	if m := minutes("refreshMinutes", 1); m != nil {
+		st.RefreshMinutes = m
+	}
+	if m := minutes("priceMinutes", 0); m != nil {
+		st.PriceMinutes = m
+	}
+	if m := minutes("activityMinutes", 1); m != nil {
+		st.ActivityMinutes = m
 	}
 	if s.DB != nil {
 		if err := s.DB.PutJSON(r.Context(), uiSettingsKey, st); err != nil {

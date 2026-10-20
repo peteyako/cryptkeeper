@@ -51,7 +51,7 @@ type Syncer struct {
 	Sources  func() []Entry   // only sources that implement core.ActivitySource
 	Since    func() time.Time // backfill horizon (now - backfillDays); default 90 days ago
 	Budget   int              // per source per Activity call; default 30
-	Interval time.Duration    // default 15 minutes
+	Interval time.Duration    // default 15 minutes; SetInterval changes it while Run runs
 	Log      *slog.Logger
 	// Valuer, when set, fills missing Leg.USD (and Fee.USD) from historical prices. Without
 	// it legs are stored as the source reported them.
@@ -68,9 +68,10 @@ type Syncer struct {
 
 	revalued atomic.Int64 // txs upserted by the last revalue pass (tests)
 
-	once sync.Once
-	kick chan struct{}
-	sem  chan struct{}
+	once        sync.Once
+	kick        chan struct{}
+	intervalSet chan struct{} // SetInterval tells Run to restart its ticker
+	sem         chan struct{}
 
 	mu      sync.Mutex
 	running map[string]bool            // sources being synced right now
@@ -80,6 +81,7 @@ type Syncer struct {
 func (s *Syncer) init() {
 	s.once.Do(func() {
 		s.kick = make(chan struct{}, 1)
+		s.intervalSet = make(chan struct{}, 1)
 		s.sem = make(chan struct{}, 1)
 	})
 }
@@ -160,24 +162,49 @@ func (s *Syncer) Kick() {
 	}
 }
 
+// Every is how often Run syncs: Interval, or 15 minutes when none is set.
+func (s *Syncer) Every() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Interval <= 0 {
+		return defaultInterval
+	}
+	return s.Interval
+}
+
+// SetInterval changes Interval (Settings); a running Run counts the new one from now.
+func (s *Syncer) SetInterval(d time.Duration) {
+	s.init()
+	s.mu.Lock()
+	s.Interval = d
+	s.mu.Unlock()
+	select {
+	case s.intervalSet <- struct{}{}:
+	default:
+	}
+}
+
 // Run syncs immediately, then every Interval or on Kick, until ctx is done.
 func (s *Syncer) Run(ctx context.Context) {
 	s.init()
-	interval := s.Interval
-	if interval <= 0 {
-		interval = defaultInterval
-	}
-	t := time.NewTicker(interval)
+	t := time.NewTicker(s.Every())
 	defer t.Stop()
-	for {
+	pass := func() {
 		if err := s.SyncOnce(ctx); err != nil && ctx.Err() == nil {
 			s.log().Warn("activity sync", "err", err)
 		}
+	}
+	pass()
+	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			pass()
 		case <-s.kick:
+			pass()
+		case <-s.intervalSet:
+			t.Reset(s.Every())
 		}
 	}
 }

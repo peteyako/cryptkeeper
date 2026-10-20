@@ -144,9 +144,9 @@ type SettingsPage struct {
 	BlockstreamID string
 	// BlockstreamFromEnv: BLOCKSTREAM_CLIENT_ID is set, so the Settings form is disabled.
 	BlockstreamFromEnv bool
-	// RefreshMinutes and PriceMinutes are how often balances and prices refresh; prices at
-	// most as seldom as balances.
-	RefreshMinutes, PriceMinutes int
+	// RefreshMinutes, PriceMinutes and ActivityMinutes are how often balances and prices
+	// refresh and activity syncs; prices at most as seldom as balances.
+	RefreshMinutes, PriceMinutes, ActivityMinutes int
 	// BlockstreamNote is the outcome of the last save ("" on a plain page load).
 	BlockstreamNote    string
 	BlockstreamNoteErr bool

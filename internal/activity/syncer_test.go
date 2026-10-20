@@ -685,6 +685,42 @@ func TestRunTicksOnInterval(t *testing.T) {
 	}
 }
 
+// TestSetInterval: Settings changes how often a running Syncer syncs; Every is the interval
+// in effect, 15 minutes when none is set.
+func TestSetInterval(t *testing.T) {
+	var n atomic.Int32
+	src := fakeFn(func(int, core.ActivityRequest) (core.ActivityResult, error) {
+		n.Add(1)
+		return core.ActivityResult{BackfillDone: true}, nil
+	})
+	s := newSyncer(t, entry("src", src))
+	if got := s.Every(); got != 15*time.Minute {
+		t.Errorf("Every = %v with no Interval, want 15m", got)
+	}
+	s.Interval = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	deadline := time.Now().Add(5 * time.Second)
+	for n.Load() < 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := n.Load(); got != 1 {
+		t.Fatalf("%d syncs before the interval changed, want the first one only", got)
+	}
+	s.SetInterval(20 * time.Millisecond)
+	if got := s.Every(); got != 20*time.Millisecond {
+		t.Errorf("Every = %v after SetInterval(20ms)", got)
+	}
+	for n.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n.Load() < 3 {
+		t.Fatalf("only %d syncs after SetInterval(20ms)", n.Load())
+	}
+}
+
 func TestKickBeforeRunIsSafe(t *testing.T) {
 	s := &Syncer{}
 	s.Kick() // zero-value Syncer: must not panic or block

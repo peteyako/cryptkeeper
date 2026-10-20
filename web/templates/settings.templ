@@ -189,23 +189,25 @@ templ SettingsDisplay(p SettingsPage) {
 	</section>
 }
 
-// SettingsRefresh sets how often balances refresh, and prices in between.
+// SettingsRefresh sets how often balances refresh, prices in between, and activity syncs.
 templ SettingsRefresh(p SettingsPage) {
 	<section id="settings-refresh" class="card setting" aria-labelledby="set-refresh-h">
 		<div class="setting__text">
 			<h2 id="set-refresh-h" class="h-card">Refresh</h2>
-			<p class="muted-text">How often CryptKeeper checks your wallets, exchanges and accounts, and how often it refreshes prices in between, on the balances it already has. These override refreshMinutes and priceMinutes in config.yaml.</p>
+			<p class="muted-text">How often CryptKeeper checks your wallets, exchanges and accounts for balances and for new activity, and how often it refreshes prices in between, on the balances it already has. These override refreshMinutes, priceMinutes and activityMinutes in config.yaml.</p>
 		</div>
 		<form id="refresh-form" class="form" method="post" action="/settings/intervals" data-on:change={ intervalsChange }>
 			@selectField("refreshMinutes", "Refresh balances", strconv.Itoa(p.RefreshMinutes), everyOpts(refreshSteps, p.RefreshMinutes, math.MaxInt), "")
 			@selectField("priceMinutes", "Refresh prices", priceChoice(p), priceEveryOpts(p.PriceMinutes, p.RefreshMinutes), "")
+			@selectField("activityMinutes", "Sync activity", strconv.Itoa(p.ActivityMinutes), everyOpts(activitySteps, p.ActivityMinutes, math.MaxInt), "")
 		</form>
 	</section>
 }
 
 var (
-	refreshSteps = []int{1, 2, 3, 5, 10, 15, 30, 60} // balance intervals Settings offers, in minutes
-	priceSteps   = []int{1, 2, 3, 5, 10, 15, 30}     // price intervals, below the balance one
+	refreshSteps  = []int{1, 2, 3, 5, 10, 15, 30, 60}             // balance intervals Settings offers, in minutes
+	priceSteps    = []int{1, 2, 3, 5, 10, 15, 30}                 // price intervals, below the balance one
+	activitySteps = []int{5, 10, 15, 30, 60, 120, 360, 720, 1440} // activity sync intervals
 )
 
 // everyOpts are interval choices in minutes, worded "Every 5 min": the steps (and current,

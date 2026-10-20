@@ -101,10 +101,10 @@ func (s *Server) syncRows(ctx context.Context) []templates.SyncRow {
 		s.Log.Warn("activity statuses", "err", err)
 	}
 	var running map[string]bool
-	if s.Syncer != nil {
-		running = s.Syncer.Running()
-	}
 	every := time.Duration(s.Cfg.ActivityMinutes) * time.Minute
+	if s.Syncer != nil {
+		running, every = s.Syncer.Running(), s.Syncer.Every()
+	}
 	var rows []templates.SyncRow
 	for _, d := range s.Registry.Defs() {
 		if sources.HandEntered(d.Type) {
