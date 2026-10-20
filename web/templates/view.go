@@ -160,6 +160,14 @@ func StatusView(w portfolio.WalletView, now time.Time) (glyph, label, tone strin
 }
 
 // SyncView is StatusView for the header sync chip.
+// chipTitle is a sync chip's tooltip: how often it refreshes, and that a click refreshes now.
+func chipTitle(s SyncInfo, action string) string {
+	if s.Title == "" {
+		return action + " now"
+	}
+	return s.Title + ". " + action + " now."
+}
+
 func SyncView(s SyncInfo) (glyph, label, tone string) {
 	label = s.Label
 	switch s.Status {

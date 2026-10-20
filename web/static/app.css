@@ -469,11 +469,23 @@ body.amounts-hidden .fig-m {
   vertical-align: 1px;
 }
 
-/* The header's prices and wallets chips, side by side. */
+/* The header's prices and wallets chips, side by side; each is a refresh button. */
 .sync-chips {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 10px;
+}
+
+.sync-chip {
+  border: 0;
+}
+
+.sync-chip:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.sync-chip:disabled {
+  cursor: progress;
 }
 
 .chips {

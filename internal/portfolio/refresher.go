@@ -79,7 +79,7 @@ func (r *Refresher) Run(ctx context.Context) {
 		case <-kick:
 			r.refresh(ctx)
 		case <-priceTick:
-			go r.reprice(ctx) // never delays a kick
+			go r.reprice(ctx, false) // never delays a kick
 		}
 	}
 }
@@ -142,15 +142,20 @@ func (r *Refresher) Force(ctx context.Context) (Snapshot, error) {
 // snapshot must not be served again.
 func (r *Refresher) Rebuild(ctx context.Context) Snapshot { return r.refresh(ctx) }
 
+// RepriceNow reprices the last balances at once, however recent the last prices are (the
+// header's prices chip). ok is false when it published nothing: no refresh has finished
+// yet, or one is running, which prices too.
+func (r *Refresher) RepriceNow(ctx context.Context) (Snapshot, bool) { return r.reprice(ctx, true) }
+
 // reprice publishes the last balances at new prices, between refreshes. A refresh prices
-// too, so a reprice gives way to one: it doesn't start while one runs or within half a
-// PriceInterval of the last prices, and it publishes nothing if anything else was
-// published, or a kick came, while it priced. It isn't counted as a sync.
-func (r *Refresher) reprice(ctx context.Context) {
-	r.sf.Do("reprice", func() (any, error) {
+// too, so a reprice gives way to one: it doesn't start while one runs or (unless forced)
+// within half a PriceInterval of the last prices, and it publishes nothing if anything else
+// was published, or a kick came, while it priced. It isn't counted as a sync.
+func (r *Refresher) reprice(ctx context.Context, force bool) (Snapshot, bool) {
+	v, _, _ := r.sf.Do("reprice", func() (any, error) {
 		r.mu.Lock()
 		prev, gen := r.latest, r.gen
-		busy := r.cancelBuild != nil || prev == nil || prev.Warm || time.Since(prev.PricedAt) < r.PriceInterval/2
+		busy := r.cancelBuild != nil || prev == nil || prev.Warm || (!force && time.Since(prev.PricedAt) < r.PriceInterval/2)
 		r.mu.Unlock()
 		if busy {
 			return nil, nil
@@ -179,8 +184,10 @@ func (r *Refresher) reprice(ctx context.Context) {
 		if r.OnSnapshot != nil {
 			r.OnSnapshot(s)
 		}
-		return nil, nil
+		return s, nil
 	})
+	s, ok := v.(Snapshot)
+	return s, ok
 }
 
 // refresh builds a snapshot, publishing its progress; concurrent callers share one build.

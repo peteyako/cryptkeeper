@@ -37,6 +37,7 @@ import (
 	"github.com/starfederation/datastar-go/datastar"
 
 	"cryptkeeper/internal/demo"
+	"cryptkeeper/internal/portfolio"
 	"cryptkeeper/web/static"
 	"cryptkeeper/web/templates"
 )
@@ -114,6 +115,14 @@ func router() http.Handler {
 		_ = sse.PatchElementTempl(templates.ValueCard(p))
 	})
 	r.Get("/stream", stream)
+	r.Post("/refresh/prices", func(w http.ResponseWriter, r *http.Request) {
+		sse := datastar.NewSSE(w, r)
+		pricing := demo.SyncSynced()
+		pricing.Prices.Status, pricing.Prices.Label = portfolio.StatusPending, "Updating prices…"
+		_ = sse.PatchElementTempl(templates.SyncChip(pricing))
+		time.Sleep(600 * time.Millisecond)
+		_ = sse.PatchElementTempl(templates.SyncChip(demo.SyncSynced()))
+	})
 	r.Post("/refresh", func(w http.ResponseWriter, r *http.Request) {
 		s := readSignals(r)
 		sse := datastar.NewSSE(w, r)

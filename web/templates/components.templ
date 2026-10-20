@@ -8,20 +8,30 @@ import (
 )
 
 // SyncChip is the header sync status, a chip for prices and one for wallet balances,
-// patched on its own by /refresh.
+// patched on its own by /refresh and /refresh/prices. Each chip refreshes what it shows:
+// the prices one only the prices, the wallets one everything (like the refresh button,
+// whose busy state it shares).
 templ SyncChip(s SyncStatus) {
 	<span id="sync-status" class="sync-chips">
-		@syncChip(s.Prices)
-		@syncChip(s.Wallets)
+		@syncChip(s.Prices, "Refresh prices", "repricing", refreshPricesClick)
+		@syncChip(s.Wallets, "Refresh balances", "refreshing", refreshClick)
 	</span>
 }
 
-templ syncChip(s SyncInfo) {
+templ syncChip(s SyncInfo, action, busy, click string) {
 	{{ glyph, label, tone := SyncView(s) }}
-	<span class={ "chip", "chip--" + tone } title={ s.Title }>
+	<button
+		type="button"
+		class={ "chip", "chip--" + tone, "sync-chip" }
+		title={ chipTitle(s, action) }
+		aria-label={ action + " (" + label + ")" }
+		data-indicator={ busy }
+		data-attr:disabled={ "$" + busy }
+		data-on:click={ click }
+	>
 		<span aria-hidden="true">{ glyph }</span>
 		<span>{ label }</span>
-	</span>
+	</button>
 }
 
 // FigText renders a private figure: the real value and its mask. body.amounts-hidden

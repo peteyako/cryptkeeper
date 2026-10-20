@@ -1,12 +1,17 @@
 package server
 
 import (
+	"context"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
 	"cryptkeeper/internal/config"
 	"cryptkeeper/internal/core"
 	"cryptkeeper/internal/portfolio"
+	"cryptkeeper/internal/sources"
+	"cryptkeeper/internal/sources/manual"
 	"cryptkeeper/web/templates"
 )
 
@@ -51,4 +56,29 @@ func TestSyncChips(t *testing.T) {
 	got = s.syncStatus(portfolio.Snapshot{}, false)
 	check("prices before any snapshot", got.Prices, templates.SyncInfo{Status: portfolio.StatusPending, Label: "Loading prices…"})
 	check("wallets before any snapshot", got.Wallets, templates.SyncInfo{Status: portfolio.StatusPending, Label: "Syncing wallets…"})
+}
+
+// TestSyncChipsRefresh: each chip is a button: the prices one reprices the balances already
+// fetched without asking the wallets again, the wallets one runs a full refresh.
+func TestSyncChipsRefresh(t *testing.T) {
+	e := newEnv(t, "")
+	e.reg.Upsert(sources.Def{ID: "kids", Type: sources.TypeManual, Label: "Kids", Holdings: []manual.Holding{{Asset: "BTC", Amount: 2}}})
+	e.ref.Force(context.Background())
+	_, page := e.do("GET", "/", nil, nil)
+	for _, want := range []string{"/refresh/prices", "Refresh prices", "Refresh balances"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("overview lacks %q", want)
+		}
+	}
+	first, _ := e.ref.Latest()
+
+	e.price["BTC"] = 250
+	_, out := e.do("POST", "/refresh/prices", nil, ds(nil))
+	if !strings.Contains(out, `id="sync-status"`) || !strings.Contains(out, "Prices just now") {
+		t.Fatalf("refresh prices answered: %.600s", out)
+	}
+	s, _ := e.ref.Latest()
+	if math.Abs(s.TotalUSD-500) > 1e-6 || !s.SyncedAt.Equal(first.SyncedAt) {
+		t.Errorf("after refreshing prices: total %v (want 500), synced %v (want the earlier %v)", s.TotalUSD, s.SyncedAt, first.SyncedAt)
+	}
 }

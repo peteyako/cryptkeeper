@@ -298,6 +298,22 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	_ = sse.PatchElementTempl(templates.Dashboard(s.overviewPage(r, v)))
 }
 
+// refreshPrices is the prices chip: it reprices the balances already fetched, without asking
+// the wallets again, and patches the dashboard (and the chips, which the Wallets page has
+// without a dashboard).
+func (s *Server) refreshPrices(w http.ResponseWriter, r *http.Request) {
+	v := readView(r)
+	sse := datastar.NewSSE(w, r)
+	pricing := s.syncStatus(s.latest())
+	pricing.Prices.Status, pricing.Prices.Label = portfolio.StatusPending, "Updating prices…"
+	_ = sse.PatchElementTempl(templates.SyncChip(pricing))
+	_, repriced := s.Refresher.RepriceNow(r.Context())
+	_ = sse.PatchElementTempl(templates.SyncChip(s.syncStatus(s.latest())))
+	if repriced {
+		_ = sse.PatchElementTempl(templates.Dashboard(s.overviewPage(r, v)))
+	}
+}
+
 func (s *Server) portfolioJSON(w http.ResponseWriter, r *http.Request) {
 	snap, _ := s.latest()
 	w.Header().Set("Content-Type", "application/json")

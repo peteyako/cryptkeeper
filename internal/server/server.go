@@ -113,6 +113,7 @@ func New(d Deps) http.Handler {
 		r.Get("/chart", s.chart)
 		r.Post("/chart/backfill", s.chartBackfill)
 		r.Post("/refresh", s.refresh)
+		r.Post("/refresh/prices", s.refreshPrices)
 		r.Get("/portfolio.json", s.portfolioJSON)
 
 		r.Get("/a/{asset}", s.coin)

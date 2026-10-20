@@ -151,3 +151,30 @@ func TestPricesRefreshBetweenWalletRefreshes(t *testing.T) {
 		t.Errorf("OnSnapshot ran %d times, want the refresh and the reprice", n)
 	}
 }
+
+// TestRepriceNow: the prices chip reprices at once, however recent the last prices are,
+// without fetching the wallets; before the first refresh it has nothing to reprice.
+func TestRepriceNow(t *testing.T) {
+	src := &stubSource{id: "cold", res: core.WalletResult{Holdings: []core.Holding{h("cold", "BTC", 2)}}}
+	p := &livePricer{usd: map[string]float64{"BTC": 100}}
+	a := &Aggregator{
+		Wallets: func() []Wallet { return []Wallet{{ID: "cold", Label: "Cold", Source: src}} },
+		Prices:  p.get, StaleMax: time.Hour,
+	}
+	r := &Refresher{Agg: a, Broker: NewBroker(), Interval: time.Hour, PriceInterval: time.Hour}
+	if _, ok := r.RepriceNow(context.Background()); ok {
+		t.Fatal("repriced before the first refresh")
+	}
+	first := r.Rebuild(context.Background())
+	p.set("BTC", 250)
+	s, ok := r.RepriceNow(context.Background())
+	if !ok || !near(s.TotalUSD, 500) || !s.SyncedAt.Equal(first.SyncedAt) {
+		t.Fatalf("RepriceNow ok=%v total=%v synced=%v, want 500 on the balances of %v", ok, s.TotalUSD, s.SyncedAt, first.SyncedAt)
+	}
+	if latest, _ := r.Latest(); !near(latest.TotalUSD, 500) {
+		t.Errorf("latest total %v, want the repriced 500", latest.TotalUSD)
+	}
+	if n := src.hits.Load(); n != 1 {
+		t.Errorf("the wallet was fetched %d times, want once", n)
+	}
+}
