@@ -56,7 +56,10 @@ type OverviewPage struct {
 	// PnL is the unrealized profit or loss per merged asset key. It feeds the optional
 	// P/L column of the holdings table; with no entries the toggle is not shown.
 	PnL map[string]PnLCell
-	Now time.Time
+	// Trends is each asset's prices over the last TrendWindow, oldest first and ending at
+	// the current price: the holdings table's price lines. An asset without two has none.
+	Trends map[string][]portfolio.Point
+	Now    time.Time
 	// BackfillDays > 0 offers "Load last N days" under the chart (0 = no offer).
 	BackfillDays int
 	// BackfillErr is the note shown when loading history failed (a whole sentence).

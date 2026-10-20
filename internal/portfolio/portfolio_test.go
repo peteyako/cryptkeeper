@@ -330,6 +330,36 @@ func TestPriceChanges(t *testing.T) {
 	}
 }
 
+// TestPriceSeries: each asset's recorded prices since a time, oldest first; a row an asset
+// wasn't priced in gives it no point.
+func TestPriceSeries(t *testing.T) {
+	db := openDB(t)
+	hist := &History{DB: db, Interval: time.Minute}
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	row := func(ts time.Time, prices map[string]core.Price) {
+		hist.last = time.Time{}
+		if err := hist.Record(ctx, Snapshot{UpdatedAt: ts, Prices: prices,
+			Wallets: []WalletView{{ID: "w", Status: StatusSynced, Rows: []HoldingRow{{Holding: h("w", "BTC", 1)}}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	row(now.Add(-9*24*time.Hour), map[string]core.Price{"BTC": {USD: 50}}) // before the window
+	row(now.Add(-6*24*time.Hour), map[string]core.Price{"BTC": {USD: 100}, "SOL": {USD: 20}})
+	row(now.Add(-time.Hour), map[string]core.Price{"BTC": {USD: 110}})
+	got, err := hist.PriceSeries(ctx, now.Add(-7*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	btc := got["BTC"]
+	if len(btc) != 2 || btc[0].V != 100 || btc[1].V != 110 || !btc[1].T.Equal(now.Add(-time.Hour)) {
+		t.Errorf("BTC = %+v, want 100 six days ago then 110 an hour ago", btc)
+	}
+	if sol := got["SOL"]; len(sol) != 1 || sol[0].V != 20 {
+		t.Errorf("SOL = %+v, want the one row it was priced in", sol)
+	}
+}
+
 func TestValueAt(t *testing.T) {
 	db := openDB(t)
 	hist := &History{DB: db, Interval: time.Minute}

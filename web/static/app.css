@@ -1910,6 +1910,35 @@ body.amounts-hidden .fig-m {
   font-size: 13px;
 }
 
+/* The holdings table's price over the last 7 days: a small line in the change colors. */
+.spark {
+  display: block;
+  width: 96px;
+  height: 28px;
+  margin-left: auto;
+  overflow: visible;
+}
+
+.spark path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark--up path {
+  stroke: var(--gain);
+}
+
+.spark--down path {
+  stroke: var(--loss);
+}
+
+.spark--flat path {
+  stroke: var(--text-3);
+}
+
 .asset {
   display: flex;
   align-items: center;
@@ -1986,6 +2015,13 @@ body.amounts-hidden .fig-m {
 
 .tbl--wallet .asset__name .badge {
   margin-left: 8px;
+}
+
+/* In a wide holdings table a long name wraps, so the other columns fit beside it. */
+@media (min-width: 760px) {
+  .tbl--holdings .asset__name {
+    white-space: normal;
+  }
 }
 
 /* On phones the holdings table becomes the board's list: disc, name and amount on the
@@ -2082,6 +2118,7 @@ body.amounts-hidden .fig-m {
   .tbl--holdings .col-held,
   .tbl--holdings .col-price,
   .tbl--holdings .col-chg7,
+  .tbl--holdings .col-trend,
   .tbl--holdings .asset__sub {
     display: none;
   }

@@ -135,6 +135,33 @@ func (s *Server) applyChange7d(ctx context.Context, snap *portfolio.Snapshot) {
 	}
 }
 
+// trendPoints is how many prices a holdings row's price line keeps: about one a pixel.
+const trendPoints = 96
+
+// priceTrends returns each asset's prices over the holdings table's trend window, from
+// history, ending at its current price. An asset without two prices has none.
+func (s *Server) priceTrends(ctx context.Context, snap portfolio.Snapshot, now time.Time) map[string][]portfolio.Point {
+	if s.History == nil || len(snap.Assets) == 0 {
+		return nil
+	}
+	series, err := s.History.PriceSeries(ctx, now.Add(-templates.TrendWindow))
+	if err != nil {
+		s.Log.Warn("price trends", "err", err)
+		return nil
+	}
+	out := make(map[string][]portfolio.Point, len(snap.Assets))
+	for _, a := range snap.Assets {
+		pts := series[a.AssetKey]
+		if a.Price != nil && a.Price.USD > 0 {
+			pts = append(pts, portfolio.Point{T: now, V: a.Price.USD})
+		}
+		if len(pts) >= 2 {
+			out[a.AssetKey] = portfolio.Downsample(pts, trendPoints)
+		}
+	}
+	return out
+}
+
 // displayKey shortens "spl:<mint>" keys for display ("JUPy…DvCN"); symbols pass through.
 func displayKey(k string) string {
 	m, ok := core.IsSPLKey(k)

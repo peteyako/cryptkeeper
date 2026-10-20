@@ -380,6 +380,9 @@ templ holdingsRow(p OverviewPage, a portfolio.AssetRow, show string, part bool) 
 		<td class="col-chg7 num">
 			@changeCell(a.Change7d, a.ValueUSD, a.Priced, "7 day")
 		</td>
+		<td class="col-trend num">
+			@sparkCell(SparkOf(p.Trends[a.AssetKey], p.Now.Add(-TrendWindow), p.Now))
+		</td>
 		if len(p.PnL) > 0 {
 			<td class="col-pnl num" data-show="$showPnl" style="display:none">
 				@pnlCell(p.PnL[a.AssetKey])
@@ -419,6 +422,7 @@ templ cashGroupRow(p OverviewPage, it HoldingItem) {
 		</td>
 		<td class="col-chg num"><span class="chg chg--none" aria-label="No 24 hour change for a group">—</span></td>
 		<td class="col-chg7 num"><span class="chg chg--none" aria-label="No 7 day change for a group">—</span></td>
+		<td class="col-trend num"><span class="chg chg--none" aria-label="No price line for a group">—</span></td>
 		if len(p.PnL) > 0 {
 			<td class="col-pnl num" data-show="$showPnl" style="display:none"><span class="chg chg--none" aria-label="No profit or loss for a group">—</span></td>
 		}
@@ -461,6 +465,7 @@ templ holdingsCard(p OverviewPage) {
 							<th class="col-val num" scope="col">Value</th>
 							<th class="col-chg num" scope="col">24h</th>
 							<th class="col-chg7 num" scope="col">7d</th>
+							<th class="col-trend num" scope="col">Last 7 days</th>
 							if len(p.PnL) > 0 {
 								<th class="col-pnl num" scope="col" data-show="$showPnl" style="display:none">P/L</th>
 							}
@@ -482,6 +487,19 @@ templ holdingsCard(p OverviewPage) {
 			</div>
 		}
 	</section>
+}
+
+// sparkCell is a holdings row's price over the last 7 days as a small line, green when it
+// rose and red when it fell, or a dash before history holds two prices.
+templ sparkCell(s Spark) {
+	if s.Path != "" {
+		<svg class={ "spark", "spark--" + s.Dir } viewBox={ sparkViewBox } preserveAspectRatio="none" role="img" aria-label={ s.Label }>
+			<title>{ s.Label }</title>
+			<path d={ s.Path }></path>
+		</svg>
+	} else {
+		<span class="chg chg--none" aria-label="No 7 day price history yet">—</span>
+	}
 }
 
 // pnlCell is the optional P/L column: the arrow, sign and percent of the unrealized result

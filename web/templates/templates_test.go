@@ -1208,6 +1208,18 @@ func TestOverviewPortfolioChanges(t *testing.T) {
 	if n := strings.Count(ov.html, `<td class="col-chg7 num">`); n != 13 {
 		t.Errorf("want a 7d cell on every holdings row (12 assets and the cash group), got %d", n)
 	}
+	// A price line for every asset with a week of history, in the direction's color; the
+	// others and the cash group get a dash.
+	has(t, ov,
+		`<th class="col-chg7 num" scope="col">7d</th><th class="col-trend num" scope="col">Last 7 days</th>`,
+		`<svg class="spark spark--up" viewBox="0 0 96 28" preserveAspectRatio="none" role="img" aria-label="Price since `,
+		`<svg class="spark spark--down"`, `<svg class="spark spark--flat"`,
+		`<span class="chg chg--none" aria-label="No 7 day price history yet">—</span>`,
+		`<span class="chg chg--none" aria-label="No price line for a group">—</span>`,
+	)
+	if n := strings.Count(ov.html, `<td class="col-trend num">`); n != 13 {
+		t.Errorf("want a price line cell on every holdings row, got %d", n)
+	}
 	// The watch list has no 7d data, so it keeps just 24h.
 	if strings.Contains(byName(t, pages, "overview empty").html, "col-chg7") {
 		t.Error("the empty overview has no table")

@@ -178,7 +178,9 @@ Group what you hold into named portfolios (sidebar → **New portfolio**, or **M
 
 Each portfolio gets its own tab with total, chart, allocation and holdings. In the allocation
 and the holdings, cash and dollar stablecoins (USD, USDC, USDT, DAI and the like) are one line,
-**Cash & stablecoins**; click it to see each of them. Portfolios live in
+**Cash & stablecoins**; click it to see each of them. Each holding also gets a small line
+of its price over the last 7 days, drawn from CryptKeeper's own price history, so it
+appears once a day of history is recorded. Portfolios live in
 `data/portfolios.yaml`, which you can edit by hand (typos are reported with line numbers):
 
 ```yaml

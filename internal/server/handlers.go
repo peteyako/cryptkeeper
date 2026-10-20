@@ -157,6 +157,7 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
 		NetWorthShare: pv.share,
 		PnL:           s.pnlCells(r.Context(), snap.Assets, pv.lotWallets),
+		Trends:        s.priceTrends(r.Context(), snap, now),
 		Now:           now,
 	}
 	if s.History != nil {

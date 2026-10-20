@@ -219,6 +219,40 @@ func TestAgo(t *testing.T) {
 	}
 }
 
+// TestSparkOf: a holdings row's price line follows time along x, spans the price range (at
+// least 1% of the price) along y, and says which way the price went.
+func TestSparkOf(t *testing.T) {
+	to := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	from := to.Add(-TrendWindow)
+	at := func(d time.Duration, v float64) portfolio.Point { return portfolio.Point{T: from.Add(d), V: v} }
+
+	// 28 high with 2 of padding: 120 at y=2, 90 at y=26, 100 a third of the way up.
+	up := SparkOf([]portfolio.Point{at(0, 100), at(TrendWindow/2, 90), at(TrendWindow, 120)}, from, to)
+	if up.Path != "M0.0 18.0 L48.0 26.0 L96.0 2.0" || up.Dir != "up" {
+		t.Errorf("up = %+v", up)
+	}
+	if !strings.Contains(up.Label, "$100.00 to $120.00") {
+		t.Errorf("label %q should give the first and last price", up.Label)
+	}
+	// History that starts late leaves the left of the line empty.
+	late := SparkOf([]portfolio.Point{at(TrendWindow*3/4, 10), at(TrendWindow, 5)}, from, to)
+	if !strings.HasPrefix(late.Path, "M72.0 2.0 ") || late.Dir != "down" {
+		t.Errorf("late = %+v", late)
+	}
+	// A stablecoin's tiny moves stay near the middle instead of filling the height.
+	stable := SparkOf([]portfolio.Point{at(0, 1.0002), at(TrendWindow, 0.9998)}, from, to)
+	if stable.Path != "M0.0 13.5 L96.0 14.5" {
+		t.Errorf("stable = %+v", stable)
+	}
+	// One price, none usable, or prices from the last few hours only draw nothing.
+	for _, pts := range [][]portfolio.Point{nil, {at(0, 5)}, {at(0, math.NaN()), at(TrendWindow, 5)}, {at(0, 0), at(TrendWindow, 0)},
+		{at(TrendWindow-6*time.Hour, 5), at(TrendWindow, 6)}} {
+		if s := SparkOf(pts, from, to); s != (Spark{}) {
+			t.Errorf("SparkOf(%v) = %+v, want none", pts, s)
+		}
+	}
+}
+
 func TestSVGPath(t *testing.T) {
 	pts := []portfolio.Point{{V: 10}, {V: 20}, {V: 15}, {V: 30}}
 	line, area := SVGPath(pts, 800, 220)

@@ -295,6 +295,34 @@ func (h *History) PriceChanges(ctx context.Context, current map[string]float64, 
 	return out, nil
 }
 
+// PriceSeries returns each asset's recorded USD prices since from, oldest first. A row an
+// asset wasn't priced in gives it no point.
+func (h *History) PriceSeries(ctx context.Context, from time.Time) (map[string][]Point, error) {
+	rows, err := h.DB.QueryContext(ctx, `SELECT ts, prices FROM history WHERE ts >= ? ORDER BY ts`, from.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]Point{}
+	for rows.Next() {
+		var ts int64
+		var pj string
+		if err := rows.Scan(&ts, &pj); err != nil {
+			return nil, err
+		}
+		var prices map[string]float64
+		if err := json.Unmarshal([]byte(pj), &prices); err != nil {
+			return nil, err
+		}
+		for k, v := range prices {
+			if v > 0 {
+				out[k] = append(out[k], Point{T: time.Unix(ts, 0), V: v})
+			}
+		}
+	}
+	return out, rows.Err()
+}
+
 // ValueAt values the history row nearest to at (within tol) with that row's prices, counting
 // only (wallet, asset) pairs accepted by inc (nil = all). ok is false when no row is close.
 func (h *History) ValueAt(ctx context.Context, at time.Time, tol time.Duration, inc Include) (float64, bool, error) {

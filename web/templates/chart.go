@@ -246,6 +246,63 @@ func SVGPath(points []portfolio.Point, w, h float64) (line, area string) {
 	return line, area
 }
 
+// TrendWindow is how far back the holdings table's price lines reach.
+const TrendWindow = 7 * 24 * time.Hour
+
+// A Spark is drawn in a viewBox of sparkW by sparkH, sparkPad clear above and below so the
+// stroke isn't clipped. Its y scale spans at least sparkMinSpan of the middle price, so a
+// stablecoin's tiny moves stay near flat instead of filling the height.
+const (
+	sparkW, sparkH, sparkPad = 96.0, 28.0, 2.0
+	sparkMinSpan             = 0.01
+)
+
+var sparkViewBox = "0 0 " + numTrim(sparkW) + " " + numTrim(sparkH)
+
+// Spark is a holdings row's price line: its SVG path data, which way the price went (up,
+// down, flat) and a description for screen readers. The zero Spark draws nothing.
+type Spark struct {
+	Path, Dir, Label string
+}
+
+// SparkOf draws prices between from and to; only positive, finite ones count. x follows
+// time, so history that starts late leaves the left of the line empty. Prices covering less
+// than a seventh of the window (a day of the week) draw nothing: the line would be a dot
+// at the right edge.
+func SparkOf(points []portfolio.Point, from, to time.Time) Spark {
+	var pts []portfolio.Point
+	for _, p := range points {
+		if finite(p.V) && p.V > 0 {
+			pts = append(pts, p)
+		}
+	}
+	if len(pts) < 2 || !to.After(from) || pts[len(pts)-1].T.Sub(pts[0].T) < to.Sub(from)/7 {
+		return Spark{}
+	}
+	lo, hi := pts[0].V, pts[0].V
+	for _, p := range pts {
+		lo, hi = math.Min(lo, p.V), math.Max(hi, p.V)
+	}
+	if mid, span := (lo+hi)/2, (lo+hi)/2*sparkMinSpan; hi-lo < span {
+		lo, hi = mid-span/2, mid+span/2
+	}
+	var b strings.Builder
+	for i, p := range pts {
+		x := math.Max(0, math.Min(1, float64(p.T.Sub(from))/float64(to.Sub(from)))) * sparkW
+		y := sparkPad + (hi-p.V)/(hi-lo)*(sparkH-2*sparkPad)
+		if i == 0 {
+			b.WriteByte('M')
+		} else {
+			b.WriteString(" L")
+		}
+		b.WriteString(num1(x) + " " + num1(y))
+	}
+	first, last := pts[0], pts[len(pts)-1]
+	_, dir := ChangePct((last.V - first.V) / first.V * 100)
+	label := "Price since " + Local(first.T).Format("Jan 2") + ": " + PriceFiat(first.V) + " to " + PriceFiat(last.V)
+	return Spark{Path: b.String(), Dir: dir, Label: label}
+}
+
 // gridPath is the SVG path of the gridlines for a viewBox of w by h.
 func gridPath(w, h float64) string {
 	var b strings.Builder

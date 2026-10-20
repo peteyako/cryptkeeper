@@ -479,6 +479,7 @@ func OverviewFor(pf, rng string, now time.Time) (templates.OverviewPage, bool) {
 		Sync:          SyncSynced(),
 		Watch:         WatchList(now),
 		PnL:           PnLCells(now),
+		Trends:        Trends(snap, now),
 		Now:           now,
 	}
 	if pf != "all" {
@@ -493,6 +494,33 @@ func OverviewFor(pf, rng string, now time.Time) (templates.OverviewPage, bool) {
 		p.Change = scaleChange(p.Change, scale)
 	}
 	return p, true
+}
+
+// Trends returns the holdings table's price lines: every 3 hours over the last week, a
+// wave from the price a week ago (by change7d) to the current one. Assets without a 7d
+// change have none, like the 7d column.
+func Trends(snap portfolio.Snapshot, now time.Time) map[string][]portfolio.Point {
+	const n = 57 // every 3 hours, both ends included
+	out := map[string][]portfolio.Point{}
+	for _, a := range snap.Assets {
+		chg, ok := change7d[a.AssetKey]
+		if !ok || a.Price == nil {
+			continue
+		}
+		last := a.Price.USD
+		first := last / (1 + chg/100)
+		amp := (math.Abs(chg)*0.4 + 0.02) / 100 * last
+		pts := make([]portfolio.Point, n)
+		for i := range pts {
+			x := float64(i) / float64(n-1)
+			pts[i] = portfolio.Point{
+				T: now.Add(-templates.TrendWindow + time.Duration(i)*3*time.Hour),
+				V: first + (last-first)*x + amp*math.Sin(x*11)*math.Sin(x*math.Pi),
+			}
+		}
+		out[a.AssetKey] = pts
+	}
+	return out
 }
 
 func scaleChange(c portfolio.Change, k float64) portfolio.Change {
