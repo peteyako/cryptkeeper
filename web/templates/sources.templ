@@ -373,10 +373,7 @@ templ solanaFields(p SourceFormPage) {
 	{{ addr := p.field("address", "Public address") }}
 	{{ addr.Mono, addr.Required, addr.Placeholder = true, true, "7xKX…" }}
 	@textField(addr)
-	{{ vault := p.field("jupiterVault", "Jupiter limit-order vault") }}
-	{{ vault.Mono, vault.Placeholder = true, "Optional" }}
-	{{ vault.Help = "Jupiter keeps the funds of open limit orders in a vault account of its own, which nothing on chain ties to your wallet. Paste the vault's address to count its balances and orders here." }}
-	@textField(vault)
+	@vaultField(vaultSpec(p.field("jupiterVault", "Jupiter limit-order vault")))
 	@Notice("neutral", "info") {
 		Watch-only. Never enter a seed phrase or private key here.
 	}
@@ -423,6 +420,50 @@ templ fieldLabel(f fieldSpec) {
 templ textField(f fieldSpec) {
 	<div class="field">
 		@fieldLabel(f)
+		@textInput(f)
+		@fieldNote(f)
+	</div>
+}
+
+// vaultSpec is the Jupiter limit-order vault field, as the form and the Find button draw it.
+func vaultSpec(f fieldSpec) fieldSpec {
+	f.Mono, f.Placeholder = true, "Optional"
+	f.Help = "Jupiter keeps the funds of open limit orders in a vault account of its own, which nothing on chain ties to your wallet. Find looks for it in the wallet's history, or paste its address. Its balances and orders then count here."
+	return f
+}
+
+// vaultField is the vault input with a Find button beside it, which looks for the vault in
+// the wallet's history and fills it in (VaultInput, VaultFindResult).
+templ vaultField(f fieldSpec) {
+	<div class="field">
+		@fieldLabel(f)
+		<div class="input-action">
+			@textInput(f)
+			<button
+				type="button"
+				class="btn btn--secondary"
+				data-indicator="findingVault"
+				data-attr:disabled="$findingVault"
+				data-class="{'is-busy': $findingVault}"
+				data-on:click={ findVaultClick }
+			>Find</button>
+		</div>
+		@fieldNote(f)
+		@VaultFindResult("")
+	</div>
+}
+
+// VaultInput is the vault input holding vault, which the Find button swaps in.
+templ VaultInput(vault string) {
+	@textInput(vaultSpec(fieldSpec{Name: "jupiterVault", Label: "Jupiter limit-order vault", Value: vault}))
+}
+
+// VaultFindResult says what the vault's Find button is doing or found.
+templ VaultFindResult(msg string) {
+	<p id="vault-find" class="field__help" aria-live="polite" hidden?={ msg == "" }>{ msg }</p>
+}
+
+templ textInput(f fieldSpec) {
 		<input
 			class={ "input", templ.KV("input--mono", f.Mono), templ.KV("input--error", f.Err != "") }
 			id={ f.ID() }
@@ -455,8 +496,6 @@ templ textField(f fieldSpec) {
 				aria-describedby={ f.Describe() }
 			}
 		/>
-		@fieldNote(f)
-	</div>
 }
 
 templ areaField(f fieldSpec, rows int) {

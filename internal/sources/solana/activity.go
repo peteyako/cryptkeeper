@@ -569,9 +569,12 @@ type rpcTx struct {
 	} `json:"meta"`
 }
 
-// acctKey is an entry of message.accountKeys: an object with "pubkey" in jsonParsed, a bare
-// string in the other encodings.
-type acctKey struct{ Pubkey string }
+// acctKey is an entry of message.accountKeys: an object with "pubkey" and "signer" in
+// jsonParsed, a bare string in the other encodings.
+type acctKey struct {
+	Pubkey string
+	Signer bool
+}
 
 func (k *acctKey) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '"' {
@@ -579,11 +582,12 @@ func (k *acctKey) UnmarshalJSON(b []byte) error {
 	}
 	var o struct {
 		Pubkey string `json:"pubkey"`
+		Signer bool   `json:"signer"`
 	}
 	if err := json.Unmarshal(b, &o); err != nil {
 		return err
 	}
-	k.Pubkey = o.Pubkey
+	k.Pubkey, k.Signer = o.Pubkey, o.Signer
 	return nil
 }
 

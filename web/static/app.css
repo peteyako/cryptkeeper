@@ -2639,6 +2639,17 @@ body.amounts-hidden .fig-m {
   font-weight: 400;
 }
 
+/* An input with a button beside it: the Jupiter vault's Find. */
+.input-action {
+  display: flex;
+  gap: 8px;
+}
+
+.input-action .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .field__help {
   color: var(--text-3);
   font-size: 12px;

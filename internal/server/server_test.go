@@ -83,6 +83,8 @@ func newEnv(t *testing.T, password string, opts ...func(*Deps)) *env {
 				return fakeExchange{d.ID}, nil
 			case sources.TypeBitcoin:
 				return fakeExchange{d.ID}, nil
+			case sources.TypeSolana:
+				return fakeVaultFinder{fakeExchange{d.ID}, d.Address}, nil
 			}
 			return fakeExchange{d.ID}, nil
 		})

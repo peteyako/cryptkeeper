@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/starfederation/datastar-go/datastar"
 
+	"cryptkeeper/internal/activity"
 	"cryptkeeper/internal/core"
 	"cryptkeeper/internal/portfolio"
 	"cryptkeeper/internal/secrets"
@@ -263,6 +264,80 @@ func (s *Server) sourceTest(w http.ResponseWriter, r *http.Request) {
 	}
 	res := s.testSource(r.Context(), d)
 	_ = sse.PatchElementTempl(templates.TestResultView(res))
+}
+
+// vaultFinder is a Solana source that can look for its Jupiter limit-order vault.
+type vaultFinder interface {
+	FindJupiterVault(ctx context.Context, try []string, budget int, progress func(read int)) (string, error)
+}
+
+// vaultBudget is how many of a wallet's transactions the vault's Find button reads at most.
+const vaultBudget = 400
+
+// sourceFindVault is the vault field's Find button: it looks for the wallet's Jupiter
+// limit-order vault in the wallet's history, says how far it got, and fills the field in.
+func (s *Server) sourceFindVault(w http.ResponseWriter, r *http.Request) {
+	editID := r.URL.Query().Get("id")
+	if editID == "" {
+		editID = formEditID(r)
+	}
+	addr := strings.TrimSpace(r.PostFormValue("address"))
+	sse := datastar.NewSSE(w, r)
+	say := func(msg string) { _ = sse.PatchElementTempl(templates.VaultFindResult(msg)) }
+	if addr == "" {
+		say("Enter the wallet's public address first.")
+		return
+	}
+	src, err := s.Registry.Build(sources.Def{ID: "find-vault", Type: sources.TypeSolana, Address: addr})
+	if err != nil {
+		say("That isn't a Solana address.")
+		return
+	}
+	finder, ok := src.(vaultFinder)
+	if !ok {
+		say("This source can't look for a vault.")
+		return
+	}
+	say("Looking through the wallet's transactions…")
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	vault, err := finder.FindJupiterVault(ctx, s.vaultHints(ctx, editID), vaultBudget, func(read int) {
+		if read%20 == 0 {
+			say(fmt.Sprintf("Looking through the wallet's transactions… %d read", read))
+		}
+	})
+	switch {
+	case err != nil:
+		say("Couldn't finish looking: " + err.Error())
+	case vault == "":
+		say(fmt.Sprintf("No Jupiter limit order in the wallet's last %d transactions. To find an older vault, open the transaction of your first limit order on Solscan: the vault is the owner of the token account your tokens went to.", vaultBudget))
+	default:
+		_ = sse.PatchElementTempl(templates.VaultInput(vault), datastar.WithModeReplace())
+		say("✓ Found in a Jupiter limit-order transaction. Save to count the vault's balances.")
+	}
+}
+
+// vaultHints are the edited source's transactions most likely to show its vault, read
+// before its history: the newest transfer with each counterparty Activity has.
+func (s *Server) vaultHints(ctx context.Context, id string) []string {
+	if id == "" || s.Activity == nil {
+		return nil
+	}
+	txs, err := s.Activity.List(ctx, activity.Filter{SourceIDs: []string{id}, Limit: 500,
+		Kinds: []core.TxKind{core.TxSend, core.TxReceive, core.TxTransfer, core.TxPosition}})
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var sigs []string
+	for _, tx := range txs {
+		if tx.Counterparty == "" || seen[tx.Counterparty] {
+			continue
+		}
+		seen[tx.Counterparty] = true
+		sigs = append(sigs, tx.ExternalID)
+	}
+	return sigs
 }
 
 func (s *Server) testSource(ctx context.Context, d sources.Def) templates.TestResult {

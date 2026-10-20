@@ -130,10 +130,12 @@ underlying tokens, grouped by position. Uncollected LP fees aren't included.
 
 **Jupiter limit orders:** Jupiter keeps the funds of open limit orders in a vault account of
 your wallet's own, which nothing on chain ties back to your address (Jupiter resolves it with a
-signed message, which a watch-only app can't give). Paste the vault's address into the source's
-"Jupiter limit-order vault" field: its SOL and tokens then show as a "Limit orders" position, and
-Activity treats the vault as part of the wallet, so a deposit is a move, a fill is a swap and a
-withdrawal a move. The vault is the owner of the token account your first deposit went to.
+signed message, which a watch-only app can't give). **Find**, beside the source's "Jupiter
+limit-order vault" field, looks for it in the wallet's last 400 transactions: Jupiter signs with
+the vault next to one of its own keys in each deposit, fill and withdrawal. Or paste it yourself:
+the vault is the owner of the token account your first deposit went to. Its SOL and tokens then
+show as a "Limit orders" position, and Activity treats the vault as part of the wallet, so a
+deposit is a move, a fill is a swap and a withdrawal a move.
 
 ### Manual holdings
 Coins held anywhere CryptKeeper can't read, one per line: `BTC 0.25 owed by Sam`. Use

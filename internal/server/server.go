@@ -127,6 +127,7 @@ func New(d Deps) http.Handler {
 		r.Get("/sources/new/{type}", s.sourceNew)
 		r.Get("/sources/{id}/edit", s.sourceEdit)
 		r.Post("/sources/test", s.sourceTest)
+		r.Post("/sources/find-vault", s.sourceFindVault)
 		r.Post("/sources", s.sourceSave)
 		r.Post("/sources/{id}", s.sourceSave)
 		r.Post("/sources/{id}/delete", s.sourceDelete)

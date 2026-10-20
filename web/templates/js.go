@@ -111,6 +111,10 @@ const refreshClick = `@post('/refresh', ` + liveFilter + `)`
 // refreshPricesClick is the prices chip: new prices on the balances already fetched.
 const refreshPricesClick = `@post('/refresh/prices', ` + liveFilter + `)`
 
+// findVaultClick posts the add-source form to the vault's Find button, which reads the
+// wallet's address from it.
+const findVaultClick = `@post('/sources/find-vault', {contentType: 'form', selector: '#source-form'})`
+
 // testClick posts the add-source form to the connection test. It names the form by
 // selector, which works whether or not the button sits inside the form.
 const testClick = `@post('/sources/test', {contentType: 'form', selector: '#source-form'})`
