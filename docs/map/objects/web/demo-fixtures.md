@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ 0a7dfb9
 entity: internal/demo/demo.go
 ---
 

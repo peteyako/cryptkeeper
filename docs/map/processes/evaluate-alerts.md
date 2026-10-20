@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ ea0d7ef
+verified: 2026-10-20 @ 0a7dfb9
 consumes: [alert-rule, snapshot, activity-entry, value-history, portfolio-view, config, database]
 produces: [database]
 ---
@@ -28,7 +28,7 @@ Input: a fresh `Snapshot` (from the refresher: a finished refresh or a reprice, 
 ## Steps
 
 1. `alertsEngine` builds the engine: rules, DB, label lookups, portfolio and history valuers, and an `Ntfy` notifier only if `ntfy.url` is configured: `main.go:386-431`.
-2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:311-313` (refresh), `:248-250` (reprice), `internal/activity/syncer.go:239-256`.
+2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:311-313` (refresh), `:248-250` (reprice), `internal/activity/syncer.go:266-283`.
 3. `OnSnapshot` returns if there is no rule store or database, locks, garbage-collects state of deleted or disabled rules, then evaluates each enabled rule inside a panic guard: `internal/alerts/engine.go:93-123`, `:167-174`, `internal/alerts/state.go:138-158`.
 4. `balance_drop`: per watched, freshly synced wallet compare current amounts to the stored baseline, fire on a fall beyond `MinPct`, then store the current amounts as the new baseline: `internal/alerts/engine.go:335-366`.
 5. `price`: skip stale or missing prices; compute threshold and re-arm line; first sight arms; an armed crossing disarms and fires if cooled down: `internal/alerts/engine.go:396-436`.

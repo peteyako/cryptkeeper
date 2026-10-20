@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-20 @ ea0d7ef
+verified: 2026-10-20 @ 0a7dfb9
 entity: web/templates/models.go
 ---
 
@@ -19,7 +19,7 @@ Templates are dumb: a handler computes everything (snapshot, history, P&L, sync 
 
 - Boundary: handler (`internal/server/*_handlers.go`) builds `templates.XxxPage` → `templates.XxxFull(page)` renders the document or, on a Datastar navigation, only the shell regions (see [server](server.md), [templ-components](templ-components.md)). Example: `overviewPage` → `templates.OverviewFull` (`internal/server/handlers.go:143-174,237`).
 - `Shell` (`web/templates/models.go:15-24`): `Title`, `Active` (one of overview/wallets/activity/reports/alerts/settings/portfolios), `Portfolios []PortfolioNav`, `PF`, `Range`, `ShowLogos`, `AuthUser`. Built by `Server.shell` (`internal/server/handlers.go:43-60`). Embedded by every full-page model; `TaxPage` and `ReviewPage` are sections inside `ReportsPage` (`models.go:302-303`) and carry none, and the print views (`TaxReportView`, `print_view.go:30`) have no app shell.
-- `SyncInfo` (`models.go:30`) drives one sync chip and `SyncStatus` (`:38`, `{Prices, Wallets}`) the header's pair; `Every` words an interval for their tooltips (`errors_view.go:91-103`); `SettingsPage.RefreshMinutes`/`PriceMinutes` (`:149`) feed the two Settings Refresh selects; `PnLCell` (`:474`) the P/L column.
+- `SyncInfo` (`models.go:30`) drives one sync chip and `SyncStatus` (`:38`, `{Prices, Wallets}`) the header's pair; `Every` words an interval for their tooltips (`errors_view.go:91-103`); `SettingsPage.RefreshMinutes`/`PriceMinutes`/`ActivityMinutes` (`:149`) feed the three Settings Refresh selects; `PnLCell` (`:474`) the P/L column.
 - Pages in `models.go`: `OverviewPage:47`, `WalletsPage:69`, `WalletPage:77`, `SourcePickPage:105`, `SourceFormPage:108`, `SettingsPage:125`, `PortfoliosPage:183`, `PortfolioFormPage:209`, `ActivityPage:251`, `ReportsPage:291`, `TaxPage:312`, `ReviewPage:349`, `KoinlyPage:417`/`KoinlyWizard:424`, `AlertsPage:494`/`AlertFormPage:506`, `CloseCard:520`, `CoinPage:542`.
 - Builders and helpers by file (all `web/templates/`): `view.go` (source/status labels `StatusView:146`, `SyncView:163`, holding names, `Location`/`Local` time zone `:451-456`, `asset()` content-hashed URLs `:422`, `SafeLogoURL:408`, nav context `WithNav/IsNav:586-593`); `activity_view.go` (`TxTitle`, `TxStatusView`, date/leg text); `alerts_view.go`; `koinly_view.go`; `reports_view.go`; `tax_view.go`; `print_view.go`; `chart.go` (SVG path, axes, hover JSON from `portfolio.Point`).
 - `format.go` number rules, documented at its head (`web/templates/format.go:1-10`): `Fiat` 2 decimals with true minus (`:75`), `PriceFiat` (`:90`), `CoinAmount`/`Units` min 4 max 8 decimals, stables 2 (`:134,153`), `ChangePct` arrow+sign never color alone (`:182`), `ShortAddr` first 6 + last 4 (`:260`), `StalePrice` older than 15 min gets `~` (`:272`), `Ago/Since` (`:297,315`), `Allocation`/`HoldingItems` (`:401,477`).

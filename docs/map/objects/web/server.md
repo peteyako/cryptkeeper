@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-20 @ ea0d7ef
+verified: 2026-10-20 @ 0a7dfb9
 entity: internal/server/server.go
 ---
 
@@ -38,9 +38,9 @@ One `Server` struct embeds `Deps`, so every handler reaches every store through 
 
 - Render helpers: `isNav` (GET with `Datastar-Request`) → `renderStatus` wraps ctx with `templates.WithNav` and sends one SSE `PatchElementTempl`; otherwise a full HTML document with the given status. A navigation always answers 200 because Datastar retries other statuses (`internal/server/handlers.go:196-225`). `shell()` builds `templates.Shell` (`:43`).
 - SSE streams: `/stream` subscribes to the `Broker`, patches `Dashboard` per snapshot, 25 s keep-alive comment (`handlers.go:256-286`); `/activity/sync` patches `#activity-sync` on syncer changes and every 30 s, and `#activity-new` when `?feed=` is exceeded (`internal/server/activity_handlers.go:140-188`).
-- Cost cache: `taxCache` holds the last `tax.Compute` for one minute plus per-year reports; `invalidateTax()` drops it after any change to activity, tags, lots or closed years (`internal/server/tax.go:17-30,65-74,84-102`; callers e.g. `close_handlers.go:188`, `koinly_handlers.go:611`, `settings_handlers.go:377`). Not cached until the first live snapshot (`tax.go:84-86`).
+- Cost cache: `taxCache` holds the last `tax.Compute` for one minute plus per-year reports; `invalidateTax()` drops it after any change to activity, tags, lots or closed years (`internal/server/tax.go:17-30,65-74,84-102`; callers e.g. `close_handlers.go:188`, `koinly_handlers.go:611`, `settings_handlers.go:398`). Not cached until the first live snapshot (`tax.go:84-86`).
 - Serialisation: `closeMu` (year close/reopen) and `draftMu` (Koinly draft) (`server.go:82-85`).
-- Refresh intervals: `New` applies the saved Settings intervals (balances and prices, overriding `refreshMinutes` and `priceMinutes`) to the `Refresher` at start (`internal/server/server.go:97-99`); `applyIntervals` does it again after a settings change, a database restore and a reset (`internal/server/settings_handlers.go:51-74`, [refresh-balances](../../processes/refresh-balances.md)). The header chips read them through `Refresher.RefreshEvery` and `PriceEvery` (`internal/server/handlers.go:88`, `:112`), a source's retry note through `RefreshEvery` (`:371`), and `/healthz` judges freshness by 3 `RefreshEvery` intervals (`internal/server/guard.go:81`).
+- Refresh intervals: `New` applies the saved Settings intervals (balances, prices and activity, overriding `refreshMinutes`, `priceMinutes` and `activityMinutes`) to the `Refresher` and, through `applyIntervals`, the activity `Syncer` (`SetInterval`) at start (`internal/server/server.go:97-99`); `applyIntervals` does it again after a settings change, a database restore and a reset (`internal/server/settings_handlers.go:52-84`, [refresh-balances](../../processes/refresh-balances.md)). The header chips read them through `Refresher.RefreshEvery` and `PriceEvery` (`internal/server/handlers.go:88`, `:112`), a source's retry note through `RefreshEvery` (`:371`), the Activity sync card's through `Syncer.Every` (`internal/server/activity_handlers.go:104-106`), and `/healthz` judges freshness by 3 `RefreshEvery` intervals (`internal/server/guard.go:81`).
 - Static: `staticHandler` sets `immutable` 1-year cache when `?v=` is present, else 1 h (`server.go:200-212`).
 
 ## Connected to

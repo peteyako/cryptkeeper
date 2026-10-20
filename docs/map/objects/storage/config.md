@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-20 @ ea0d7ef
+verified: 2026-10-20 @ 0a7dfb9
 entity: internal/config/config.go
 ---
 
@@ -17,7 +17,7 @@ Two sources with different jobs: operator tuning (refresh cadence, RPC URLs, ntf
 
 ## Shape
 
-- Keys (`config.go:18-31`): `refreshMinutes` (5), `priceMinutes` (1), `staleMaxHours` (24), `activityMinutes` (15), `showTokenLogos`, `bitcoin.{esploraUrl, esploraFallbackUrls, esploraFallbackUrl, gapLimit}` (mempool.space, gap 20), `solana.{rpcUrl, includeStakeAccounts, hideUnpriced, minUsd, hideMints, allowMints, tokenOverrides, defi}`, `ntfy.{url, redactAmounts}`, `activity.backfillDays` (365), `tax.timezone`, `seedSources`. `refreshMinutes` is how often balances are fetched and `priceMinutes` how often prices alone are refreshed between balance refreshes; the Settings page can override both (numbers `refreshMinutes` and `priceMinutes` stored in the database `kv` key `ui.settings`; balances held to at least 1, prices to at most the balance interval, a saved prices 0 meaning "with the balances"; applied at start, after a restore and after a change; a reset returns to config.yaml's) (`internal/server/settings_handlers.go:22-31`, `:51-74`, `:121-142`); `PriceInterval()` is `min(priceMinutes, refreshMinutes)`, so prices never come less often than balances (`config.go:214-218`; `Refresher.PriceInterval`, [refresh-balances](../../processes/refresh-balances.md)). Defaults: `Default()` (`:130-147`); zero or negative values fall back (`:166-192`, `priceMinutes` at `:169-171`).
+- Keys (`config.go:18-31`): `refreshMinutes` (5), `priceMinutes` (1), `staleMaxHours` (24), `activityMinutes` (15), `showTokenLogos`, `bitcoin.{esploraUrl, esploraFallbackUrls, esploraFallbackUrl, gapLimit}` (mempool.space, gap 20), `solana.{rpcUrl, includeStakeAccounts, hideUnpriced, minUsd, hideMints, allowMints, tokenOverrides, defi}`, `ntfy.{url, redactAmounts}`, `activity.backfillDays` (365), `tax.timezone`, `seedSources`. `refreshMinutes` is how often balances are fetched, `priceMinutes` how often prices alone are refreshed between balance refreshes and `activityMinutes` how often activity syncs; the Settings page can override all three (numbers `refreshMinutes`, `priceMinutes` and `activityMinutes` stored in the database `kv` key `ui.settings`; balances and activity held to at least 1, prices to at most the balance interval, a saved prices 0 meaning "with the balances"; applied at start, after a restore and after a change, activity through `Syncer.SetInterval`; a reset returns to config.yaml's) (`internal/server/settings_handlers.go:22-32`, `:52-84`, `:132-163`); `PriceInterval()` is `min(priceMinutes, refreshMinutes)`, so prices never come less often than balances (`config.go:214-218`; `Refresher.PriceInterval`, [refresh-balances](../../processes/refresh-balances.md)). Defaults: `Default()` (`:130-147`); zero or negative values fall back (`:166-192`, `priceMinutes` at `:169-171`).
 - Strict decode: an unknown key in `config.yaml` is a startup error (`config.go:156-160`).
 - Fallback servers for Esplora are resolved in `Load` (`esploraFallbacks`, `:78-96`); after Load `EsploraFallbackURL` is empty and the list holds all.
 - `seedSources` are imported into `sources.yaml` only while it has no sources, i.e. on first run (`config.go:30-31`, `main.go:433-455`).
@@ -31,9 +31,9 @@ Two sources with different jobs: operator tuning (refresh cadence, RPC URLs, ntf
 | Setting | Where it lives |
 |---|---|
 | everything in the key list above | `config.yaml` only; edit and restart |
-| balances and prices refresh intervals | defaults are `refreshMinutes` and `priceMinutes`; the Settings "Refresh" card ("Refresh balances", "Refresh prices") is stored in DB `kv` key `ui.settings` as `refreshMinutes` and `priceMinutes` and wins (`settings_handlers.go:51-74`, `web/templates/settings.templ:192-204`). The wallets chip, a source's retry note and `/healthz` follow the interval in effect (`Refresher.RefreshEvery`), not config.yaml's |
-| logo toggle | default is `showTokenLogos`; the Settings toggle is stored in DB `kv` key `ui.settings` and wins (`internal/server/settings_handlers.go:22-31,44`) |
-| CoinGecko key, Blockstream key | saved sealed in DB `kv` from Settings; the env var wins when set (`settings_handlers.go:167,235`; `main.go:801-846`) |
+| balances, prices and activity intervals | defaults are `refreshMinutes`, `priceMinutes` and `activityMinutes`; the Settings "Refresh" card ("Refresh balances", "Refresh prices", "Sync activity") is stored in DB `kv` key `ui.settings` as `refreshMinutes`, `priceMinutes` and `activityMinutes` and wins (`settings_handlers.go:52-84`, `web/templates/settings.templ:192-205`). The activity syncer follows it through `Syncer.SetInterval`, and the Activity sync card's retry note through `Syncer.Every` (`activity_handlers.go:104-106`). The wallets chip, a source's retry note and `/healthz` follow the interval in effect (`Refresher.RefreshEvery`), not config.yaml's |
+| logo toggle | default is `showTokenLogos`; the Settings toggle is stored in DB `kv` key `ui.settings` and wins (`internal/server/settings_handlers.go:22-32,45`) |
+| CoinGecko key, Blockstream key | saved sealed in DB `kv` from Settings; the env var wins when set (`settings_handlers.go:188,256`; `main.go:801-846`) |
 | secret key, password, ntfy token | env / `.env` only |
 
 ## Connected to
@@ -45,7 +45,7 @@ Two sources with different jobs: operator tuning (refresh cadence, RPC URLs, ntf
 
 ## If you change this
 
-- **Hits:** `config.example.yaml` and `.env.example`; `Load` defaults and tests (`internal/config/config_test.go`); each package reading the changed field, including server handlers that read `s.Cfg` directly (`guard.go:46-50`, `settings_handlers.go:48,61,91-94`, `alerts_handlers.go:89-90`, `activity_handlers.go:107,131-134`, `tax.go:133`).
+- **Hits:** `config.example.yaml` and `.env.example`; `Load` defaults and tests (`internal/config/config_test.go`); each package reading the changed field, including server handlers that read `s.Cfg` directly (`guard.go:46-50`, `settings_handlers.go:49,76-78,101-104`, `alerts_handlers.go:89-90`, `activity_handlers.go:104,131-134`, `tax.go:133`).
 - **Does not hit:** `data/sources.yaml` ([yaml-store](yaml-store.md)), except `seedSources` on first run; DB tables ([database](database.md)).
 
 ## Surfaces
