@@ -22,7 +22,8 @@ type Refresher struct {
 	History  *History // optional
 	Interval time.Duration
 	// PriceInterval, when shorter than Interval, reprices the last balances in between
-	// (Aggregator.Reprice), so prices refresh more often than the wallets are fetched.
+	// (Aggregator.Reprice), so prices refresh more often than the wallets are fetched. Set it
+	// before Run; SetPriceInterval changes it after.
 	PriceInterval    time.Duration
 	MinForceInterval time.Duration // default 30s
 	Log              *slog.Logger
@@ -35,6 +36,7 @@ type Refresher struct {
 	lastForced  time.Time
 	lastSuccess time.Time
 	kick        chan struct{}
+	priceSet    chan struct{}      // SetPriceInterval tells Run to restart its price ticker
 	gen         uint64             // bumped by Kick: a build publishes only while it is the newest
 	cancelBuild context.CancelFunc // stops the build in progress when a kick replaces it
 }
@@ -50,6 +52,8 @@ func (r *Refresher) Run(ctx context.Context) {
 		r.kick = make(chan struct{}, 1)
 	}
 	kick := r.kick
+	r.priceSet = make(chan struct{}, 1)
+	priceSet := r.priceSet
 	r.mu.Unlock()
 	if s, ok := r.Agg.Warm(ctx); ok {
 		r.mu.Lock()
@@ -63,12 +67,26 @@ func (r *Refresher) Run(ctx context.Context) {
 	}
 	t := time.NewTicker(r.Interval)
 	defer t.Stop()
-	var priceTick <-chan time.Time // nil: prices refresh only with the wallets
-	if r.PriceInterval > 0 && r.PriceInterval < r.Interval {
-		pt := time.NewTicker(r.PriceInterval)
-		defer pt.Stop()
-		priceTick = pt.C
+	var (
+		pt        *time.Ticker
+		priceTick <-chan time.Time // nil: prices refresh only with the wallets
+	)
+	startPrices := func() {
+		if pt != nil {
+			pt.Stop()
+			pt, priceTick = nil, nil
+		}
+		if every := r.PriceEvery(); every < r.Interval {
+			pt = time.NewTicker(every)
+			priceTick = pt.C
+		}
 	}
+	startPrices()
+	defer func() {
+		if pt != nil {
+			pt.Stop()
+		}
+	}()
 	r.refresh(ctx)
 	for {
 		select {
@@ -80,6 +98,37 @@ func (r *Refresher) Run(ctx context.Context) {
 			r.refresh(ctx)
 		case <-priceTick:
 			go r.reprice(ctx, false) // never delays a kick
+		case <-priceSet:
+			startPrices()
+		}
+	}
+}
+
+// PriceEvery is how often prices refresh: PriceInterval, but at least with every refresh.
+func (r *Refresher) PriceEvery() time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.priceEvery()
+}
+
+// priceEvery is PriceEvery for a caller holding r.mu.
+func (r *Refresher) priceEvery() time.Duration {
+	if r.PriceInterval > 0 && r.PriceInterval < r.Interval {
+		return r.PriceInterval
+	}
+	return r.Interval
+}
+
+// SetPriceInterval changes PriceInterval (Settings); a running Run restarts its price ticker.
+func (r *Refresher) SetPriceInterval(d time.Duration) {
+	r.mu.Lock()
+	r.PriceInterval = d
+	ch := r.priceSet
+	r.mu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -149,13 +198,13 @@ func (r *Refresher) RepriceNow(ctx context.Context) (Snapshot, bool) { return r.
 
 // reprice publishes the last balances at new prices, between refreshes. A refresh prices
 // too, so a reprice gives way to one: it doesn't start while one runs or (unless forced)
-// within half a PriceInterval of the last prices, and it publishes nothing if anything else
+// within half a PriceEvery of the last prices, and it publishes nothing if anything else
 // was published, or a kick came, while it priced. It isn't counted as a sync.
 func (r *Refresher) reprice(ctx context.Context, force bool) (Snapshot, bool) {
 	v, _, _ := r.sf.Do("reprice", func() (any, error) {
 		r.mu.Lock()
 		prev, gen := r.latest, r.gen
-		busy := r.cancelBuild != nil || prev == nil || prev.Warm || (!force && time.Since(prev.PricedAt) < r.PriceInterval/2)
+		busy := r.cancelBuild != nil || prev == nil || prev.Warm || (!force && time.Since(prev.PricedAt) < r.priceEvery()/2)
 		r.mu.Unlock()
 		if busy {
 			return nil, nil

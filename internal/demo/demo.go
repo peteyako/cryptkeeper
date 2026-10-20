@@ -697,13 +697,14 @@ func SourceFormInvalid(typ string) templates.SourceFormPage {
 // Settings returns the settings page.
 func Settings(now time.Time) templates.SettingsPage {
 	return templates.SettingsPage{
-		Shell:       Shell("Settings", "settings", "all", ""),
-		Wallets:     Wallets(now),
-		DataDir:     "/data",
-		AuthEnabled: true,
-		Version:     "v0.1.0-dev",
-		Sync:        SyncRows(now),
-		Now:         now,
+		Shell:        Shell("Settings", "settings", "all", ""),
+		Wallets:      Wallets(now),
+		DataDir:      "/data",
+		AuthEnabled:  true,
+		Version:      "v0.1.0-dev",
+		Sync:         SyncRows(now),
+		PriceMinutes: 1, RefreshMinutes: 5,
+		Now: now,
 	}
 }
 

@@ -94,6 +94,9 @@ func New(d Deps) http.Handler {
 		d.Log = slog.Default()
 	}
 	s := &Server{Deps: d}
+	if s.Refresher != nil {
+		s.applyPriceInterval(context.Background()) // as saved in Settings
+	}
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, s.securityHeaders)
 
@@ -184,6 +187,7 @@ func New(d Deps) http.Handler {
 
 		r.Get("/settings", s.settings)
 		r.Post("/settings/logos", s.settingsLogos)
+		r.Post("/settings/price-interval", s.settingsPriceInterval)
 		r.Post("/settings/prices", s.settingsPrices)
 		r.Post("/settings/bitcoin", s.settingsBitcoin)
 		r.Get("/backup/export", s.backupExport)

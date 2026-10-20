@@ -1,6 +1,11 @@
 package templates
 
-import "time"
+import (
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // SettingsFull is the settings screen: appearance, privacy, the list of sources and facts
 // about this install.
@@ -103,6 +108,7 @@ templ settingsBody(p SettingsPage) {
 				}
 			</section>
 			@SettingsDisplay(p)
+			@SettingsRefresh(p)
 			@SettingsPrices(p)
 			@SettingsBitcoin(p)
 			@BackupIO(p)
@@ -180,6 +186,37 @@ templ SettingsDisplay(p SettingsPage) {
 			</label>
 		</form>
 	</section>
+}
+
+// SettingsRefresh sets how often prices refresh between balance refreshes.
+templ SettingsRefresh(p SettingsPage) {
+	<section id="settings-refresh" class="card setting" aria-labelledby="set-refresh-h">
+		<div class="setting__text">
+			<h2 id="set-refresh-h" class="h-card">Price updates</h2>
+			<p class="muted-text">Balances refresh { Every(time.Duration(p.RefreshMinutes) * time.Minute) } (refreshMinutes in config.yaml). In between, CryptKeeper refreshes the prices of what they hold, without asking your wallets and exchanges again.</p>
+		</div>
+		<form id="price-every-form" class="form" method="post" action="/settings/price-interval" data-on:change={ priceEveryChange }>
+			@selectField("priceMinutes", "Refresh prices", strconv.Itoa(p.PriceMinutes), priceEveryOpts(p.PriceMinutes, p.RefreshMinutes), "")
+		</form>
+	</section>
+}
+
+// priceEveryOpts are the choices for how often prices refresh: the usual steps below the
+// balance interval (and current, if it isn't one), then with every balance refresh.
+func priceEveryOpts(current, refresh int) []selectOpt {
+	steps := []int{1, 2, 3, 5, 10, 15, 30}
+	if current < refresh && !slices.Contains(steps, current) {
+		steps = append(steps, current)
+		slices.Sort(steps)
+	}
+	var opts []selectOpt
+	for _, m := range steps {
+		if m < refresh {
+			every := Every(time.Duration(m) * time.Minute)
+			opts = append(opts, selectOpt{strconv.Itoa(m), strings.ToUpper(every[:1]) + every[1:]})
+		}
+	}
+	return append(opts, selectOpt{strconv.Itoa(refresh), "With the balances (" + Every(time.Duration(refresh)*time.Minute) + ")"})
 }
 
 // SettingsPrices holds the CoinGecko demo key used for historical prices of Solana tokens.

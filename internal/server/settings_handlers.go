@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/starfederation/datastar-go/datastar"
 
@@ -19,7 +21,8 @@ import (
 // uiSettings are display options changed from Settings and stored in the database
 // (config.yaml supplies the defaults and is never written by the app).
 type uiSettings struct {
-	ShowLogos *bool `json:"showLogos,omitempty"`
+	ShowLogos    *bool `json:"showLogos,omitempty"`
+	PriceMinutes *int  `json:"priceMinutes,omitempty"` // how often prices refresh
 }
 
 const uiSettingsKey = "ui.settings"
@@ -42,6 +45,21 @@ func (s *Server) showLogos(ctx context.Context) bool {
 	return s.Cfg.ShowTokenLogos
 }
 
+// applyPriceInterval tells the refresher how often prices refresh (priceMinutes).
+func (s *Server) applyPriceInterval(ctx context.Context) {
+	s.Refresher.SetPriceInterval(time.Duration(s.priceMinutes(ctx)) * time.Minute)
+}
+
+// priceMinutes is how often prices refresh: as saved in Settings, else priceMinutes in
+// config.yaml, held to between 1 and the balance interval.
+func (s *Server) priceMinutes(ctx context.Context) int {
+	m := s.Cfg.PriceMinutes
+	if st := s.loadUISettings(ctx); st.PriceMinutes != nil {
+		m = *st.PriceMinutes
+	}
+	return min(max(m, 1), s.Cfg.RefreshMinutes)
+}
+
 func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 	snap, _ := s.latest()
 	wallets := snap.Wallets
@@ -61,6 +79,7 @@ func (s *Server) settingsPage(r *http.Request) templates.SettingsPage {
 		Sync: s.syncRows(r.Context()), Now: s.Now(), EncryptedExports: s.Cfg.EncryptExports(),
 		PriceKeyFromEnv: s.Cfg.CoinGeckoKey != "", PriceKey: s.maskedPriceKey(r.Context()),
 		BlockstreamFromEnv: s.Cfg.BlockstreamClientID != "", BlockstreamID: s.maskedBlockstreamID(r.Context()),
+		PriceMinutes: s.priceMinutes(r.Context()), RefreshMinutes: s.Cfg.RefreshMinutes,
 	}
 }
 
@@ -83,6 +102,24 @@ func (s *Server) settingsLogos(w http.ResponseWriter, r *http.Request) {
 	}
 	sse := datastar.NewSSE(w, r)
 	_ = sse.PatchElementTempl(templates.SettingsDisplay(s.settingsPage(r)))
+}
+
+// settingsPriceInterval saves how often prices refresh and tells the running refresher.
+func (s *Server) settingsPriceInterval(w http.ResponseWriter, r *http.Request) {
+	_ = parseBody(r)
+	if m, err := strconv.Atoi(strings.TrimSpace(r.PostFormValue("priceMinutes"))); err == nil {
+		st := s.loadUISettings(r.Context())
+		m = min(max(m, 1), s.Cfg.RefreshMinutes)
+		st.PriceMinutes = &m
+		if s.DB != nil {
+			if err := s.DB.PutJSON(r.Context(), uiSettingsKey, st); err != nil {
+				s.Log.Warn("save ui settings", "err", err)
+			}
+		}
+		s.applyPriceInterval(r.Context())
+	}
+	sse := datastar.NewSSE(w, r)
+	_ = sse.PatchElementTempl(templates.SettingsRefresh(s.settingsPage(r)))
 }
 
 // PricesKeyKV is the kv key holding the box-sealed CoinGecko key saved from Settings.
@@ -320,6 +357,9 @@ func (s *Server) backupImport(w http.ResponseWriter, r *http.Request) {
 		if res.TouchedTax() || res.Database {
 			s.invalidateTax()
 		}
+		if res.Database {
+			s.applyPriceInterval(r.Context()) // the restored settings may set another
+		}
 		s.Refresher.Kick()
 		if s.Syncer != nil {
 			s.Syncer.Kick()
@@ -344,6 +384,7 @@ func (s *Server) backupReset(w http.ResponseWriter, r *http.Request) {
 		s.Blockstream.SetCredentials("", "")
 	}
 	s.invalidateTax()
+	s.applyPriceInterval(ctx) // back to config.yaml's
 	s.Refresher.Rebuild(ctx)
 	if s.Syncer != nil {
 		s.Syncer.Kick()

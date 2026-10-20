@@ -14,7 +14,7 @@ import (
 // header says it is updating, not that it is synced or stale.
 func TestSyncChipWarmStart(t *testing.T) {
 	now := time.Now()
-	s := &Server{Deps: Deps{Now: func() time.Time { return now }}}
+	s := &Server{Deps: Deps{Now: func() time.Time { return now }, Refresher: &portfolio.Refresher{Interval: 5 * time.Minute}}}
 	snap := portfolio.Snapshot{Warm: true, UpdatedAt: now.Add(-time.Hour),
 		Wallets: []portfolio.WalletView{{ID: "cold", Status: portfolio.StatusPending, AsOf: now.Add(-time.Hour)}}}
 	if got := s.syncStatus(snap, true).Wallets; got.Status != portfolio.StatusPending || got.Label != "Updating wallets…" {

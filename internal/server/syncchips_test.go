@@ -20,7 +20,8 @@ import (
 // prices last came in; a stale price, or prices that stopped coming, show on the prices chip.
 func TestSyncChips(t *testing.T) {
 	now := time.Now()
-	s := &Server{Deps: Deps{Now: func() time.Time { return now }, Cfg: config.Default()}}
+	s := &Server{Deps: Deps{Now: func() time.Time { return now }, Cfg: config.Default(),
+		Refresher: &portfolio.Refresher{Interval: 5 * time.Minute, PriceInterval: time.Minute}}}
 	snap := portfolio.Snapshot{UpdatedAt: now, SyncedAt: now.Add(-3 * time.Minute), PricedAt: now.Add(-10 * time.Second),
 		Wallets: []portfolio.WalletView{{ID: "cold", Status: portfolio.StatusSynced}}}
 	check := func(what string, got, want templates.SyncInfo) {

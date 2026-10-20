@@ -85,7 +85,7 @@ func (s *Server) syncStatus(snap portfolio.Snapshot, ready bool) templates.SyncS
 // stale (their source failed, so the last good one stands in). Prices that stopped coming
 // for three refreshes turn it amber too.
 func (s *Server) priceSync(snap portfolio.Snapshot, ready bool) templates.SyncInfo {
-	every := s.Cfg.PriceInterval()
+	every := s.Refresher.PriceEvery()
 	info := templates.SyncInfo{Title: "Prices refresh " + templates.Every(every)}
 	stale := 0
 	for _, a := range snap.Assets {
