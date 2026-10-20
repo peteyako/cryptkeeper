@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ 73e5bf4
 entity: internal/yamlfile/yamlfile.go
 ---
 
@@ -45,7 +45,7 @@ The user hand-edits these files, so a typo must fail loudly with a line number a
 
 ## If you change this
 
-- **Hits:** every store listed above (shared signature `WriteAtomic`); strictness change breaks hand-edited files and [backup-file](backup-file.md) `Parse`; backup naming change breaks `ListBackups`, and the portfolios restore list (`internal/server/portfolio_handlers.go:188`).
+- **Hits:** every store listed above (shared signature `WriteAtomic`); strictness change breaks hand-edited files and [backup-file](backup-file.md) `Parse`; backup naming change breaks `ListBackups`, and the portfolios restore list (`internal/server/portfolio_handlers.go:215`).
 - **Does not hit:** [database](database.md) tables; [config](config.md) `config.yaml`.
 
 ## Surfaces

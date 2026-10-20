@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ 73e5bf4
 consumes: [snapshot, activity-entry, price, value-history, tax-lot]
 produces: [value-history, price]
 ---
@@ -25,7 +25,7 @@ Input: a click on "Load last N days" (`POST /chart/backfill`, N from the selecte
 
 ## Steps
 
-1. The overview shows "Load last N days" only when the range's change is not valid; N is 7, 30, 365 or days since Jan 1 (YTD): `internal/server/handlers.go:162-185`, `web/templates/overview.templ:98-108`, click `web/templates/js.go:107`.
+1. The overview shows "Load last N days" only when the range's change is not valid; N is 7, 30, 365 or days since Jan 1 (YTD): `internal/server/handlers.go:163-186`, `web/templates/overview.templ:98-108`, click `web/templates/js.go:107`.
 2. `chartBackfill` runs under a 60s timeout; errors become a note on the card (and a log line), as does a run that wrote nothing: `internal/server/history_handlers.go:24-67`.
 3. `runBackfill` needs a ready, non-warm snapshot; reads activity through `taxActivity` (CSV duplicates removed); txs tagged `position` in `tax.yaml` keep their units like the tax engine: `internal/server/history_handlers.go:72-90`, `internal/server/tax.go:231-251`.
 4. `Backfill` first rejects errored or pending wallets (stale ones are allowed): `internal/portfolio/backfill.go:74-82`. It spans `days+1` UTC days ending yesterday and loads what is recorded: `internal/portfolio/backfill.go:83-135`, `:310-349`.

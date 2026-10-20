@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ 73e5bf4
 entity: internal/sources/manual/manual.go
 ---
 
@@ -34,7 +34,7 @@ It is the escape hatch for custody the app cannot query (paper wallets, other ch
 
 ## If you change this
 
-- **Hits:** `NormalizeAsset` is not manual-only: it also normalises portfolio asset selectors and watch lists (`internal/portfolios/portfolios.go:163-164`, `internal/server/portfolio_handlers.go:306`, [portfolio-view](../views/portfolio-view.md)) and price-alert assets (`internal/server/alerts_handlers.go:209`, [alert-rule](../views/alert-rule.md)), and its output is the [price](../valuation/price.md) key and must match Solana's `spl:<mint>` keys. Line format: `internal/server/source_handlers.go` form re-fill (`formValues` uses `manual.FormatLines` for brokerage too). A `Holding` field change also hits [brokerage-source](brokerage-source.md) and `sources.Def.Holdings`.
+- **Hits:** `NormalizeAsset` is not manual-only: it also normalises portfolio asset selectors and watch lists (`internal/portfolios/portfolios.go:163-164`, `internal/server/portfolio_handlers.go:333`, [portfolio-view](../views/portfolio-view.md)) and price-alert assets (`internal/server/alerts_handlers.go:209`, [alert-rule](../views/alert-rule.md)), and its output is the [price](../valuation/price.md) key and must match Solana's `spl:<mint>` keys. Line format: `internal/server/source_handlers.go` form re-fill (`formValues` uses `manual.FormatLines` for brokerage too). A `Holding` field change also hits [brokerage-source](brokerage-source.md) and `sources.Def.Holdings`.
 - **Does not hit:** [brokerage-source](brokerage-source.md) parsing (it has its own `ParseLines`), activity sync, `config.yaml`.
 
 ## Surfaces

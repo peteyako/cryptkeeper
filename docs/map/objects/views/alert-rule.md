@@ -3,7 +3,7 @@ type: object
 cluster: views
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ 73e5bf4
 entity: internal/alerts/rules.go
 ---
 
@@ -49,7 +49,7 @@ Citations: `internal/alerts/rules.go:56`, `internal/alerts/engine.go:37`, `inter
 | Refresher `OnSnapshot` hook | `go engine.OnSnapshot` after each live refresh, never blocking it (`main.go:491-493`) |
 | Activity syncer | `OnActivity` with new txs and wallet kinds |
 | Server `/alerts*` | CRUD, test notification, recent log (`Recent`) |
-| Portfolios export/import (server, CLI), backups | rules ride along: `WithAlerts` on export, `RuleStore.Import` on import (`internal/server/portfolio_handlers.go:375,445`, `main.go:627,663`, `internal/backup/backup.go:316-321`) |
+| Portfolios export/import (server, CLI), backups | rules ride along: `WithAlerts` on export, `RuleStore.Import` on import (`internal/server/portfolio_handlers.go:402,472`, `main.go:627,663`, `internal/backup/backup.go:316-321`) |
 | User editing `data/alerts.yaml` | writes; mtime reload, bad edit keeps last good |
 | ntfy | outbound only |
 | Tests | `internal/alerts/engine_test.go`, `rules_test.go`, `rulestore_test.go`, `ntfy_test.go` |

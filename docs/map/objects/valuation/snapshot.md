@@ -3,7 +3,7 @@ type: object
 cluster: valuation
 universe: live
 status: verified
-verified: 2026-10-20 @ ea0d7ef
+verified: 2026-10-20 @ 73e5bf4
 entity: internal/portfolio/types.go
 ---
 
@@ -51,7 +51,7 @@ Citations: `internal/portfolio/types.go:22`, `internal/portfolio/aggregate.go:37
 | Surface | Role |
 |---|---|
 | Refresher (interval, price interval, `Kick`, `Force`, `RepriceNow`) | builds, reprices and publishes |
-| Server handlers / SSE stream | read `Latest()`, subscribe to Broker (`internal/server/handlers.go:258`); `POST /refresh` calls `Force` (`handlers.go:294`), `POST /refresh/prices` calls `RepriceNow` (`handlers.go:301-315`) |
+| Server handlers / SSE stream | read `Latest()`, subscribe to Broker (`internal/server/handlers.go:259`); `POST /refresh` calls `Force` (`handlers.go:295`), `POST /refresh/prices` calls `RepriceNow` (`handlers.go:302-316`) |
 | Source add/remove/edit handlers | `Refresher.Kick()` (`internal/server/source_handlers.go:426`) |
 | History, alerts engine | consume each new snapshot |
 | Tests | `internal/portfolio/portfolio_test.go`, `warm_test.go` |
