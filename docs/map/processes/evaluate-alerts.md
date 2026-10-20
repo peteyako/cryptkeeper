@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ a83d5cd
 consumes: [alert-rule, snapshot, activity-entry, value-history, portfolio-view, config, database]
 produces: [database]
 ---
@@ -28,7 +28,7 @@ Input: a fresh `Snapshot` (from the refresher) or the entries newly inserted by 
 ## Steps
 
 1. `alertsEngine` builds the engine: rules, DB, label lookups, portfolio and history valuers, and an `Ntfy` notifier only if `ntfy.url` is configured: `main.go:386-431`.
-2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:149-151`, `internal/activity/syncer.go:239-256`.
+2. Snapshot trigger: the refresher's `OnSnapshot` runs `engine.OnSnapshot` in a goroutine; activity trigger: the syncer's `OnNew` calls `engine.OnActivity` with wallet kinds synchronously, before the pass's revalue step: `main.go:490-493`, `main.go:505-507`, `internal/portfolio/refresher.go:185-187`, `internal/activity/syncer.go:239-256`.
 3. `OnSnapshot` returns if there is no rule store or database, locks, garbage-collects state of deleted or disabled rules, then evaluates each enabled rule inside a panic guard: `internal/alerts/engine.go:93-123`, `:167-174`, `internal/alerts/state.go:138-158`.
 4. `balance_drop`: per watched, freshly synced wallet compare current amounts to the stored baseline, fire on a fall beyond `MinPct`, then store the current amounts as the new baseline: `internal/alerts/engine.go:335-366`.
 5. `price`: skip stale or missing prices; compute threshold and re-arm line; first sight arms; an armed crossing disarms and fires if cooled down: `internal/alerts/engine.go:396-436`.
@@ -36,7 +36,7 @@ Input: a fresh `Snapshot` (from the refresher) or the entries newly inserted by 
 7. `source_down`: a stale or errored wallet starts a down clock; fire once when it passes `Minutes`; recovery clears it: `internal/alerts/engine.go:525-557`.
 8. `OnActivity` evaluates only enabled `large_activity` rules: sends from hot or hardware wallets, not failed, not already announced (the last 200 ids are remembered), within max age, at least `MinUsd`; the batch becomes one notification: `internal/alerts/engine.go:127-144`, `:593-643`.
 9. `fire` stamps the time, `send` calls the notifier under a 20s timeout and recovers panics (with no notifier configured it returns "no notifier configured", so rules still trip and log), then `record` inserts into `alert_log` and keeps the newest 500 rows: `internal/alerts/engine.go:179-200`, `internal/alerts/state.go:178-195`.
-10. `Ntfy.Send` validates the URL, posts plain text with Title, Priority, Tags, Click and Bearer headers through `httpx.Client.Do` (3 retries), and scrubs the topic URL and token from errors: `internal/alerts/ntfy.go:43-100`, `internal/httpx/httpx.go:54-113`.
+10. `Ntfy.Send` validates the URL, posts plain text with Title, Priority, Tags, Click and Bearer headers through `httpx.Client.Do` (3 retries), and scrubs the topic URL and token from errors: `internal/alerts/ntfy.go:43-100`, `internal/httpx/httpx.go:57-118`.
 11. State changes go out in one transaction per rule: `internal/alerts/state.go:105-134`.
 12. Test path: `POST /alerts/test` refuses if no ntfy URL is set, otherwise `Engine.Test` sends a "CryptKeeper test" notification as rule `test` and logs it; the page patches the result and the recent log: `internal/server/alerts_handlers.go:261-275`, `internal/alerts/engine.go:147-163`.
 13. The Alerts page lists rules and the last 50 log rows: `internal/server/alerts_handlers.go:88-113`.

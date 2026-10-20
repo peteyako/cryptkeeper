@@ -30,7 +30,7 @@ Caches, history and sync state are written by the app every few minutes and must
 | `schema_migrations` | `migrate` (`store.go:49`) | store | applied migration names | this card |
 | `kv` | `001-base` (`store.go:26`) | server, main.go (keys below) | JSON settings blobs | [config](config.md) |
 | `lastgood_price` | `001-base` (`store.go:27`) | prices (`prices.go:442-485`) | last live price per asset, for stale fallback | [price](../valuation/price.md) |
-| `lastgood_wallet` | `001-base` (`store.go:28`) | portfolio aggregator (`aggregate.go:155,164`) | last good result per source (JSON) | [snapshot](../valuation/snapshot.md) |
+| `lastgood_wallet` | `001-base` (`store.go:28`) | portfolio aggregator (`aggregate.go:291,300`) | last good result per source (JSON) | [snapshot](../valuation/snapshot.md) |
 | `history` | `001-base` (`store.go:29`) | portfolio (`history.go:65,76,92`, `backfill.go:273`) | value over time: ts, prices, amounts | [value-history](../valuation/value-history.md) |
 | `token_meta` | `001-base` (`store.go:30`) | solana (`sources/solana/metacache.go:52,72`); server reads (`taxview.go:129`) | SPL token metadata cache | [solana-source](../sources/solana-source.md) |
 | `price_history` | `001-base` (`store.go:31`) | prices (`history.go:245-276`; `stocks.go:346`) | daily USD closes (asset, day) | [price](../valuation/price.md) |

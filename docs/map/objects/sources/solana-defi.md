@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-19 @ d4899f7
+verified: 2026-10-20 @ a83d5cd
 entity: internal/sources/solana/defi/defi.go
 ---
 
@@ -33,7 +33,7 @@ The adapters that read a Solana wallet's Orca, Raydium and Jupiter positions and
 
 - **owns:** the protocol layouts and tick math (`internal/sources/solana/defi/clmm.go`), position labels ("SOL/USDC · in range").
 - **owned-by:** [solana-source](solana-source.md) (only caller); enabled by [config](../storage/config.md) `solana.defi`.
-- **joins:** [snapshot](../valuation/snapshot.md) (position legs are exempt from spam hiding, `internal/portfolio/aggregate.go:329-331`), [price](../valuation/price.md) (legs priced by known-mint ticker, `spl:<mint>` or SOL; perps as USDC).
+- **joins:** [snapshot](../valuation/snapshot.md) (position legs are exempt from spam hiding, `internal/portfolio/aggregate.go:465`), [price](../valuation/price.md) (legs priced by known-mint ticker, `spl:<mint>` or SOL; perps as USDC).
 - **looks-like-but-is-not:** plain LP/JLP tokens that are ordinary SPL balances (JLP is not handled here, `internal/sources/solana/defi/jupiter.go:149-150`); Coinbase `Vault`/`Staked` flags in [coinbase-source](coinbase-source.md).
 
 ## If you change this
