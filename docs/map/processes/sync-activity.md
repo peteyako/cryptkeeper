@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 consumes: [source-contract, source-def, price, config, tax-lot]
 produces: [activity-entry, database, value-history, alert-rule]
 ---
@@ -27,7 +27,7 @@ Input: the live sources that implement `core.ActivitySource`, the per-source `ac
 ## Steps
 
 1. `serve` builds the `Syncer` with `Since` = backfill days, or back to the open tax year's start if earlier (`syncSince`), plus interval, `Valuer` = the prices service, `SkipMints`, and `OnNew` calling `engine.OnActivity`: `main.go:495-508`, `main.go:251-258`.
-2. `go syncer.Run(ctx)` starts it; registry changes also kick it: `main.go:509-511`. Other kicks: backup import, source save (delete kicks only through the registry hook), and accepting a Koinly opening-year import (`internal/server/settings_handlers.go:363-365`, `internal/server/source_handlers.go:426-428`, `internal/server/koinly_handlers.go:613`).
+2. `go syncer.Run(ctx)` starts it; registry changes also kick it: `main.go:509-511`. Other kicks: backup import, source save (delete kicks only through the registry hook), and accepting a Koinly opening-year import (`internal/server/settings_handlers.go:382-384`, `internal/server/source_handlers.go:426-428`, `internal/server/koinly_handlers.go:613`).
 3. `Run` syncs at once, then on `Interval` (default 15 min) or `kick`: `internal/activity/syncer.go:164-183`. `SyncOnce` takes a one-slot semaphore so passes run one after another: `internal/activity/syncer.go:189-196`.
 4. `a.activitySources` supplies the entries: registry sources whose `Source` implements `core.ActivitySource`: `main.go:367-375`.
 5. Each source runs in an errgroup limited to 4, marked running (signals SSE subscribers) until its outcome is saved: `internal/activity/syncer.go:213-229`, `:135-152`.

@@ -3,7 +3,7 @@ type: object
 cluster: valuation
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 entity: internal/portfolio/types.go
 ---
 
@@ -27,8 +27,8 @@ Page loads must never wait on slow exchange or chain APIs, so the snapshot is a 
 - `HiddenRows` = the source's own `WalletResult.Hidden` (Solana `hideMints`), priced (`aggregate.go:429-431`), plus spam candidates: with `HideUnpriced`, Solana rows that are unverified, unpriced or under `MinUSD`; SOL and DeFi legs never hide (`aggregate.go:432-439`, `:522-527`).
 - Cash/stablecoin grouping is a read-side rule: `core.IsStable` (USD/USDC/USDT pegs plus a ticker list) drives `StableShare()` on snapshot and wallet (`internal/core/core.go:176-179`, `internal/portfolio/types.go:43-79`); the "one line" display is in `web/templates/format.go:391`.
 - `AssetRow.Change7d` is not set here: the server fills it from history per request (`internal/server/portfolio_handlers.go:115-135`).
-- `Refresher`: one build at a time via singleflight; builds detach from the request context (2 min cap); a forced refresh within `MinForceInterval` (30s) returns `ErrTooSoon` (`refresher.go:173-188`). A `Kick()` cancels the build in progress; a replaced build publishes nothing (`gen`, `refresher.go:139-154`, `:255-262`). During a build, progress snapshots are stored as `latest` and published (`refresher.go:254-263`). After a finished build: store `latest`, `History.Record`, `Broker.Publish`, `OnSnapshot` (`refresher.go:270-298`).
-- Reprice: between refreshes the price ticker (`priceMinutes`, or the Settings choice) makes a new snapshot from the last finished build's wallets at fresh prices, without fetching any wallet (`Aggregator.Reprice`, `aggregate.go:178-208`; `Refresher.reprice`, `refresher.go:203-240`). It is published, recorded and alerted on like a finished refresh, but is not a sync (`lastSuccess` stays), and it is dropped if a build finished or a kick came meanwhile (`builds`, `gen`). `RepriceNow` forces one for the prices chip (`refresher.go:194-197`).
+- `Refresher`: one build at a time via singleflight; builds detach from the request context (2 min cap); a forced refresh within `MinForceInterval` (30s) returns `ErrTooSoon` (`refresher.go:188-203`). A `Kick()` cancels the build in progress; a replaced build publishes nothing (`gen`, `refresher.go:154-169`, `:270-277`). During a build, progress snapshots are stored as `latest` and published (`refresher.go:269-278`). After a finished build: store `latest`, `History.Record`, `Broker.Publish`, `OnSnapshot` (`refresher.go:285-313`).
+- Reprice: between refreshes the price ticker (`priceMinutes`, or the Settings choice) makes a new snapshot from the last finished build's wallets at fresh prices, without fetching any wallet (`Aggregator.Reprice`, `aggregate.go:178-208`; `Refresher.reprice`, `refresher.go:218-255`). It is published, recorded and alerted on like a finished refresh, but is not a sync (`lastSuccess` stays), and it is dropped if a build finished or a kick came meanwhile (`builds`, `gen`). `RepriceNow` forces one for the prices chip (`refresher.go:209-212`).
 - `Broker`: each subscriber channel holds one pending snapshot, a slow client only gets the latest (`internal/portfolio/broker.go:5-45`).
 - Wiring: `main.go:473-488` (Aggregator, Refresher with `Interval` and `PriceInterval`), `main.go:509` (source change kicks a refresh), `main.go:510` (`go ref.Run`).
 

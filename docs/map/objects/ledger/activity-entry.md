@@ -3,7 +3,7 @@ type: object
 cluster: ledger
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 entity: internal/core/activity.go
 ---
 
@@ -48,7 +48,7 @@ An entry is the single ledger the tax engine, the activity feed, alerts and CSV 
 | tax pages, closes, Koinly wizard | read all via `All` (`internal/server/tax.go:55-60`) |
 | `/export/activity.csv` | reads via `All` (`internal/server/reports_handlers.go:394`) |
 | chart backfill | reads via `taxActivity` (`internal/server/history_handlers.go:80`) |
-| source removal | `DeleteSource` (`internal/server/settings_handlers.go:413`) |
+| source removal | `DeleteSource` (`internal/server/settings_handlers.go:432`) |
 | alerts engine | `OnNew` callback with fresh entries (`main.go:505`) |
 | user | none; no YAML for activity |
 

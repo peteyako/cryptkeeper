@@ -3,7 +3,7 @@ type: object
 cluster: valuation
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 entity: internal/prices/prices.go
 ---
 
@@ -25,7 +25,7 @@ Asset identity differs by kind, so the chain is chosen by key: fiat, exchange sy
 - `lastgood_price (asset, usd, change24h, as_of)` upserted on every live price; `lastGood` rejects rows older than `StaleMax` (default 24h) (`prices.go:444-506`, `internal/store/store.go:27`).
 - `price_unknown (key, until)` only remembers CoinGecko "coin not found" for a mint (key `cg:<mint>`, 7 days); it belongs to the historical-price path, not spot (`internal/prices/coingecko.go:14-29`).
 - `Change24h` comes from Coinbase stats, Kraken, Jupiter or Yahoo; may be nil (`prices.go:114-124`).
-- Settings: `POST /settings/prices` saves or clears the CoinGecko demo key, sealed in the `kv` table under `prices.coingeckoKey`; `COINGECKO_API_KEY` wins (`internal/server/server.go:191`, `internal/server/settings_handlers.go:125-157`, `main.go:817-844`). CoinGecko is used for historical mint closes only, not spot.
+- Settings: `POST /settings/prices` saves or clears the CoinGecko demo key, sealed in the `kv` table under `prices.coingeckoKey`; `COINGECKO_API_KEY` wins (`internal/server/server.go:191`, `internal/server/settings_handlers.go:144-176`, `main.go:817-844`). CoinGecko is used for historical mint closes only, not spot.
 - Construction: `prices.New(client, db, Options{TTL: 1m, StaleMax: cfg.StaleMax(), CoinGeckoKey})` (`main.go:174`).
 
 Citations: `internal/prices/prices.go:182`, `internal/prices/sources.go:93`, `internal/prices/stocks.go:142`

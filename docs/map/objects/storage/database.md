@@ -3,7 +3,7 @@ type: object
 cluster: storage
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 entity: internal/store/store.go
 ---
 
@@ -40,7 +40,7 @@ Caches, history and sync state are written by the app every few minutes and must
 | `alert_state` | `alerts-v1` (`alerts/state.go:19-25`) | alerts engine | per-rule engine state (baselines, cooldowns) | [alert-rule](../views/alert-rule.md) |
 | `alert_log` | `alerts-v1` (`alerts/state.go:26`) | alerts engine | fired alerts and delivery errors | [alert-rule](../views/alert-rule.md) |
 
-`kv` keys: `ui.settings` (`internal/server/settings_handlers.go:28`), `prices.coingeckoKey` and `bitcoin.blockstreamKey` (sealed, `:89,129`; read by `main.go:801-846` too), `bitcoin.scan.<walletID>` (saved scans: constant `:334`, written by `main.go:795`), `tax.koinly.draft` (`internal/server/koinly_handlers.go:34`). There is no `extra` table in the app: it appears only in a test (`internal/store/store_test.go:39`).
+`kv` keys: `ui.settings` (`internal/server/settings_handlers.go:31`), `prices.coingeckoKey` and `bitcoin.blockstreamKey` (sealed, `:145`, `:185`; read by `main.go:801-846` too), `bitcoin.scan.<walletID>` (saved scans: constant `:422`, written by `main.go:795`), `tax.koinly.draft` (`internal/server/koinly_handlers.go:34`). There is no `extra` table in the app: it appears only in a test (`internal/store/store_test.go:39`).
 
 ## Connected to
 

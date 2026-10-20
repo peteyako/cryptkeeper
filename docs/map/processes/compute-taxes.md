@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 936c434
+verified: 2026-10-20 @ ea0d7ef
 consumes: [activity-entry, manual-cost-basis, koinly-import, tax-lot, price, portfolio-view, snapshot, yaml-store]
 produces: [tax-lot, tax-report, csv-export, yaml-store]
 ---
@@ -33,7 +33,7 @@ Input: every stored activity entry (minus CSV rows the live API already synced),
 5. A tax scope (a portfolio's wallets) removes other wallets' txs, lots and write-offs and tags the transfers crossing the boundary own-wallet: `internal/server/tax.go:155-157`, `:205-224`.
 6. `Compute` seeds queues with opening lots, merges manual lots and write-offs into the time-ordered tx stream, and applies each tx by kind (transfer halves, trades, rewards, positions, tags, fees): `internal/tax/engine.go:141-170`, `:277-316`. Lots are consumed oldest first and partially split: `internal/tax/queue.go:29-51`; term is by calendar date in the tax zone: `internal/tax/queue.go:65-77`.
 7. The review tab groups `Result.Issues` (missing basis/price, unmatched send/receive, unpaired transfer, undated lot) with tag options and price keys: `internal/server/review.go:109-215`.
-8. Each fix (tag, bulk tag, tag delete, price override, write-off, write-off delete) runs through `reviewSave` -> `TaxSettings.Update` (writes `data/tax.yaml`) -> `invalidateTax`: `internal/server/review_handlers.go:57-69`. The scope choice does the same in `taxViewScope`: `internal/server/taxview.go:392-421`. Importing exchange CSVs, deleting a source and a backup restore that touched tax data or the database also invalidate: `internal/server/reports_handlers.go:325`, `internal/server/settings_handlers.go:357-359`, `:412-416`.
+8. Each fix (tag, bulk tag, tag delete, price override, write-off, write-off delete) runs through `reviewSave` -> `TaxSettings.Update` (writes `data/tax.yaml`) -> `invalidateTax`: `internal/server/review_handlers.go:57-69`. The scope choice does the same in `taxViewScope`: `internal/server/taxview.go:392-421`. Importing exchange CSVs, deleting a source and a backup restore that touched tax data or the database also invalidate: `internal/server/reports_handlers.go:325`, `internal/server/settings_handlers.go:376-378`, `:431-435`.
 9. A Koinly import becomes a closed year: `koinlyClose` builds opening lots from reconciled holdings and saves `tax.Year{Source: "koinly"}`; it then kicks the syncer: `internal/server/koinly_handlers.go:624-672`, `:601-613`.
 10. Close (`POST /reports/tax/close`, two steps): checks order, year ended, snapshot not warm, nothing pending, recomputes with `To`, refuses rows outside the year, asks for confirmation with the open issue count, then saves the year with closing lots and invalidates: `internal/server/close_handlers.go:105-190`. Reopen deletes the file: `internal/server/close_handlers.go:224-262`.
 11. `yearReportWith` builds the report: a closed year `FromClosed`; the current open year from the cached result; an earlier open year recomputed with `To` and cached a minute: `internal/server/taxview.go:254-297`. Prices for year-end holdings come from `resolver`: `internal/server/taxview.go:149-212`.
