@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-26 @ be0017a
 consumes: [server, page-model, templ-components, snapshot, config, static-assets]
 produces: [page-model]
 ---
@@ -31,7 +31,7 @@ Input: a request (browser load, Datastar `@get` navigation, or Datastar `@post`)
 4. `guard` lets GET/HEAD through; any other method needs `Datastar-Request: true` and, when the browser sends them, a same-host `Origin` and a `Sec-Fetch-Site` of `same-origin` or `none`: `internal/server/guard.go:19-42`.
 5. The route table maps each path to a handler: `internal/server/server.go:112-194`.
 6. The overview handler takes `pf` from the URL (`/p/{pf}`) and `range` from the query, or from the `range` signal on a navigation, with defaults `all` and `1W`, and renders a 404 page for an unknown portfolio; the patch endpoints (`/view`, `/chart`, `/stream`) read both as signals: `internal/server/handlers.go:21-41`, `:228-239`.
-7. It builds the page model: `shell` gives title, active nav item, portfolios list and auth user; `overviewPage` adds the filtered snapshot, sync chip, P&L cells, price lines (`priceTrends`) and chart series: `internal/server/handlers.go:43-60`, `:143-175`. Snapshot access is `latest()`, empty before the first refresh: `internal/server/handlers.go:70-76`.
+7. It builds the page model: `shell` gives title, active nav item, portfolios list and auth user; `overviewPage` adds the filtered snapshot, sync chip, P&L cells, price lines (`priceTrends`, fed `assetPrices`) and chart series: `internal/server/handlers.go:43-60`, `:143-175`. Snapshot access is `latest()`, empty before the first refresh: `internal/server/handlers.go:70-76`.
 8. `render` -> `renderStatus` decides the shape from `isNav`: a Datastar GET: `internal/server/handlers.go:195-226`.
 9. Navigation: the context is marked with `templates.WithNav` and `PatchElementTempl` writes one SSE event: `internal/server/handlers.go:210-218`, `web/templates/view.go:596-601`. `Layout` then emits only `navRegions`: title, sidebar, `<main id="main">`, bottom bar. A page in the chrome-free add-source shell instead patches an empty `#main` that runs `location.reload()`: `web/templates/layout.templ:40-62`.
 10. Full load: headers `Cache-Control: no-store`, status code, and `fullPage` renders the document with head, assets, `<body>` signals and the app shell: `internal/server/handlers.go:220-225`, `web/templates/layout.templ:64-110`.

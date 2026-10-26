@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-26 @ be0017a
 consumes: [source-def, source-contract, secret-key, price]
 produces: [source-def, yaml-store, portfolio-view, database, snapshot, activity-entry]
 ---
@@ -38,7 +38,7 @@ Input: the `/sources/new/{type}` form (or the edit form), with a Test button and
 9. `onChange` is wired at startup to kick the refresher and syncer; the save handler also kicks both explicitly, then redirects to `/w/{id}`: `main.go:509`, `internal/server/source_handlers.go:426-430`.
 10. The next `Entries()` call builds the new live source through `a.factory` (hash changed) and the refresher fetches it ([refresh-balances](refresh-balances.md)); activity-capable ones backfill ([sync-activity](sync-activity.md)): `internal/sources/registry.go:107-135`, `main.go:261`.
 11. Delete: `POST /sources/{id}/delete` (after a client `confirm()`) calls `Registry.Delete`, which rewrites the file the same way (its `onChange` kicks both loops; the handler kicks only the refresher), then redirects to `/`: `web/templates/js.go:183-184`, `internal/server/source_handlers.go:433-443`, `internal/sources/registry.go:322-334`.
-12. `cleanupSource` removes the wallet from every portfolio, deletes the saved Bitcoin scan (`bitcoin.scan.<id>` kv), deletes the source's activity and `activity_state`, and invalidates the tax cache: `internal/server/settings_handlers.go:441-458`, `internal/server/portfolio_handlers.go:480-489`, `internal/activity/store.go:280-293`.
+12. `cleanupSource` removes the wallet from every portfolio, deletes the saved Bitcoin scan (`bitcoin.scan.<id>` kv), deletes the source's activity and `activity_state`, and invalidates the tax cache: `internal/server/settings_handlers.go:441-458`, `internal/server/portfolio_handlers.go:499-508`, `internal/activity/store.go:280-293`.
 13. Hand edits to `sources.yaml` take the same route after step 8: mtime change on `Entries()` reloads and fires `onChange`: `internal/sources/registry.go:63-102`.
 
 ## If you change this

@@ -3,7 +3,7 @@ type: object
 cluster: views
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-26 @ be0017a
 entity: internal/portfolios/portfolios.go
 ---
 
@@ -40,7 +40,7 @@ Citations: `internal/portfolios/portfolios.go:109`, `internal/portfolios/filter.
 
 ## If you change this
 
-- **Hits:** `Apply`/`Include` callers (server page resolution, tax view, alerts valuer in `main.go`); the tax scope: the wallets of the portfolio `tax.yaml` `scope` names decide what the open year computes (`internal/server/tax.go:161-182`), so editing that portfolio changes tax results; portfolio manager/edit pages ([page-model](../web/page-model.md)); source delete flow (`RemoveWallet`, `main.go:593`, `:759`, `internal/server/portfolio_handlers.go:484`); ids referenced elsewhere: deleting or renaming a portfolio leaves `portfolio_move` rules and the tax `scope` pointing at nothing, silently (the rule is skipped, `main.go:406-409`; tax falls back to every wallet), as nothing cross-validates at save time; alert export/import ([alert-rule](alert-rule.md)); testdata under `internal/portfolios/testdata`.
+- **Hits:** `Apply`/`Include` callers (server page resolution, tax view, alerts valuer in `main.go`); the tax scope: the wallets of the portfolio `tax.yaml` `scope` names decide what the open year computes (`internal/server/tax.go:161-182`), so editing that portfolio changes tax results; portfolio manager/edit pages ([page-model](../web/page-model.md)); source delete flow (`RemoveWallet`, `main.go:593`, `:759`, `internal/server/portfolio_handlers.go:503`); ids referenced elsewhere: deleting or renaming a portfolio leaves `portfolio_move` rules and the tax `scope` pointing at nothing, silently (the rule is skipped, `main.go:406-409`; tax falls back to every wallet), as nothing cross-validates at save time; alert export/import ([alert-rule](alert-rule.md)); testdata under `internal/portfolios/testdata`.
 - **Does not hit:** wallet/source definitions in `sources.yaml`; the Snapshot types; the contents of `alerts.yaml` or `tax.yaml`.
 
 ## Surfaces

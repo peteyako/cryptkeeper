@@ -3,7 +3,7 @@ type: object
 cluster: sources
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-26 @ be0017a
 entity: internal/core/core.go
 ---
 
@@ -43,7 +43,7 @@ The small set of types every source type implements and returns; the aggregator 
 |---|---|
 | Source packages | implement `Source` (+ optional interfaces) |
 | Refresher / aggregator | calls `Fetch`, prices holdings |
-| Server wallet pages | type-assert `AddressLister`, `UTXOLister`, `ReceiveAddresser` (`internal/server/handlers.go:383-399`) |
+| Server wallet pages | type-assert `AddressLister`, `UTXOLister`, `ReceiveAddresser` (`internal/server/handlers.go:386-402`) |
 | Koinly import | type-asserts `AddressDeriver` (`internal/server/koinly_handlers.go:395`) |
 | Tests | per-source `_test.go` files |
 

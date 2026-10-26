@@ -3,7 +3,7 @@ type: object
 cluster: valuation
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-26 @ be0017a
 entity: internal/portfolio/history.go
 ---
 
@@ -22,8 +22,8 @@ A `history` row stores per-wallet amounts and per-asset prices, not a total, so 
 - `Compact`: rows older than 30 days keep only the last row per UTC day; run once at startup (`history.go:73-79`, `main.go:473-476`).
 - `Series(from, Include, current)`: values each row with that row's prices; the series starts only once every live wallet has history, and rows missing a live wallet are dropped, so adding a source never looks like growth; appends the live snapshot; downsampled to 500 points (`history.go:84-178`, `:190-201`).
 - Ranges `1D 1W 1M YTD 1Y All`; `ChangeFor` is `Valid` only when history reaches back to the window start (tolerance d/10, at least 24h for 7d+) (`history.go:203-267`).
-- `PriceChanges` (nearest row to now-window, within 10%) feeds `AssetRow.Change7d`; `ValueAt` values one past row, used by portfolio_move alerts (`history.go:269-296`, `:326-356`, `internal/server/portfolio_handlers.go:115-135`, `main.go:414-425`).
-- `PriceSeries(from)`: each asset's recorded positive prices since `from`, oldest first, one query on `history.prices` (`history.go:298-324`). The overview's price lines read it: `priceTrends` appends the current price, keeps assets with two points and downsamples to 96 (`internal/server/portfolio_handlers.go:139-163`); see [page-model](../web/page-model.md).
+- `PriceChanges` (nearest row to now-window, within 10%) feeds `AssetRow.Change7d`; `ValueAt` values one past row, used by portfolio_move alerts (`history.go:269-296`, `:326-356`, `internal/server/portfolio_handlers.go:115-130`, `main.go:414-425`).
+- `PriceSeries(from)`: each asset's recorded positive prices since `from`, oldest first, one query on `history.prices` (`history.go:298-324`). The holdings tables' price lines (overview and wallet holdings tab) read it: `priceTrends` takes an asset key -> current price map (`assetPrices` or `rowPrices`), appends each current price, keeps assets with two points and downsamples to 96 (`internal/server/portfolio_handlers.go:132-182`); see [page-model](../web/page-model.md).
 - `price_history (asset, day "YYYY-MM-DD" UTC, usd)` PK (asset, day): `Historical` reads it first, else Coinbase Exchange daily candles (windows of up to 300 days, stored in one transaction); USD/USDC/USDT are 1; stocks via Yahoo; `spl:` keys and unlisted symbols are unknown; today's close is never stored (`internal/prices/history.go:34-84`, `:246-290`, `internal/store/store.go:31`).
 - Mint closes: `HistoricalMint[Close]` use CoinGecko (365-day cap, demo key, 429 pauses lookups) with misses remembered in `price_unknown` (`internal/prices/coingecko.go:20-44`).
 - `Service.Series(assetKey, mint, days)` builds a daily series from those closes (`internal/prices/series.go:24`).
