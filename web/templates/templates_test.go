@@ -631,6 +631,14 @@ func TestWalletContent(t *testing.T) {
 	if n := strings.Count(ph.html, `<tr class="cash-part"`); n != 1 {
 		t.Errorf("want Phantom's own USDC as the group's one row, got %d rows", n)
 	}
+	// The 7-day price line sits under the price: SOL rose, JUP fell, BONK has no history
+	// and gets no line (and no dash).
+	has(t, ph,
+		`<td class="col-price num"><span>$148.22</span><svg class="spark spark--up"`,
+		`<td class="col-price num"><span>$0.9200</span><svg class="spark spark--down"`,
+		`<td class="col-price num"><span>$0.0000214</span></td>`,
+	)
+	lacks(t, ph, "col-trend", "No 7 day price history yet")
 	if i := strings.Index(ph.html, "Orca · SOL/USDC whirlpool"); i < 0 || !strings.Contains(ph.html[i:], `href="/a/USDC"`) {
 		t.Error("the pool's USDC leg should stay in the pool")
 	}

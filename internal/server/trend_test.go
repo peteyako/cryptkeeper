@@ -10,8 +10,9 @@ import (
 	"cryptkeeper/internal/sources/manual"
 )
 
-// TestHoldingsPriceLine: the overview draws each asset's price over the last week from
-// history, ending at the current price; an asset without a day of history gets a dash.
+// TestHoldingsPriceLine: the overview and the wallet page draw each asset's price over the
+// last week from history, ending at the current price. An asset without a day of history
+// gets a dash on the overview and no line on the wallet page.
 func TestHoldingsPriceLine(t *testing.T) {
 	e := newEnv(t, "")
 	e.price["BTC"] = 120
@@ -26,13 +27,16 @@ func TestHoldingsPriceLine(t *testing.T) {
 	}
 	e.ref.Rebuild(context.Background())
 
+	for _, path := range []string{"/", "/w/cold"} {
+		_, page := e.do("GET", path, nil, nil)
+		if n := strings.Count(page, `<svg class="spark spark--up"`); n != 1 {
+			t.Errorf("%s: want one rising price line (BTC), got %d", path, n)
+		}
+		if !strings.Contains(page, ": $100.00 to $120.00</title>") {
+			t.Errorf("%s: BTC's line should run from $100.00 to the current $120.00", path)
+		}
+	}
 	_, ov := e.do("GET", "/", nil, nil)
-	if n := strings.Count(ov, `<svg class="spark spark--up"`); n != 1 {
-		t.Errorf("want one rising price line (BTC), got %d", n)
-	}
-	if !strings.Contains(ov, ": $100.00 to $120.00</title>") {
-		t.Error("BTC's line should run from $100.00 to the current $120.00")
-	}
 	if n := strings.Count(ov, `aria-label="No 7 day price history yet"`); n != 1 {
 		t.Errorf("want a dash for ETH, got %d", n)
 	}

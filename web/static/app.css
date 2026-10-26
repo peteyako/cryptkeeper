@@ -1939,6 +1939,18 @@ body.amounts-hidden .fig-m {
   stroke: var(--text-3);
 }
 
+/* The line has room of its own: its column needs less padding. */
+.tbl .col-trend {
+  padding-left: 8px;
+}
+
+/* On a wallet's page the line sits under the price, smaller. */
+.col-price .spark {
+  width: 80px;
+  height: 20px;
+  margin-top: 4px;
+}
+
 .asset {
   display: flex;
   align-items: center;
@@ -1979,11 +1991,6 @@ body.amounts-hidden .fig-m {
 
 .cash-toggle[aria-expanded="true"] .cash-toggle__chev .icon {
   transform: rotate(180deg);
-}
-
-/* The group's name is short: it stays on one line where other names wrap. */
-.tbl--holdings .cash-toggle .asset__name {
-  white-space: nowrap;
 }
 
 .disc--cash {

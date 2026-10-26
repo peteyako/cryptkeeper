@@ -157,7 +157,7 @@ func (s *Server) overviewPage(r *http.Request, v viewSignals) templates.Overview
 		Watch:         s.watchRows(r.Context(), pv.watch, snap.Prices),
 		NetWorthShare: pv.share,
 		PnL:           s.pnlCells(r.Context(), snap.Assets, pv.lotWallets),
-		Trends:        s.priceTrends(r.Context(), snap, now),
+		Trends:        s.priceTrends(r.Context(), assetPrices(snap.Assets), now),
 		Now:           now,
 	}
 	if s.History != nil {
@@ -371,7 +371,10 @@ func (s *Server) walletPage(r *http.Request, id, tab string) (templates.WalletPa
 		W:     wv, Tab: tab, IsBitcoin: isBTC, Now: s.Now(),
 		PublicEndpoint: s.publicEndpoint(wv.Type), RetryEvery: s.Refresher.RefreshEvery(),
 	}
-	if tab == "activity" {
+	switch tab {
+	case "holdings":
+		p.Trends = s.priceTrends(r.Context(), rowPrices(wv.Rows), p.Now)
+	case "activity":
 		s.walletActivity(r.Context(), &p)
 	}
 	s.walletCost(r.Context(), &p)

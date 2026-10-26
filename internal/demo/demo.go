@@ -632,6 +632,7 @@ func Wallet(id, tab string, now time.Time) (templates.WalletPage, bool) {
 		W:         w,
 		Tab:       tab,
 		IsBitcoin: w.Type == "bitcoin",
+		Trends:    Trends(Snapshot(now), now),
 		Now:       now,
 	}
 	if tab != "activity" && (!p.IsBitcoin || (tab != "addresses" && tab != "utxos")) {

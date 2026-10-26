@@ -101,7 +101,9 @@ type WalletPage struct {
 	// from a shared public endpoint, and how often balances refresh.
 	PublicEndpoint bool
 	RetryEvery     time.Duration
-	Now            time.Time
+	// Trends is the holdings tab's price lines, like OverviewPage.Trends.
+	Trends map[string][]portfolio.Point
+	Now    time.Time
 }
 
 // SourcePickPage is step 1 of the add-source flow.

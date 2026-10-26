@@ -495,16 +495,24 @@ templ holdingsCard(p OverviewPage) {
 	</section>
 }
 
-// sparkCell is a holdings row's price over the last 7 days as a small line, green when it
-// rose and red when it fell, or a dash before history holds two prices.
+// sparkCell is a holdings row's price over the last 7 days as a small line, or a dash
+// before history holds a day of prices.
 templ sparkCell(s Spark) {
+	if s.Path != "" {
+		@sparkLine(s)
+	} else {
+		<span class="chg chg--none" aria-label="No 7 day price history yet">—</span>
+	}
+}
+
+// sparkLine draws a price line, green when the price rose and red when it fell; the zero
+// Spark draws nothing.
+templ sparkLine(s Spark) {
 	if s.Path != "" {
 		<svg class={ "spark", "spark--" + s.Dir } viewBox={ sparkViewBox } preserveAspectRatio="none" role="img" aria-label={ s.Label }>
 			<title>{ s.Label }</title>
 			<path d={ s.Path }></path>
 		</svg>
-	} else {
-		<span class="chg chg--none" aria-label="No 7 day price history yet">—</span>
 	}
 }
 

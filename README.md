@@ -181,7 +181,7 @@ and the holdings, and on each wallet's page, cash and dollar stablecoins (USD, U
 and the like) are one line, **Cash & stablecoins**; click it to see each of them. Stablecoins
 inside a DeFi position, such as one side of a liquidity pool, stay with that position. Each holding also gets a small line
 of its price over the last 7 days, drawn from CryptKeeper's own price history, so it
-appears once a day of history is recorded. Portfolios live in
+appears once a day of history is recorded; on a wallet's page it sits under the price. Portfolios live in
 `data/portfolios.yaml`, which you can edit by hand (typos are reported with line numbers):
 
 ```yaml

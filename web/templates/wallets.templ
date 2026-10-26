@@ -2,7 +2,6 @@ package templates
 
 import (
 	"strings"
-	"time"
 
 	"cryptkeeper/internal/core"
 	"cryptkeeper/internal/portfolio"
@@ -315,10 +314,10 @@ templ holdingsTab(p WalletPage) {
 							if len(it.Cash) > 0 {
 								@walletCashRow(it, ChangeHeader(p.W))
 								for _, r := range it.Cash {
-									@holdingRow(r, p.Now, false, true, p.ShowLogos)
+									@holdingRow(p, r, false, true)
 								}
 							} else {
-								@holdingRow(it.Row, p.Now, false, false, p.ShowLogos)
+								@holdingRow(p, it.Row, false, false)
 							}
 						}
 					</tbody>
@@ -345,7 +344,7 @@ templ holdingsTab(p WalletPage) {
 							</th>
 						</tr>
 						for _, r := range g.Rows {
-							@holdingRow(r, p.Now, true, false, p.ShowLogos)
+							@holdingRow(p, r, true, false)
 						}
 					</tbody>
 				}
@@ -368,7 +367,7 @@ templ holdingsTab(p WalletPage) {
 					</tbody>
 					<tbody class="hidden-rows" data-show="$showHidden" style="display:none">
 						for _, r := range firstN(p.W.HiddenRows, maxHiddenRows) {
-							@holdingRow(r, p.Now, false, false, p.ShowLogos)
+							@holdingRow(p, r, false, false)
 						}
 						if n := len(p.W.HiddenRows) - maxHiddenRows; n > 0 {
 							<tr class="hidden-note">
@@ -403,9 +402,10 @@ templ walletCashRow(it WalletItem, change string) {
 	</tr>
 }
 
-// holdingRow is one balance of a wallet: indent for a DeFi position's leg, cashPart for a
-// row of the cash group (hidden until the group is opened).
-templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, cashPart, showLogos bool) {
+// holdingRow is one balance of p's wallet: indent for a DeFi position's leg, cashPart for a
+// row of the cash group (hidden until the group is opened). The 7-day price line sits under
+// the price: the wallet's column is too narrow for a column of its own.
+templ holdingRow(p WalletPage, r portfolio.HoldingRow, indent, cashPart bool) {
 	<tr
 		class={ templ.KV("leg", indent), templ.KV("cash-part", cashPart) }
 		if cashPart {
@@ -415,7 +415,7 @@ templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, cashPart, showLo
 	>
 		<td class="col-asset">
 			<div class="asset">
-				@AssetMark(r.Symbol, r.LogoURL, showLogos)
+				@AssetMark(r.Symbol, r.LogoURL, p.ShowLogos)
 				<div class="asset__id">
 					<span class="asset__name">
 						@coinAnchor(r.AssetKey, HoldingName(r.Holding))
@@ -435,7 +435,8 @@ templ holdingRow(r portfolio.HoldingRow, now time.Time, indent, cashPart, showLo
 			</div>
 		</td>
 		<td class="col-price num">
-			@priceCell(r.Price, now)
+			@priceCell(r.Price, p.Now)
+			@sparkLine(SparkOf(p.Trends[r.AssetKey], p.Now.Add(-TrendWindow), p.Now))
 		</td>
 		<td class="col-amt num">
 			@FigUnits(r.AssetKey, r.Amount, r.Symbol)

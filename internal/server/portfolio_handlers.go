@@ -117,13 +117,7 @@ func (s *Server) applyChange7d(ctx context.Context, snap *portfolio.Snapshot) {
 	if s.History == nil || len(snap.Assets) == 0 {
 		return
 	}
-	cur := make(map[string]float64, len(snap.Assets))
-	for _, a := range snap.Assets {
-		if a.Price != nil {
-			cur[a.AssetKey] = a.Price.USD
-		}
-	}
-	ch, err := s.History.PriceChanges(ctx, cur, 7*24*time.Hour, s.Now())
+	ch, err := s.History.PriceChanges(ctx, assetPrices(snap.Assets), 7*24*time.Hour, s.Now())
 	if err != nil {
 		s.Log.Warn("7d price changes", "err", err)
 		return
@@ -138,10 +132,35 @@ func (s *Server) applyChange7d(ctx context.Context, snap *portfolio.Snapshot) {
 // trendPoints is how many prices a holdings row's price line keeps: about one a pixel.
 const trendPoints = 96
 
-// priceTrends returns each asset's prices over the holdings table's trend window, from
-// history, ending at its current price. An asset without two prices has none.
-func (s *Server) priceTrends(ctx context.Context, snap portfolio.Snapshot, now time.Time) map[string][]portfolio.Point {
-	if s.History == nil || len(snap.Assets) == 0 {
+// assetPrices maps each asset to its current USD price (0 when unpriced).
+func assetPrices(assets []portfolio.AssetRow) map[string]float64 {
+	out := make(map[string]float64, len(assets))
+	for _, a := range assets {
+		out[a.AssetKey] = 0
+		if a.Price != nil {
+			out[a.AssetKey] = a.Price.USD
+		}
+	}
+	return out
+}
+
+// rowPrices is assetPrices for a wallet's holdings.
+func rowPrices(rows []portfolio.HoldingRow) map[string]float64 {
+	out := make(map[string]float64, len(rows))
+	for _, r := range rows {
+		out[r.AssetKey] = 0
+		if r.Price != nil {
+			out[r.AssetKey] = r.Price.USD
+		}
+	}
+	return out
+}
+
+// priceTrends returns the prices of the assets in current (asset key → current USD price)
+// over the holdings tables' trend window, from history, each ending at its current price.
+// An asset without two prices has none.
+func (s *Server) priceTrends(ctx context.Context, current map[string]float64, now time.Time) map[string][]portfolio.Point {
+	if s.History == nil || len(current) == 0 {
 		return nil
 	}
 	series, err := s.History.PriceSeries(ctx, now.Add(-templates.TrendWindow))
@@ -149,14 +168,14 @@ func (s *Server) priceTrends(ctx context.Context, snap portfolio.Snapshot, now t
 		s.Log.Warn("price trends", "err", err)
 		return nil
 	}
-	out := make(map[string][]portfolio.Point, len(snap.Assets))
-	for _, a := range snap.Assets {
-		pts := series[a.AssetKey]
-		if a.Price != nil && a.Price.USD > 0 {
-			pts = append(pts, portfolio.Point{T: now, V: a.Price.USD})
+	out := make(map[string][]portfolio.Point, len(current))
+	for key, usd := range current {
+		pts := series[key]
+		if usd > 0 {
+			pts = append(pts, portfolio.Point{T: now, V: usd})
 		}
 		if len(pts) >= 2 {
-			out[a.AssetKey] = portfolio.Downsample(pts, trendPoints)
+			out[key] = portfolio.Downsample(pts, trendPoints)
 		}
 	}
 	return out
