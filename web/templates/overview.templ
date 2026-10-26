@@ -397,22 +397,7 @@ templ holdingsRow(p OverviewPage, a portfolio.AssetRow, show string, part bool) 
 templ cashGroupRow(p OverviewPage, it HoldingItem) {
 	<tr class="cash-row" data-show="!$q">
 		<td class="col-asset">
-			<button
-				type="button"
-				class="cash-toggle"
-				aria-expanded="false"
-				data-attr:aria-expanded="$cashOpen ? 'true' : 'false'"
-				data-on:click={ cashToggle }
-			>
-				<span class="disc disc--cash" aria-hidden="true">$</span>
-				<span class="asset__id">
-					<span class="asset__name">{ CashName }</span>
-					<span class="asset__sub">{ Plural(len(it.Cash), "asset") }</span>
-				</span>
-				<span class="cash-toggle__chev" aria-hidden="true">
-					@Icon("chevron-down", 16)
-				</span>
-			</button>
+			@cashToggleButton(len(it.Cash))
 		</td>
 		<td class="col-held">{ strings.Join(it.Asset.HeldIn, " · ") }</td>
 		<td class="col-price num"><span class="muted">—</span></td>
@@ -427,6 +412,27 @@ templ cashGroupRow(p OverviewPage, it HoldingItem) {
 			<td class="col-pnl num" data-show="$showPnl" style="display:none"><span class="chg chg--none" aria-label="No profit or loss for a group">—</span></td>
 		}
 	</tr>
+}
+
+// cashToggleButton is the name cell of a holdings table's cash group: it opens or closes the
+// rows of the group's n assets.
+templ cashToggleButton(n int) {
+	<button
+		type="button"
+		class="cash-toggle"
+		aria-expanded="false"
+		data-attr:aria-expanded="$cashOpen ? 'true' : 'false'"
+		data-on:click={ cashToggle }
+	>
+		<span class="disc disc--cash" aria-hidden="true">$</span>
+		<span class="asset__id">
+			<span class="asset__name">{ CashName }</span>
+			<span class="asset__sub">{ Plural(n, "asset") }</span>
+		</span>
+		<span class="cash-toggle__chev" aria-hidden="true">
+			@Icon("chevron-down", 16)
+		</span>
+	</button>
 }
 
 templ holdingsCard(p OverviewPage) {

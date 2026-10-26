@@ -678,3 +678,29 @@ func TestHoldingItemsGroupCash(t *testing.T) {
 		t.Errorf("no cash, no group: %+v", got)
 	}
 }
+
+// TestWalletItemsGroupCash: a wallet's balances group cash and dollar stablecoins into one
+// line too, in order of value; a stock with a cash-like ticker keeps its own line.
+func TestWalletItemsGroupCash(t *testing.T) {
+	hr := func(key, sym string, v float64) portfolio.HoldingRow {
+		return portfolio.HoldingRow{Holding: core.Holding{AssetKey: key, Symbol: sym}, ValueUSD: v, Priced: true}
+	}
+	items := WalletItems([]portfolio.HoldingRow{
+		hr("BTC", "BTC", 1000), hr("USDC", "USDC", 300), hr("ETH", "ETH", 200), hr("USD", "USD", 150), hr("stock:USD", "USD", 100),
+	})
+	var keys []string
+	for _, it := range items {
+		keys = append(keys, it.Row.AssetKey)
+	}
+	if strings.Join(keys, ",") != "BTC,cash,ETH,stock:USD" {
+		t.Fatalf("lines %v", keys)
+	}
+	cash := items[1]
+	if cash.Row.Name != CashName || cash.Row.ValueUSD != 450 || !cash.Row.Priced ||
+		len(cash.Cash) != 2 || cash.Cash[0].Symbol != "USDC" || cash.Cash[1].Symbol != "USD" {
+		t.Errorf("cash line %+v", cash)
+	}
+	if got := WalletItems([]portfolio.HoldingRow{hr("BTC", "BTC", 1)}); len(got) != 1 || got[0].Cash != nil {
+		t.Errorf("no cash, no group: %+v", got)
+	}
+}

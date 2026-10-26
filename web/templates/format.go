@@ -386,9 +386,9 @@ const (
 
 // isCash reports whether an asset is cash (USD) or a dollar stablecoin; a stock whose ticker
 // looks like one (the USD ETF) is not.
-func isCash(a portfolio.AssetRow) bool {
-	_, stock := core.IsStockKey(a.AssetKey)
-	return !stock && core.IsStable(a.AssetKey, a.Symbol)
+func isCash(assetKey, symbol string) bool {
+	_, stock := core.IsStockKey(assetKey)
+	return !stock && core.IsStable(assetKey, symbol)
 }
 
 // Allocation builds the allocation bar from merged asset rows. Cash and dollar stablecoins
@@ -406,7 +406,7 @@ func Allocation(assets []portfolio.AssetRow) []AllocSlice {
 			continue
 		}
 		total += a.ValueUSD
-		if isCash(a) {
+		if isCash(a.AssetKey, a.Symbol) {
 			cash = append(cash, a)
 			cashUSD += a.ValueUSD
 		} else {
@@ -479,7 +479,7 @@ func HoldingItems(assets []portfolio.AssetRow) []HoldingItem {
 	var cash []portfolio.AssetRow
 	group := portfolio.AssetRow{AssetKey: "cash", Name: CashName, Priced: true}
 	for _, a := range assets {
-		if !isCash(a) {
+		if !isCash(a.AssetKey, a.Symbol) {
 			out = append(out, HoldingItem{Asset: a})
 			continue
 		}
@@ -499,6 +499,36 @@ func HoldingItems(assets []portfolio.AssetRow) []HoldingItem {
 	sort.SliceStable(cash, func(i, j int) bool { return cash[i].ValueUSD > cash[j].ValueUSD })
 	out = append(out, HoldingItem{Asset: group, Cash: cash})
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Asset.ValueUSD > out[j].Asset.ValueUSD })
+	return out
+}
+
+// WalletItem is one line of a wallet's balances: a holding, or with Cash set the wallet's
+// cash and dollar stablecoins as one line (Row then sums them up).
+type WalletItem struct {
+	Row  portfolio.HoldingRow
+	Cash []portfolio.HoldingRow // the group's holdings, by value
+}
+
+// WalletItems is HoldingItems for one wallet's balances (rows outside DeFi positions).
+func WalletItems(rows []portfolio.HoldingRow) []WalletItem {
+	var out []WalletItem
+	var cash []portfolio.HoldingRow
+	group := portfolio.HoldingRow{Holding: core.Holding{AssetKey: "cash", Name: CashName}, Priced: true}
+	for _, r := range rows {
+		if !isCash(r.AssetKey, r.Symbol) {
+			out = append(out, WalletItem{Row: r})
+			continue
+		}
+		cash = append(cash, r)
+		group.ValueUSD += r.ValueUSD
+		group.Priced = group.Priced && r.Priced
+	}
+	if len(cash) == 0 {
+		return out
+	}
+	sort.SliceStable(cash, func(i, j int) bool { return cash[i].ValueUSD > cash[j].ValueUSD })
+	out = append(out, WalletItem{Row: group, Cash: cash})
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Row.ValueUSD > out[j].Row.ValueUSD })
 	return out
 }
 

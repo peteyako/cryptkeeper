@@ -620,6 +620,20 @@ func TestWalletContent(t *testing.T) {
 		`data-attr:aria-expanded="$showHidden ? 'true' : 'false'"`,
 		"12 NFTs are counted but not valued.",
 	)
+	// Cash and dollar stablecoins are one line that opens to show each, as on the overview;
+	// the pool's USDC stays in the pool.
+	has(t, ph,
+		`<tr class="cash-row"><td class="col-asset"><button type="button" class="cash-toggle"`,
+		`<span class="asset__name">Cash &amp; stablecoins</span> <span class="asset__sub">1 asset</span>`,
+		`<tr class="cash-part" data-show="$cashOpen" style="display:none">`,
+		`aria-label="No 24h change for a group"`,
+	)
+	if n := strings.Count(ph.html, `<tr class="cash-part"`); n != 1 {
+		t.Errorf("want Phantom's own USDC as the group's one row, got %d rows", n)
+	}
+	if i := strings.Index(ph.html, "Orca · SOL/USDC whirlpool"); i < 0 || !strings.Contains(ph.html[i:], `href="/a/USDC"`) {
+		t.Error("the pool's USDC leg should stay in the pool")
+	}
 
 	kr := byName(t, pages, "wallet kraken holdings")
 	has(t, kr, "Kraken last synced 3 hours ago. Values may be out of date.", "Stale 3h", "Read-only", "notice--warn")

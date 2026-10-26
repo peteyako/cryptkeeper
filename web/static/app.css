@@ -1981,6 +1981,11 @@ body.amounts-hidden .fig-m {
   transform: rotate(180deg);
 }
 
+/* The group's name is short: it stays on one line where other names wrap. */
+.tbl--holdings .cash-toggle .asset__name {
+  white-space: nowrap;
+}
+
 .disc--cash {
   background: var(--disc-usd-bg);
   color: var(--disc-usd-fg);
