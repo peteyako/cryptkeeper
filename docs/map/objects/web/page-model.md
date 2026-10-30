@@ -3,7 +3,7 @@ type: object
 cluster: web
 universe: live
 status: verified
-verified: 2026-10-29 @ 8501bb0
+verified: 2026-10-29 @ f38a5ab
 entity: web/templates/models.go
 ---
 
@@ -25,7 +25,7 @@ Templates are dumb: a handler computes everything (snapshot, history, P&L, sync 
 - Pages in `models.go`: `OverviewPage:47`, `WalletsPage:72`, `WalletPage:80`, `SourcePickPage:110`, `SourceFormPage:113`, `SettingsPage:130`, `PortfoliosPage:188`, `PortfolioFormPage:214`, `ActivityPage:256`, `ReportsPage:296`, `TaxPage:317`, `ReviewPage:354`, `KoinlyPage:422`/`KoinlyWizard:429`, `AlertsPage:499`/`AlertFormPage:511`, `CloseCard:525`, `CoinPage:547`.
 - Builders and helpers by file (all `web/templates/`): `view.go` (source/status labels `StatusView:146`, `SyncView:163`, holding names, `Location`/`Local` time zone `:451-456`, `asset()` content-hashed URLs `:422`, `SafeLogoURL:408`, nav context `WithNav/IsNav:586-593`); `activity_view.go` (`TxTitle`, `TxStatusView`, date/leg text); `alerts_view.go`; `koinly_view.go`; `reports_view.go`; `tax_view.go`; `print_view.go`; `chart.go` (SVG path, axes, hover JSON from `portfolio.Point`, and `Spark`/`SparkOf` for the holdings price lines).
 - `format.go` number rules, documented at its head (`web/templates/format.go:1-10`): `Fiat` 2 decimals with true minus (`:75`), `PriceFiat` (`:90`), `CoinAmount`/`Units` min 4 max 8 decimals, stables 2 (`:134,153`), `ChangePct` arrow+sign never color alone (`:182`), `ShortAddr` first 6 + last 4 (`:260`), `StalePrice` older than 15 min gets `~` (`:272`), `Ago/Since` (`:297,315`), `Allocation`/`HoldingItems` (`:401,477`), and `WalletItems` (`:513`), HoldingItems' twin for one wallet's plain balances (`isCash(assetKey, symbol)`, `:389`, is the shared cash test).
-- `errors_view.go`: `ExplainError(raw, sourceType, public, every)` turns a stored raw sync error into `ErrorView{Text, Fix, Raw}` in plain language; errors are matched by wording because they are stored as text (`web/templates/errors_view.go:8-41,141`). A 401 or 403 from a keyless public endpoint reads as a block on this machine's IP, not a rejected key (`:149-152`).
+- `errors_view.go`: `ExplainError(raw, sourceType, public, every)` turns a stored raw sync error into `ErrorView{Text, Fix, Raw}` in plain language; errors are matched by wording because they are stored as text (`web/templates/errors_view.go:8-41,142`). A 401 or 403 from a keyless public endpoint reads as a block, not a rejected key (`:150-153`).
 - `SyncRow` (`models.go:240`) carries per-source sync state to the sync card (Activity and Settings pages); `ActivityRow` (`:232`) is one feed entry plus the labels the template cannot look up.
 
 ## Connected to
