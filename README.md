@@ -116,8 +116,9 @@ price. If you really hold an unverified token, add its mint to `solana.allowMint
 
 The public RPC is heavily rate-limited (100 requests per 10 s per IP, 40 of any one method), so
 CryptKeeper paces all wallets' requests to it together, and the first history sync of several
-wallets takes a few passes. A free [Helius](https://www.helius.dev/) key is much faster and
-isn't paced:
+wallets takes a few passes. It can also block an IP address outright ("Your IP or provider is
+blocked"), as it does with some VPN and cloud networks. A free [Helius](https://www.helius.dev/)
+key is much faster, isn't paced, and avoids those blocks:
 
 ```yaml
 solana:

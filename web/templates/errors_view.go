@@ -22,6 +22,7 @@ const (
 	errTimeout
 	errRateLimit
 	errAuth
+	errBlocked // the endpoint refuses this machine's IP address
 	errNetwork
 	errServer
 	errInternal
@@ -51,6 +52,8 @@ func classifyErr(raw string) (errKind, int) {
 		return errNeedsEdit, status
 	case status == 429 || hasAny("rate limit", "too many requests", "throttled", "temporary lockout"):
 		return errRateLimit, status
+	case status == 403 && hasAny("blocked"):
+		return errBlocked, status
 	case status == 401 || status == 403 || hasAny("invalid key", "invalid signature", "unauthorized", "forbidden", "permission denied"):
 		return errAuth, status
 	case hasAny("deadline exceeded", "timeout", "timed out"):
@@ -116,6 +119,21 @@ func slowFix(sourceType string, public bool) string {
 	return ""
 }
 
+// blockFix is the advice for an endpoint that blocks this machine. Public endpoints block
+// addresses that send too much, and whole VPN and cloud networks; a private one is the cure.
+func blockFix(sourceType string, public bool) string {
+	fix := "If this machine is on a VPN, try without it."
+	if public {
+		switch sourceType {
+		case "solana":
+			fix += " A free Helius RPC URL in config.yaml (solana.rpcUrl) avoids the public RPC's blocks."
+		case "bitcoin":
+			fix += " Pointing bitcoin.esploraUrl in config.yaml at your own node avoids the public server's blocks."
+		}
+	}
+	return fix
+}
+
 // ExplainError turns a source's raw error into plain language. sourceType is the source's
 // type (solana, bitcoin, coinbase, kraken), public is set when it reads from a shared public
 // endpoint (the public Solana RPC, mempool.space), and every is how often CryptKeeper retries
@@ -128,6 +146,10 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 	svc := serviceName(sourceType)
 	retry := retryText(every)
 	kind, status := classifyErr(raw)
+	if kind == errAuth && public {
+		// A public endpoint takes no key, so a refusal there is a block on this machine.
+		kind = errBlocked
+	}
 	v := ErrorView{Raw: raw}
 	switch kind {
 	case errNeedsEdit:
@@ -148,9 +170,16 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 			v.Fix = "Check that the key still exists in the Coinbase Developer Platform and has View permission, then edit this source."
 		case "kraken":
 			v.Fix = "Check that the key still exists and has Query Funds and Query Ledger Entries permission, then edit this source."
+		case "solana":
+			v.Fix = "Check the key in the RPC URL in config.yaml (solana.rpcUrl)."
+		case "bitcoin":
+			v.Fix = "Check the URL in config.yaml (bitcoin.esploraUrl)."
 		default:
 			v.Fix = "Check the key, then edit this source."
 		}
+	case errBlocked:
+		v.Text = upperFirst(svc) + " is blocking this machine's IP address. " + retry
+		v.Fix = blockFix(sourceType, public)
 	case errNetwork:
 		v.Text = "Couldn't reach " + svc + ". " + retry
 		v.Fix = "Check this machine's internet connection, and the URL in config.yaml if you changed it."
