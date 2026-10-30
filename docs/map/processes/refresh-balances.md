@@ -2,7 +2,7 @@
 type: process
 universe: live
 status: verified
-verified: 2026-10-20 @ 73e5bf4
+verified: 2026-10-29 @ 8501bb0
 consumes: [source-def, source-contract, price, database]
 produces: [snapshot, value-history, price, database]
 ---
@@ -49,7 +49,7 @@ Input: the registry's live sources (`a.wallets`), a timer tick, a `Kick()` from 
 19. `reprice` joins any in-flight reprice via singleflight and skips when a build runs, nothing has finished yet, the latest is `Warm`, or (unless forced) the prices are younger than half a `PriceEvery`. It calls `Agg.Reprice` under a 1 minute context and drops the result if `latest`, `gen` or the running build changed meanwhile. Otherwise it stores it as `latest`, publishes it, records history and fires `OnSnapshot`: `internal/portfolio/refresher.go:218-255`.
 20. `Aggregator.Reprice` rebuilds each wallet from `known`, prices their assets with `a.Prices`, and assembles the snapshot with the build's `SyncedAt` and a new `PricedAt`. It returns false before the first finished build, on cancellation, or when `builds` changed (a build finished meanwhile): `internal/portfolio/aggregate.go:178-208`.
 21. The prices chip posts `POST /refresh/prices`: the handler shows the chip as updating, calls `Refresher.RepriceNow` (a forced `reprice`, without the half-interval floor) and patches the chips, plus the dashboard if it repriced: `web/templates/js.go:111-112`, `web/templates/components.templ:14-19`, `internal/portfolio/refresher.go:209-212`, `internal/server/handlers.go:302-316`.
-22. The header has two chips, patched together as `#sync-status`: `priceSync` shows `PricedAt` (amber for stale prices or after three `PriceEvery` intervals), `walletSync` shows pending, failing or stale sources and otherwise `SyncedAt`. `Every` words each interval in the chip tooltip (the wallets chip from `RefreshEvery()`, the prices chip from `PriceEvery()`): `internal/server/handlers.go:78-139`, `web/templates/models.go:28-38`, `web/templates/errors_view.go:91-103`.
+22. The header has two chips, patched together as `#sync-status`: `priceSync` shows `PricedAt` (amber for stale prices or after three `PriceEvery` intervals), `walletSync` shows pending, failing or stale sources and otherwise `SyncedAt`. `Every` words each interval in the chip tooltip (the wallets chip from `RefreshEvery()`, the prices chip from `PriceEvery()`): `internal/server/handlers.go:78-139`, `web/templates/models.go:28-38`, `web/templates/errors_view.go:94-105`.
 
 ## If you change this
 
