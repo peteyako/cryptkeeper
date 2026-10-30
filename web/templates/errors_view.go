@@ -22,7 +22,7 @@ const (
 	errTimeout
 	errRateLimit
 	errAuth
-	errBlocked // the endpoint refuses this machine's IP address
+	errBlocked // the endpoint refuses CryptKeeper outright (it says the IP is blocked)
 	errNetwork
 	errServer
 	errInternal
@@ -119,19 +119,20 @@ func slowFix(sourceType string, public bool) string {
 	return ""
 }
 
-// blockFix is the advice for an endpoint that blocks this machine. Public endpoints block
-// addresses that send too much, and whole VPN and cloud networks; a private one is the cure.
+// blockFix is the advice for an endpoint that refuses CryptKeeper outright. Public endpoints
+// block networks and clients without notice (the public Solana RPC once blocked Go's TLS
+// handshake while calling it an IP block), and a private one is the cure.
 func blockFix(sourceType string, public bool) string {
-	fix := "If this machine is on a VPN, try without it."
-	if public {
-		switch sourceType {
-		case "solana":
-			fix += " A free Helius RPC URL in config.yaml (solana.rpcUrl) avoids the public RPC's blocks."
-		case "bitcoin":
-			fix += " Pointing bitcoin.esploraUrl in config.yaml at your own node avoids the public server's blocks."
-		}
+	if !public {
+		return ""
 	}
-	return fix
+	switch sourceType {
+	case "solana":
+		return "The public Solana RPC blocks some networks and apps without notice. A free Helius RPC URL in config.yaml (solana.rpcUrl) avoids this."
+	case "bitcoin":
+		return "Public Esplora servers block some networks and apps without notice. Pointing bitcoin.esploraUrl in config.yaml at your own node avoids this."
+	}
+	return ""
 }
 
 // ExplainError turns a source's raw error into plain language. sourceType is the source's
@@ -147,7 +148,7 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 	retry := retryText(every)
 	kind, status := classifyErr(raw)
 	if kind == errAuth && public {
-		// A public endpoint takes no key, so a refusal there is a block on this machine.
+		// A public endpoint takes no key, so a refusal there is a block, not a bad key.
 		kind = errBlocked
 	}
 	v := ErrorView{Raw: raw}
@@ -178,7 +179,7 @@ func ExplainError(raw, sourceType string, public bool, every time.Duration) Erro
 			v.Fix = "Check the key, then edit this source."
 		}
 	case errBlocked:
-		v.Text = upperFirst(svc) + " is blocking this machine's IP address. " + retry
+		v.Text = upperFirst(svc) + " is refusing CryptKeeper's requests. " + retry
 		v.Fix = blockFix(sourceType, public)
 	case errNetwork:
 		v.Text = "Couldn't reach " + svc + ". " + retry
