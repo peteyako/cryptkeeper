@@ -567,7 +567,7 @@ func TestFetchReconciliation(t *testing.T) {
 	got := holdingsByKey(t, res.Holdings)
 
 	want := map[holdKey]string{
-		{"BTC", false, false}:   "1.75", // overlap: v2 (1.75) wins over Advanced Trade (1.0 + 0.5 hold)
+		{"BTC", false, false}:   "2.25", // overlap: v2 available (1.75) wins over Advanced Trade's (1.0), plus its 0.5 hold
 		{"BTC", false, true}:    "4",    // vault only in v2
 		{"ETH", true, false}:    "3.5",  // ETH2 -> staked ETH
 		{"SOL", false, false}:   "12",   // Advanced Trade only: available + hold
@@ -595,7 +595,7 @@ func TestFetchReconciliation(t *testing.T) {
 	if _, ok := got[holdKey{"ETH", false, false}]; ok {
 		t.Error("zero ETH wallet should have been dropped")
 	}
-	if h := got[holdKey{"BTC", false, false}]; h.Amount != 1.75 || h.Name != "Bitcoin" {
+	if h := got[holdKey{"BTC", false, false}]; h.Amount != 2.25 || h.Name != "Bitcoin" {
 		t.Errorf("BTC holding = %+v", h)
 	}
 	if h := got[holdKey{"BTC", false, true}]; h.Name != "Bitcoin" {
@@ -632,7 +632,7 @@ func TestFetchNoDifferencesMeta(t *testing.T) {
 		case "/api/v3/brokerage/accounts":
 			fmt.Fprint(w, `{"accounts":[{"uuid":"a","currency":"BTC","available_balance":{"value":"1"},"hold":{"value":"0.5"},"type":"ACCOUNT_TYPE_CRYPTO"}],"has_next":false}`)
 		case "/v2/accounts":
-			fmt.Fprint(w, `{"pagination":{"next_uri":null},"data":[{"id":"a","type":"wallet","currency":{"code":"BTC","name":"Bitcoin"},"balance":{"amount":"1.50000000"}}]}`)
+			fmt.Fprint(w, `{"pagination":{"next_uri":null},"data":[{"id":"a","type":"wallet","currency":{"code":"BTC","name":"Bitcoin"},"balance":{"amount":"1.00000000"}}]}`)
 		}
 	})
 	res, err := s.Fetch(context.Background())
@@ -640,7 +640,10 @@ func TestFetchNoDifferencesMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := meta(res, "Balance differences"); ok {
-		t.Error("equal balances must not report differences (1.5 == 1.50000000)")
+		t.Error("equal available balances must not report differences (1 == 1.00000000)")
+	}
+	if len(res.Holdings) != 1 || res.Holdings[0].AmountStr != "1.5" {
+		t.Errorf("holdings = %+v, want BTC 1.5 (1 available + 0.5 on hold)", res.Holdings)
 	}
 	if v, _ := meta(res, "Reconciliation"); v != "Advanced Trade only: 0 · v2 only: 0" {
 		t.Errorf("Reconciliation = %q", v)
@@ -684,6 +687,26 @@ func TestFetchV2CurrencyAsString(t *testing.T) {
 	}
 	if len(res.Holdings) != 1 || res.Holdings[0].Symbol != "BTC" || res.Holdings[0].AmountStr != "0.5" {
 		t.Fatalf("holdings = %+v", res.Holdings)
+	}
+}
+
+// An open order (a stop-loss, say) moves funds from available to hold. v2's balance is the
+// available part only, so the hold must be added back or the reserved coins vanish.
+func TestFetchOverlapKeepsFundsOnHold(t *testing.T) {
+	s, _ := newES256Source(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/brokerage/accounts":
+			fmt.Fprint(w, `{"accounts":[{"uuid":"a","currency":"BTC","available_balance":{"value":"0.2500000012345"},"hold":{"value":"0.125"},"type":"ACCOUNT_TYPE_CRYPTO"}],"has_next":false}`)
+		case "/v2/accounts":
+			fmt.Fprint(w, `{"pagination":{"next_uri":null},"data":[{"id":"a","type":"wallet","currency":{"code":"BTC","name":"Bitcoin"},"balance":{"amount":"0.25000000"}}]}`)
+		}
+	})
+	res, err := s.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Holdings) != 1 || res.Holdings[0].AmountStr != "0.375" {
+		t.Fatalf("holdings = %+v, want one BTC holding of 0.375 (0.25 available + 0.125 on hold)", res.Holdings)
 	}
 }
 

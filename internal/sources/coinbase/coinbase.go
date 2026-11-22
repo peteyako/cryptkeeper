@@ -371,14 +371,15 @@ type v2Response struct {
 
 // account is one account from either API, in a common shape.
 type account struct {
-	id       string
-	code     string // currency code as the API reports it
-	curName  string // currency name (v2 only)
-	amount   decimal
-	vault    bool
-	inAT     bool
-	inV2     bool
-	atAmount decimal // Advanced Trade's own figure, kept to report differences
+	id      string
+	code    string // currency code as the API reports it
+	curName string // currency name (v2 only)
+	amount  decimal
+	vault   bool
+	inAT    bool
+	inV2    bool
+	atAvail decimal // Advanced Trade's available balance, kept to report differences
+	atHold  decimal // Advanced Trade's hold: funds reserved by open orders, still owned
 }
 
 func (s *Source) fetchAdvancedTrade(ctx context.Context) ([]*account, error) {
@@ -411,12 +412,13 @@ func (s *Source) fetchAdvancedTrade(ctx context.Context) ([]*account, error) {
 			}
 			total := avail.plus(hold) // hold is funds reserved against the available balance; both are owned
 			out = append(out, &account{
-				id:       a.UUID,
-				code:     a.Currency,
-				amount:   total,
-				atAmount: total,
-				vault:    a.Type == "ACCOUNT_TYPE_VAULT",
-				inAT:     true,
+				id:      a.UUID,
+				code:    a.Currency,
+				amount:  total,
+				atAvail: avail,
+				atHold:  hold,
+				vault:   a.Type == "ACCOUNT_TYPE_VAULT",
+				inAT:    true,
 			})
 		}
 		if !resp.HasNext {
@@ -558,7 +560,9 @@ type reconcileStats struct {
 }
 
 // reconcile merges the two listings by account id. Where both list an account the v2 balance, code
-// and type win; accounts in only one listing are kept as they are.
+// and type win, plus Advanced Trade's hold: v2's balance is only the available part, so without the
+// hold the coins reserved by an open order (a stop-loss, say) would drop out of the total. Accounts
+// in only one listing are kept as they are.
 func reconcile(at, v2 []*account) ([]*account, reconcileStats) {
 	var st reconcileStats
 	byID := make(map[string]*account, len(at)+len(v2))
@@ -575,10 +579,10 @@ func reconcile(at, v2 []*account) ([]*account, reconcileStats) {
 			order = append(order, a.id)
 		} else if prev.inAT {
 			a.inAT = true
-			a.atAmount = prev.atAmount
-			if !prev.atAmount.equal(a.amount) || !strings.EqualFold(prev.code, a.code) {
+			if !prev.atAvail.equal(a.amount) || !strings.EqualFold(prev.code, a.code) {
 				st.differing++
 			}
+			a.amount = a.amount.plus(prev.atHold)
 		}
 		byID[a.id] = a
 	}
