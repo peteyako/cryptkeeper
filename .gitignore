@@ -15,3 +15,6 @@
 .DS_Store
 # go-task checksum cache
 /.task/
+docs/plans
+.worktrees/
+.claude/settings.local.json
