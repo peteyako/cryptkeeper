@@ -653,6 +653,32 @@ func TestFetchNoDifferencesMeta(t *testing.T) {
 	}
 }
 
+// v2 truncates balances (8 decimals for crypto, 2 for fiat) while Advanced Trade reports full
+// precision. Truncation is not a difference; a gap at v2's own precision still is.
+func TestFetchDifferencesIgnoreV2Truncation(t *testing.T) {
+	s, _ := newES256Source(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/brokerage/accounts":
+			fmt.Fprint(w, `{"accounts":[
+				{"uuid":"usd","currency":"USD","available_balance":{"value":"250.759"},"hold":{"value":"0"},"type":"ACCOUNT_TYPE_FIAT"},
+				{"uuid":"btc","currency":"BTC","available_balance":{"value":"0.123456789"},"hold":{"value":"0"},"type":"ACCOUNT_TYPE_CRYPTO"},
+				{"uuid":"sol","currency":"SOL","available_balance":{"value":"2.5"},"hold":{"value":"0"},"type":"ACCOUNT_TYPE_CRYPTO"}],"has_next":false}`)
+		case "/v2/accounts":
+			fmt.Fprint(w, `{"pagination":{"next_uri":null},"data":[
+				{"id":"usd","type":"fiat","currency":{"code":"USD","name":"US Dollar"},"balance":{"amount":"250.75"}},
+				{"id":"btc","type":"wallet","currency":{"code":"BTC","name":"Bitcoin"},"balance":{"amount":"0.12345678"}},
+				{"id":"sol","type":"wallet","currency":{"code":"SOL","name":"Solana"},"balance":{"amount":"2.40000000"}}]}`)
+		}
+	})
+	res, err := s.Fetch(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := meta(res, "Balance differences"); !strings.HasPrefix(v, "1 ") {
+		t.Errorf("Balance differences = %q, want 1 (SOL only; USD and BTC are v2 truncation)", v)
+	}
+}
+
 func TestFetchAdvancedTradeVaultType(t *testing.T) {
 	s, _ := newES256Source(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

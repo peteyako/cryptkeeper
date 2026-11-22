@@ -579,7 +579,9 @@ func reconcile(at, v2 []*account) ([]*account, reconcileStats) {
 			order = append(order, a.id)
 		} else if prev.inAT {
 			a.inAT = true
-			if !prev.atAvail.equal(a.amount) || !strings.EqualFold(prev.code, a.code) {
+			// v2 truncates to its own precision (8 decimals for crypto, 2 for fiat); only a gap
+			// v2 could have shown counts.
+			if !prev.atAvail.truncate(a.amount.scale).equal(a.amount) || !strings.EqualFold(prev.code, a.code) {
 				st.differing++
 			}
 			a.amount = a.amount.plus(prev.atHold)
@@ -759,6 +761,17 @@ func (d decimal) equal(o decimal) bool {
 		r = new(big.Rat)
 	}
 	return l.Cmp(r) == 0
+}
+
+// truncate drops the digits after the given number of decimals, rounding toward zero.
+func (d decimal) truncate(scale int) decimal {
+	if d.r == nil || d.scale <= scale {
+		return d
+	}
+	pow := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	q := new(big.Int).Mul(d.r.Num(), pow)
+	q.Quo(q, d.r.Denom())
+	return decimal{r: new(big.Rat).SetFrac(q, pow), scale: scale}
 }
 
 func (d decimal) float() float64 {
